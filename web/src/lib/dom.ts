@@ -4,6 +4,7 @@ export const $ = <T extends Element = HTMLElement>(sel: string) => document.quer
 
 export function make<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string | null) {
   const e = document.createElement(tag)
+  if (e instanceof HTMLButtonElement) e.type = 'button' // never a form's submit button by accident
   if (cls) e.className = cls
   if (text != null) e.textContent = text
   return e
@@ -18,14 +19,33 @@ export const ICON = {
   expand: svg('<path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9 7M2.5 13.5 7 9"/>'),
   pencil: svg('<path d="M10.5 2.5l3 3-8 8H2.5v-3z"/>'),
   pin: svg('<path d="M6 2.5h4M7 2.5v4L4.5 9h7L9 6.5v-4M8 9v4.5"/>'),
+  copy: svg('<rect x="5.5" y="5.5" width="8" height="8" rx="1"/><path d="M10.5 5.5v-3h-8v8h3"/>'),
+  check: svg('<path d="M3.5 8.5l3 3 6-7"/>'),
+  float: svg('<rect x="2" y="3" width="12" height="10" rx="1"/><rect x="7.5" y="7.5" width="5" height="4" fill="currentColor" stroke="none"/>'),
+  full: svg('<path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/>'),
   collapse: svg('<path d="M3.5 8h9"/>'),
   open: svg('<path d="M4 6.5 8 10.5l4-4"/>'),
+  grip: svg('<circle cx="6" cy="4" r=".9"/><circle cx="10" cy="4" r=".9"/><circle cx="6" cy="8" r=".9"/><circle cx="10" cy="8" r=".9"/><circle cx="6" cy="12" r=".9"/><circle cx="10" cy="12" r=".9"/>'),
 }
+
+/** Elements you type into: keys there aren't shortcuts, and pasting there isn't the canvas's. */
+export const EDITABLE = 'input, textarea, select, [contenteditable="plaintext-only"], [contenteditable="true"]'
+/** Put a fixed-position element at (x, y), moved just enough to stay on screen (`top`: the lowest top allowed). */
+export function keepOnScreen(el: HTMLElement, x: number, y: number, top = 8) {
+  el.style.left = `${Math.max(8, Math.min(innerWidth - el.offsetWidth - 8, x))}px`
+  el.style.top = `${Math.max(top, Math.min(innerHeight - el.offsetHeight - 8, y))}px`
+}
+/** The nearest `sel` at a screen point, looking through everything stacked there (overlays included). */
+export const closestAt = <T extends Element = HTMLElement>(x: number, y: number, sel: string) =>
+  document.elementsFromPoint(x, y).map(el => el.closest<T>(sel)).find(Boolean) ?? null
+/** Is this event target a field being typed in? */
+export const typing = (t: EventTarget | null) => t instanceof Element && !!t.closest(EDITABLE)
+/** May a single-key shortcut run: not while typing, not while a dialog is open. */
+export const shortcutOk = (e: KeyboardEvent) => !typing(e.target) && !document.querySelector('dialog[open]')
 
 /** A square icon button; the click doesn't reach the window under it (no drag, no focus steal). */
 export function iconButton(icon: string, label: string, onClick: () => void, cls = '') {
   const b = make('button', 'icon' + (cls ? ' ' + cls : ''))
-  b.type = 'button'
   b.innerHTML = icon
   b.title = label
   b.setAttribute('aria-label', label)
@@ -33,16 +53,30 @@ export function iconButton(icon: string, label: string, onClick: () => void, cls
   return b
 }
 
+/** Copies `text()` to the clipboard; the icon turns into a check for a moment to confirm. */
+export function copyButton(text: () => string, label = 'Copy') {
+  const flash = (ok: boolean) => {
+    b.innerHTML = ok ? ICON.check : ICON.x
+    b.classList.add(ok ? 'on' : 'failed')
+    b.dataset.tip = ok ? label : 'Copy failed (the browser blocked the clipboard)'
+    setTimeout(() => { b.innerHTML = ICON.copy; b.classList.remove('on', 'failed'); b.dataset.tip = label }, 1600)
+  }
+  // no clipboard outside secure pages (plain http on a LAN address): say so instead of doing nothing
+  const b = iconButton(ICON.copy, label, () => {
+    if (!navigator.clipboard?.writeText) return flash(false)
+    navigator.clipboard.writeText(text()).then(() => flash(true), () => flash(false))
+  }, 'copybtn')
+  return b
+}
+
 /** A text button (.btn), optionally with a modifier class like primary. */
 export function button(label: string, cls: string, onClick: () => void) {
   const b = make('button', 'btn' + (cls ? ' ' + cls : ''), label)
-  b.type = 'button'
   b.onclick = onClick
   return b
 }
 
 export const ui = {
-  mode: $<HTMLSelectElement>('#mode'),
   model: $<HTMLSelectElement>('#model'),
 }
 
@@ -50,9 +84,18 @@ export const ui = {
 export const project = { root: '', name: '' }
 export const rel = (p: string) => (p && p.startsWith(project.root + '/') ? p.slice(project.root.length + 1) : p)
 
-export const ago = (t: number) => {
+/** "5m ago", "3d ago", or the date once it's two months old. `t`: unix seconds, or an ISO date ('' gives ''). */
+export const ago = (t: number | string) => {
+  if (typeof t === 'string') { if (!t) return ''; t = Date.parse(t) / 1000 }
   const s = Date.now() / 1000 - t
-  return s < 60 ? 'just now' : s < 3600 ? `${(s / 60) | 0}m ago` : s < 86400 ? `${(s / 3600) | 0}h ago` : `${(s / 86400) | 0}d ago`
+  return s < 60 ? 'just now' : s < 3600 ? `${(s / 60) | 0}m ago` : s < 86400 ? `${(s / 3600) | 0}h ago` : s < 86400 * 60 ? `${(s / 86400) | 0}d ago` : new Date(t * 1000).toLocaleDateString()
+}
+
+/** A link that opens outside the app, in a new tab. */
+export function extLink(cls: string, text: string, href: string) {
+  const a = make('a', cls, text) as HTMLAnchorElement
+  Object.assign(a, { href, target: '_blank', rel: 'noopener' })
+  return a
 }
 
 /** "dir/sub/" muted + "file.ts" emphasized. */
@@ -83,4 +126,17 @@ export function confirmBox(title: string, body: string, action: string): Promise
   d.onclick = e => { if (e.target === d) d.close('') } // click outside the box = cancel
   d.showModal()
   return new Promise(res => d.addEventListener('close', () => res(d.returnValue === 'ok'), { once: true }))
+}
+
+/** A short message at the bottom of the screen that goes away by itself: for failures nobody would otherwise see. */
+export function toast(text: string) {
+  const t = document.body.appendChild(make('p', 'float toast', text))
+  t.setAttribute('role', 'status')
+  setTimeout(() => t.remove(), 6000)
+}
+
+/** `f`, run at most once per frame, with the latest arguments: for pointermove, scroll and wheel handlers. */
+export function perFrame<A extends unknown[]>(f: (...a: A) => void) {
+  let raf = 0, last: A
+  return (...a: A) => { last = a; raf ||= requestAnimationFrame(() => { raf = 0; f(...last) }) }
 }

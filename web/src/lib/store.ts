@@ -1,6 +1,6 @@
 // The canvas survives a reload (per project folder, this browser only). Each feature registers the slice it owns;
 // save() gathers them all into one localStorage entry, restore() hands each slice back to its owner.
-import { project } from './dom'
+import { project, toast } from './dom'
 
 interface Part { save: () => unknown; load?: (value: any, all: Record<string, any>) => unknown; phase: number }
 const parts = new Map<string, Part>()
@@ -12,11 +12,30 @@ export function persist<T>(key: string, save: () => T, load?: (value: T, all: Re
 
 const KEY = () => 'claude-ui:canvas:' + project.root
 
-export function save() {
-  try { localStorage.setItem(KEY(), JSON.stringify(Object.fromEntries([...parts].map(([k, p]) => [k, p.save()])))) } catch {}
+let warned = false
+const cache = new Map<string, string | undefined>() // each slice's JSON as last saved
+let written = ''
+/** Save the layout. `only`: just these slices changed (e.g. a pan: the view); the rest are reused from last time. */
+export function save(slices?: string[] | Event) {
+  const only = Array.isArray(slices) ? slices : undefined // also used as an event handler (onchange = save)
+  for (const [k, p] of parts) if (!only || only.includes(k) || !cache.has(k)) cache.set(k, JSON.stringify(p.save()))
+  const json = `{${[...cache].filter(([, j]) => j !== undefined).map(([k, j]) => `${JSON.stringify(k)}:${j}`).join(',')}}`
+  if (json === written) return // nothing changed (a pan that came back, a click)
+  try { localStorage.setItem(KEY(), json); written = json; warned = false }
+  catch (e) {
+    // full (or storage blocked): the layout stops saving, so say it once instead of losing changes silently
+    if (!warned) toast(`The canvas couldn't be saved in this browser (${(e as Error).name}). Remove big snippets or whiteboards to make room.`)
+    warned = true
+  }
 }
-let timer = 0
-export const saveSoon = () => { clearTimeout(timer); timer = setTimeout(save, 400) }
+let timer = 0, full = false
+/** Save shortly (debounced). `viewOnly`: only the pan/zoom changed, so only the view slice is re-serialized
+ *  (ink points, snippets and cards can be big: no need to stringify them on every pan). */
+export const saveSoon = (viewOnly = false) => {
+  full ||= !viewOnly
+  clearTimeout(timer)
+  timer = setTimeout(() => { const f = full; full = false; save(f ? undefined : ['view']) }, 400)
+}
 
 /** Load every slice that was saved, phase by phase (a slice's loader may be async: the next one waits for it). */
 export async function restore() {

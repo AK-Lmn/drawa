@@ -1,6 +1,6 @@
 // Claude asking you: tool permission prompts and AskUserQuestion forms, answered right in the card.
 // (Plan approval goes through the same request, but plan.ts shows it as a document on the canvas.)
-import { make, rel } from '../lib/dom'
+import { make, rel, button } from '../lib/dom'
 import { post } from '../lib/api'
 import { reviewPlan } from '../items/plan'
 import { change } from '../panels/diff'
@@ -34,7 +34,7 @@ export function approval(S: Session, m: Msg) {
     renderCard(S)
     post('respond', { cid: S.cid, request_id: id, allow, always }).catch(e => box.append(make('span', 'err', ` Could not answer: ${e.message}`)))
   }
-  const btn = (label: string, cls: string, fn: () => void) => { const b = make('button', `btn ${cls}`, label); b.type = 'button'; b.onclick = fn; row.append(b); return b }
+  const btn = (label: string, cls: string, fn: () => void) => row.appendChild(button(label, cls, fn))
   btn('Deny', '', () => answer(false)).title = 'Deny (Esc)'
   if (r.permission_suggestions?.length) btn('Always allow', '', () => answer(true, true)).title = 'Allow, and don\u2019t ask again for this'
   const allow = btn('Allow', 'primary', () => answer(true))
@@ -49,7 +49,6 @@ export function approval(S: Session, m: Msg) {
 function question(S: Session, id: string, qs: { question: string; header?: string; options: { label: string; description?: string }[]; multiSelect?: boolean }[]) {
   const box = put(S, make('div', 'ask q')), picked = qs.map(() => new Set<string>()), other = qs.map(() => '')
   const row = make('div', 'row'), skip = make('button', 'btn', 'Skip'), ok = make('button', 'btn primary', 'Answer')
-  skip.type = ok.type = 'button'
   const ready = () => { ok.disabled = !qs.every((_, i) => picked[i].size || other[i].trim()) }
   qs.forEach((q, i) => {
     const f = make('fieldset')
@@ -57,7 +56,6 @@ function question(S: Session, id: string, qs: { question: string; header?: strin
     if (q.header) f.prepend(make('span', 'chip', q.header))
     for (const o of q.options) {
       const b = make('button', 'opt')
-      b.type = 'button'
       b.setAttribute('aria-pressed', 'false')
       b.append(make('b', '', o.label), ...(o.description ? [make('span', '', o.description)] : []))
       b.onclick = () => {

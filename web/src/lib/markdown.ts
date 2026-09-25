@@ -3,6 +3,7 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import type { HLJSApi } from 'highlight.js'
 import { renderDiagrams } from '../items/diagram'
+import { copyButton, make, ICON } from './dom'
 
 export const md = (text: string) => DOMPurify.sanitize(marked.parse(text, { async: false }))
 
@@ -15,6 +16,19 @@ export const highlighter = () => (hl ??= import('highlight.js/lib/common').then(
 export function enhance(el: HTMLElement) {
   if (!el.isConnected) { el.dataset.enhance = ''; return } // diagrams can't be measured off-page
   renderDiagrams(el)
+  // code blocks get a copy button (in a wrapper, so it stays put when the code scrolls sideways)
+  for (const pre of el.querySelectorAll<HTMLElement>('pre:has(> code)')) {
+    if (pre.parentElement?.classList.contains('codeblock')) continue
+    const box = document.createElement('div')
+    box.className = 'codeblock'
+    pre.replaceWith(box)
+    const tools = make('div', 'cbtools'), pull = make('button', 'icon pullbtn')
+    pull.title = 'Drag onto the canvas (or click to pin it beside this window)'
+    pull.setAttribute('aria-label', 'Pin this code to the canvas')
+    pull.innerHTML = ICON.grip
+    tools.append(pull, copyButton(() => pre.textContent ?? '', 'Copy code'))
+    box.append(pre, tools)
+  }
   const codes = el.querySelectorAll<HTMLElement>('pre code')
   if (codes.length) highlighter().then(h => codes.forEach(c => c.isConnected && h.highlightElement(c)))
 }

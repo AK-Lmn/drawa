@@ -28,7 +28,7 @@ export function change(S: Session, tool: string, file: string, inp: Record<strin
       if (part.removed) del += lines.length
       for (const l of lines) {
         if (shown++ >= MAX_LINES) continue
-        const row = body.appendChild(make('div', part.added ? 'add' : part.removed ? 'del' : 'ctx', l))
+        const row = body.appendChild(make('div', part.added ? 'add' : part.removed ? 'del' : 'eq', l))
         row.dataset.s = part.added ? '+' : part.removed ? '−' : ''
       }
     }
@@ -53,4 +53,19 @@ export function settleChange(c: Change, ok: boolean) {
   c.classList.remove('pending')
   c.classList.toggle('failed', !ok)
   c.querySelector('.state')!.textContent = ok ? '' : 'failed'
+}
+
+/** A unified diff as rows in the same style as the inspector's diffs. */
+export function unified(text: string) {
+  const box = make('div', 'diff')
+  const lines = text.replace(/\n$/, '').split('\n')
+  const start = lines.findIndex(l => l.startsWith('@@'))
+  for (const l of start < 0 ? ['(no textual changes)'] : lines.slice(start)) {
+    if (l.startsWith('\\')) continue // "\ No newline at end of file"
+    // a hunk header says where it is: git's function context, or the line number when there's none
+    if (l.startsWith('@@')) { box.append(make('div', 'sep hunk', l.replace(/^@@ -\d+(?:,\d+)? \+(\d+).*?@@\s?(.*)$/, (_, n, ctx) => ctx || `line ${n}`))); continue }
+    const kind = l.startsWith('+') ? 'add' : l.startsWith('-') ? 'del' : 'eq'
+    box.appendChild(make('div', kind, l.slice(1))).dataset.s = kind === 'add' ? '+' : kind === 'del' ? '−' : ''
+  }
+  return box
 }

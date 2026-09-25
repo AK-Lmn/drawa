@@ -1,7 +1,8 @@
 // Images you paste or drop into a message: read, scaled down to what Claude uses, shown as thumbnails.
 import { make } from '../lib/dom'
+import { base64, imageBlock as block } from '../lib/blobs'
 
-export interface Pasted { type: string; data: string; url: string } // media type, base64, displayable URL
+export interface Pasted { type: string; data: string; url: string; blob?: Blob; w?: number; h?: number } // media type, base64, displayable URL; when read here: the bytes, pixel size
 
 const TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] // what the API accepts
 const MAX_EDGE = 1568 // Claude downsizes anything larger anyway; sending less keeps requests small
@@ -21,7 +22,7 @@ async function readOne(f: File): Promise<Pasted> {
   // small enough and a supported type: send the file as it is (keeps GIF animation, PNG exactness)
   if (k === 1 && TYPES.includes(f.type) && f.size < 3_500_000) {
     const data = await base64(f)
-    return { type: f.type, data, url: URL.createObjectURL(f) }
+    return { type: f.type, data, url: URL.createObjectURL(f), blob: f, w: bmp.width, h: bmp.height }
   }
   const c = document.createElement('canvas')
   c.width = Math.round(bmp.width * k)
@@ -29,17 +30,10 @@ async function readOne(f: File): Promise<Pasted> {
   c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height)
   const type = f.type === 'image/png' ? 'image/png' : 'image/jpeg' // screenshots stay crisp, photos get smaller
   const blob = await new Promise<Blob>((res, rej) => c.toBlob(b => (b ? res(b) : rej(new Error('encode failed'))), type, 0.9))
-  return { type, data: await base64(blob), url: URL.createObjectURL(blob) }
+  return { type, data: await base64(blob), url: URL.createObjectURL(blob), blob, w: c.width, h: c.height }
 }
 
-const base64 = (b: Blob) => new Promise<string>((res, rej) => {
-  const r = new FileReader()
-  r.onload = () => res(String(r.result).split(',')[1])
-  r.onerror = () => rej(r.error)
-  r.readAsDataURL(b)
-})
-
-export const imageBlock = (img: Pasted) => ({ type: 'image', source: { type: 'base64', media_type: img.type, data: img.data } })
+export const imageBlock = (img: Pasted) => block(img.type, img.data)
 
 /** A thumbnail; click to see it larger. With `remove`, an × to take it off the message. */
 export function thumb(img: Pasted, remove?: () => void) {
@@ -50,7 +44,6 @@ export function thumb(img: Pasted, remove?: () => void) {
   t.append(pic)
   if (remove) {
     const x = make('button', 'x', '×')
-    x.type = 'button'
     x.title = 'Remove image'
     x.setAttribute('aria-label', 'Remove image')
     x.onclick = remove

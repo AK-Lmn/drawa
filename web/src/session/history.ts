@@ -3,7 +3,7 @@ import { api, type SavedMessage, type SessionInfo } from '../lib/api'
 import { $, make, ago, quietPings, button } from '../lib/dom'
 import { enhanceMarked } from '../lib/markdown'
 import { save } from '../lib/store'
-import { cards, newSession, focus, renderCard } from './session'
+import { cards, newSession, focus, renderCard, pinToBottom } from './session'
 import { replay } from './stream'
 import { centerOn, type Rect } from '../canvas/canvas'
 import { redraw } from '../canvas/graph'
@@ -35,8 +35,9 @@ function earlier(log: HTMLElement, older: HTMLElement) {
   return b
 }
 
-/** Open a saved session as a card. `at` restores a saved position (on reload) instead of placing a new one. */
-export async function resume(s: { id: string; title: string; cid?: string }, at?: Rect) {
+/** Open a saved session as a card. `at` restores a saved position (on reload) instead of placing a new one.
+ *  Restoring many: `o.got` is its transcript, already being fetched, and `o.quiet` leaves saving to the caller. */
+export async function resume(s: { id: string; title: string; cid?: string }, at?: Rect, o: { got?: Promise<unknown>; quiet?: boolean } = {}) {
   const open = cards.find(t => t.sid === s.id)
   if (open) { focus(open); centerOn(open.card); return }
   const blank = !at && cards.find(t => !t.sid && !t.pending && t.log.querySelector('.empty'))
@@ -46,7 +47,9 @@ export async function resume(s: { id: string; title: string; cid?: string }, at?
   S.log.replaceChildren(make('p', 'none', 'Loading session…'))
   renderCard(S)
   try {
-    const msgs = await api<SavedMessage[]>('session?id=' + s.id)
+    const got = await (o.got ?? api('session?id=' + s.id)) as SavedMessage[] | { missing: true }
+    if (!Array.isArray(got)) throw new Error('No such file') // the server's newer answer for "no transcript yet"
+    const msgs = got
     S.log.replaceChildren()
     // one pass without layout reads (pinning to the bottom, pings, header updates), then settle once
     S.replaying = true
@@ -63,12 +66,16 @@ export async function resume(s: { id: string; title: string; cid?: string }, at?
       msgs.slice(cut).forEach(m => replay(S, m))
     } finally { S.log = live; S.replaying = false; quietPings(false) }
     if (older.childElementCount) live.prepend(earlier(live, older))
-    S.log.scrollTop = S.log.scrollHeight
+    pinToBottom(S)
   } catch (e) {
-    S.log.replaceChildren(make('div', 'err', `Could not load this session: ${(e as Error).message}`))
+    // restored mid-way through its first reply: the CLI hasn't written the transcript yet, but the live process has
+    // everything since it started (live.ts reads from line 0 when n is 0). ponytail: a dead process leaves it empty.
+    if (at && s.cid && /No such file|^404$/.test((e as Error).message)) { S.log.replaceChildren(); S.n = 0 }
+    else S.log.replaceChildren(make('div', 'err', `Could not load this session: ${(e as Error).message}`))
   }
   redraw()
   if (!at) centerOn(S.card)
+  if (o.quiet) return
   save()
   loadSessions()
 }

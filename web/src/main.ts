@@ -2,19 +2,27 @@
 // Features register themselves on import (saved-layout slices, referable kinds); the imports below are the app.
 import './lib/fonts' // applies the saved font choice right away
 import './lib/theme'
+import './lib/tooltip' // the app's own tooltips for every title="…"
 import { api } from './lib/api'
-import { $, make, ui, project } from './lib/dom'
+import { $, make, ui, project, shortcutOk } from './lib/dom'
 import { persist, restore, save, saveSoon } from './lib/store'
 import { enhance } from './lib/select'
 import { onReconnect } from './lib/connection'
-import { apply, fit, zoomAt, onChange, stage, track, view as camera } from './canvas/canvas'
+import { apply, fit, zoomAt, onChange, stage, edgeGrip, rect, view as camera } from './canvas/canvas'
 import { redraw } from './canvas/graph'
-import { setDrawing, drawing } from './canvas/ink'
+import { setDrawing, drawing, useTool, toolKey } from './canvas/ink'
+import { setMode } from './canvas/mode'
+import { selected } from './canvas/select' // also Ctrl/Cmd+A, Delete, arrow-key nudges
+import { addImage } from './items/image'
 import { noteHere } from './items/notes'
 import { sketch } from './items/sketch'
 import './items/diagram'
 import './items/plan'
+import './items/snippet'
+import './items/image'
+import './canvas/find'
 import { openGit } from './items/git'
+import { openGitHub } from './items/github'
 import { tree, closeInspector, showTab } from './panels/files'
 import { cards, cur, newSession, meta } from './session/session'
 import { attach } from './session/live'
@@ -40,23 +48,14 @@ for (const b of document.querySelectorAll<HTMLElement>('[data-l]')) {
 for (const b of document.querySelectorAll<HTMLElement>('[data-r]')) b.onclick = () => showTab(b.dataset.r as 'changes' | 'viewer')
 
 /* ---------- permission mode + model: toolbar settings, saved with the canvas ---------- */
-ui.mode.onchange = () => { ui.mode.dataset.mode = ui.mode.value; save() }
 ui.model.onchange = save
-enhance(ui.mode) // custom dropdowns; the native selects stay the source of truth
 enhance(ui.model)
 let savedModel = ''
-persist('mode', () => ui.mode.value, v => { ui.mode.value = v }, 0)
 persist('model', () => ui.model.value || savedModel, v => { savedModel = v }, 0)
 persist('view', () => ({ ...camera }), v => { Object.assign(camera, v) }, 0)
 
 // Inspector: drag its left edge to widen it.
-const edgeGrip = inspector.appendChild(Object.assign(document.createElement('div'), { className: 'edge-grip', title: 'Drag to resize' }))
-edgeGrip.addEventListener('pointerdown', e => {
-  if (e.button !== 0) return
-  const w = inspector.offsetWidth
-  inspector.classList.add('resizing')
-  track(edgeGrip, e, dx => { inspector.style.width = `${Math.min(innerWidth - 24, Math.max(360, w - dx))}px` }, () => inspector.classList.remove('resizing'))
-})
+edgeGrip(inspector, 360)
 
 // Single-key shortcuts, only when not typing.
 addEventListener('keydown', e => {
@@ -65,18 +64,32 @@ addEventListener('keydown', e => {
     else if (!drawer.hidden) toggleDrawer(false)
     return
   }
-  const t = e.target instanceof Element ? e.target : null
-  if (e.ctrlKey || e.metaKey || e.altKey || t?.closest('input, textarea, select, [contenteditable]') || document.querySelector('dialog[open]')) return
-  const k = e.key.toLowerCase()
+  if (e.ctrlKey || e.metaKey || e.altKey || !shortcutOk(e)) return
+  const k = e.key.toLowerCase(), c = e.code
+  // Excalidraw's keys where we have the tool; the number row by its physical key (Shift+1 types "!")
+  if (e.shiftKey) {
+    if (c === 'Digit1') fit()
+    else if (c === 'Digit2') { const s = selected(); fit(true, s.length ? s.map(rect) : undefined) } // zoom to selection
+    else if (c === 'Digit0') zoomAt(1, undefined, undefined, true)
+    else if (k === 'g') openGitHub()
+    else if (k === 'h') toggleDrawer()
+    return
+  }
   if (k === 'n') { e.preventDefault(); newSession() }
-  else if (k === 't') { e.preventDefault(); noteHere() }
   else if (k === 'd') setDrawing(!drawing)
+  else if (drawing) return // in Draw mode, P/A/E/T and 7/5/0/8 pick its tools (canvas/ink.ts)
+  else if (k === 'v' || c === 'Digit1') setMode('select')
+  else if (k === 'h') setMode('hand')
+  else if (k === 't') { e.preventDefault(); noteHere() }
+  else if (toolKey(e)) useTool(toolKey(e)!) // the draw tools' keys switch Draw mode on with that tool
+  else if (c === 'Digit9') pickImage.click()
   else if (k === 's') { e.preventDefault(); sketch({ edit: true }) }
   else if (k === 'f') fit()
   else if (k === 'g') openGit()
-  else if (k === 'h') toggleDrawer()
-  else if (k === '0') zoomAt(1, undefined, undefined, true)
 })
+// 9: insert a picture from a file (like Excalidraw's image tool), in the middle of the view
+const pickImage = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/*', multiple: true })
+pickImage.onchange = () => { for (const f of pickImage.files ?? []) addImage(f, f.name).catch(console.warn); pickImage.value = '' }
 
 // The hint teaches pan/zoom once, then gets out of the way.
 const hint = $('#hint')
@@ -105,7 +118,6 @@ api<typeof meta>('meta').then(m => {
 }).catch(() => {})
 
 await restore()
-ui.mode.dataset.mode = ui.mode.value
 apply()
 if (!cards.length) newSession()
 document.fonts.ready.then(redraw) // card text reflow can shift edge anchors

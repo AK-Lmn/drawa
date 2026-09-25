@@ -1,18 +1,19 @@
-// The work as a graph: session card --action--> its Files window, --run--> its terminal, --plan/ref--> other items.
+// The work as a graph: session card --action--> its Files window, --run--> its commands window, --plan/ref--> other items.
 // Files a session touches are rows in one Files window per session (grouped by folder), not one node each:
 // a session that reads 100 files is still one window and one edge. A file becomes its own canvas node only when
 // you open it from the file tree.
+import { tipText } from '../lib/tooltip'
 import { make, ping, iconButton } from '../lib/dom'
 import { persist } from '../lib/store'
-import { world, addItem, place, rect, savedRect, draggable, freeSpot, spotBeside, changed, type Rect } from './canvas'
+import { world, onCanvas, liveRect, view, onChange, addItem, place, rect, savedRect, draggable, freeSpot, spotBeside, changed, type Rect } from './canvas'
 import { makeWindow } from './window'
 import { referable } from './refs'
 import type { Session } from '../session/session'
 import type { Change } from '../panels/diff'
 import { openInspector, inspecting } from '../panels/files'
 
-export type Act = 'read' | 'edit' | 'write' | 'run' | 'plan' | 'ref'
-const RANK: Act[] = ['plan', 'write', 'edit', 'run', 'read', 'ref'] // which action colors an edge that carries several
+export type Act = 'read' | 'edit' | 'write' | 'run' | 'plan' | 'made' | 'ref'
+const RANK: Act[] = ['plan', 'write', 'edit', 'run', 'made', 'read', 'ref'] // which action colors an edge that carries several
 /** Everything known about one file across sessions: its diffs (for the inspector) and where it's shown. */
 interface FileInfo { path: string; add: number; del: number; changes: Change[]; kind: Act | 'fail'; rows: Set<HTMLElement>; node?: HTMLElement }
 interface FileList { el: HTMLElement; list: HTMLElement; count: HTMLElement; rows: Map<string, HTMLElement> }
@@ -25,10 +26,29 @@ const lists = new Map<Session, FileList>()
 const terms = new Map<Session, TermNode>()
 const edges = new Map<Session, Map<HTMLElement, Edge>>()
 const pending = new Map<string, Pending>() // tool_use id -> what to settle when its result arrives
-/** Positions restored from the saved layout: "f:<path>" pinned files, "l:<sid>" Files windows, "t:<sid>" terminals, "p:<id>" plans. */
+/** Positions restored from the saved layout: "f:<path>" pinned files, "l:<sid>" Files windows, "t:<sid>" commands windows, "p:<id>" plans. */
 export const savedPos: Record<string, Rect | { x: number; y: number }> = {}
 persist('nodes', layout, v => Object.assign(savedPos, v), 0)
-referable('file', { icon: '≡', label: el => el.title, content: (_, path) => ({ text: `File: ${path} (read it if you need its contents)` }) })
+referable('files', {
+  icon: '≡',
+  label: () => 'files a session touched',
+  content: el => ({ text: 'Files a session on my canvas worked with (edit/write = changed, read = only read):\n' +
+    [...el.querySelectorAll<HTMLElement>('.frow')].map(r => `- ${tipText(r)} (${r.dataset.state ?? 'read'})`).join('\n') }),
+})
+referable('run', {
+  icon: '$',
+  label: () => 'commands a session ran',
+  content: el => {
+    let budget = 20_000 // ponytail: long outputs are cut, newest commands first to keep
+    const rows = [...el.querySelectorAll<HTMLElement>('.tcmd')].reverse().map(r => {
+      const out = (r.querySelector('pre')?.textContent ?? '').slice(-Math.max(0, Math.min(3000, budget)))
+      budget -= out.length
+      return `$ ${tipText(r) || r.querySelector('summary')?.textContent}\n${out}`
+    }).reverse()
+    return { text: `Commands a session on my canvas ran, with their output:\n\n\`\`\`\n${rows.join('\n\n')}\n\`\`\`` }
+  },
+})
+referable('file', { icon: '≡', label: el => tipText(el), content: (_, path) => ({ text: `File: ${path} (read it if you need its contents)` }) })
 
 const svg = document.getElementById('edges') as unknown as SVGSVGElement
 const SVGNS = 'http://www.w3.org/2000/svg'
@@ -62,7 +82,9 @@ function fileList(S: Session): FileList {
     reads.classList.toggle('on', hide)
     reads.title = hide ? 'Show files that were only read' : 'Hide files that were only read'
   })
-  const { el, head, body } = makeWindow({ kind: 'files', cls: 'lnode', title: 'files', rect: { ...spotBeside(S.card, 300, 380, 150, 0), ...saved }, minW: 220, minH: 120, actions: [reads] })
+  // collapsed to its tab by default, like commands: the count says enough until you want the list (your choice is saved)
+  const { el, head, body } = makeWindow({ kind: 'files', cls: 'lnode', title: 'files', rect: { min: true, ...spotBeside(S.card, 300, 380, 150, 0), ...saved }, minW: 220, minH: 120, actions: [reads] })
+  el.dataset.id = 'l:' + S.cid // stable across reloads (the card's id is saved), so arrows and pins come back
   head.querySelector('.t')!.after(count)
   body.append(list)
   const l: FileList = { el, list, count, rows: new Map() }
@@ -73,7 +95,6 @@ function fileList(S: Session): FileList {
 function addRow(l: FileList, f: FileInfo) {
   const slash = f.path.lastIndexOf('/'), dir = slash > 0 ? f.path.slice(0, slash + 1) : './'
   const row = make('button', 'frow')
-  row.type = 'button'
   row.title = f.path
   row.dataset.dir = dir
   row.append(make('span', 'g'), make('span', 'n', f.path.slice(slash + 1)), make('span', 's'))
@@ -116,6 +137,7 @@ function fileNode(f: FileInfo): HTMLElement {
   el.tabIndex = 0
   el.setAttribute('role', 'button')
   el.setAttribute('aria-label', `Open ${f.path}`)
+  el.dataset.id = 'f:' + f.path
   addItem(el, 'file')
   const p = savedPos['f:' + f.path] ?? spotBeside(null, 220, 44)
   place(el, p.x, p.y)
@@ -135,7 +157,9 @@ function termNode(S: Session): TermNode {
   const r = rect(S.card), saved = S.sid ? savedPos['t:' + S.sid] as Rect | undefined : undefined
   const at = freeSpot({ x: r.x + 40, y: r.y + r.h + 90, w: 420, h: 240 })
   const count = make('span', 'm'), list = make('div', 'cmds-list')
-  const { el, head, body } = makeWindow({ kind: 'run', cls: 'tnode', title: 'terminal', rect: { ...at, ...saved }, minW: 240, minH: 120 })
+  // collapsed to its tab by default: the run count says enough until you want the output (your choice is saved)
+  const { el, head, body } = makeWindow({ kind: 'run', cls: 'tnode', title: 'commands', rect: { min: true, ...at, ...saved }, minW: 240, minH: 120 })
+  el.dataset.id = 't:' + S.cid
   head.querySelector('.t')!.after(count)
   body.append(list)
   const t = { el, list, count, n: 0 }
@@ -166,35 +190,49 @@ function paintEdge(e: Edge) {
   e.label.textContent = RANK.filter(a => e.counts[a]).map(a => (e.counts[a]! > 1 ? `${a} ×${e.counts[a]}` : a)).join(' · ')
 }
 
-let drawing = false
+// a pan or zoom moves only edges with a pinned or floating end (the rest are in world coordinates)
+onChange(viewOnly => {
+  if (viewOnly && [...edges.values()].some(m => [...m.values()].some(e => !onCanvas(e.S.card) || !onCanvas(e.target)))) schedule(true)
+})
+
+let drawing = false, moved = false
 /** Recompute every edge's curve from the current card / node positions (next frame, batched). */
-export function redraw() {
+export const redraw = () => schedule(false) // no arguments: it's passed around as a callback
+/** `viewOnly`: only the view changed, so the rest of the canvas (arrows, minimap) needn't redo its work. */
+function schedule(viewOnly: boolean) {
+  moved ||= !viewOnly
   if (drawing) return
   drawing = true
   requestAnimationFrame(() => {
     drawing = false
     for (const m of edges.values()) for (const e of m.values()) geometry(e)
-    changed()
+    changed(!moved)
+    moved = false
   })
 }
 
 function geometry(e: Edge) {
-  const a = rect(e.S.card), b = rect(e.target)
+  // full view covers the canvas: its arrows would only draw over it. Pinned windows keep theirs.
+  const hide = e.S.card.classList.contains('full') || e.target.classList.contains('full')
+  e.path.style.display = e.label.style.display = hide ? 'none' : ''
+  if (hide) return
+  const a = liveRect(e.S.card), b = liveRect(e.target)
+  const s = onCanvas(e.target) ? 1 : 1 / view.k // a pinned window isn't scaled with the canvas: its offsets are screen px
   let sx: number, sy: number, tx: number, ty: number, c1x: number, c1y: number, c2x: number, c2y: number
+  // every edge aims at the target window's tab: it stays put as the window grows or collapses (then it's all there is)
+  const head = e.target.querySelector<HTMLElement>(':scope > header')
+  const hx = head ? b.x + head.offsetLeft * s : b.x, hw = head ? head.offsetWidth * s : b.w
   const below = b.y > a.y + a.h + 20 && b.x + b.w > a.x && b.x < a.x + a.w
-  if (below) { // terminal-style: leave from the card's bottom edge
-    sx = Math.min(Math.max(b.x + b.w / 2, a.x + 40), a.x + a.w - 40); sy = a.y + a.h
-    tx = b.x + b.w / 2; ty = b.y
+  if (below) { // commands-style: leave from the card's bottom edge, down onto the tab
+    tx = hx + hw / 2; ty = b.y
+    sx = Math.min(Math.max(tx, a.x + 40), a.x + a.w - 40); sy = a.y + a.h
     const d = Math.max(40, (ty - sy) / 2)
     c1x = sx; c1y = sy + d; c2x = tx; c2y = ty - d
   } else { // leave from the side facing the node, at the node's height when possible
     const right = b.x + b.w / 2 >= a.x + a.w / 2
     sx = right ? a.x + a.w : a.x
-    // aim at the window's tab (stays put as the window grows or collapses); small nodes are all header anyway
-    const head = e.target.querySelector<HTMLElement>(':scope > header')
-    const hx = head ? b.x + head.offsetLeft : b.x, hw = head ? head.offsetWidth : b.w
     tx = right ? hx - 4 : hx + hw + 4
-    ty = b.y + (head ? head.offsetTop + head.offsetHeight / 2 : b.h / 2)
+    ty = b.y + (head ? (head.offsetTop + head.offsetHeight / 2) * s : b.h / 2)
     sy = Math.min(Math.max(ty, a.y + 60), a.y + a.h - 40)
     const d = Math.max(60, Math.abs(tx - sx) / 2) * (right ? 1 : -1)
     c1x = sx + d; c1y = sy; c2x = tx - d; c2y = ty
@@ -271,7 +309,7 @@ export function quiet(S: Session) {
   }
 }
 
-/** Card closed: drop its edges, terminal and Files window, and files nothing shows any more. */
+/** Card closed: drop its edges, commands and Files windows, and files nothing shows any more. */
 export function dropSession(S: Session) {
   quiet(S)
   for (const e of edges.get(S)?.values() ?? []) { e.path.remove(); e.label.remove() }
@@ -292,6 +330,12 @@ export function link(S: Session, el: HTMLElement, act: Act) {
   paintEdge(e)
   redraw()
 }
+
+/** Links to canvas items a session's Claude made or edited (canvas tools). Replaying the transcript rebuilds file
+ *  links, not these, so they're saved with the layout (see session.ts). */
+export const itemLinks = () => [...edges].flatMap(([S, m]) => [...m.values()]
+  .filter(e => e.target.dataset.id && (e.counts.made || (e.counts.edit && !['file', 'files', 'run'].includes(e.target.dataset.kind ?? ''))))
+  .map(e => ({ cid: S.cid, id: e.target.dataset.id!, acts: (['made', 'edit'] as const).filter(a => e.counts[a]) })))
 
 /** Take one kind of link off a session's edge to a node (e.g. a reference chip removed before sending);
  *  the edge goes away only when nothing else connects them. Without `act`, drop the whole edge. */

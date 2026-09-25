@@ -29,10 +29,15 @@
 .card .compose::before{content:"\203A";align-self:flex-start;flex:none;padding-top:3px;color:var(--accent);font:600 16px/1.35 var(--mono)}
 .card .compose:hover{border-color:color-mix(in oklab,var(--accent) 45%,var(--line-2))}
 .card .compose:focus-within{border-color:var(--accent)}
+.card .compose .xsel{flex:none;align-self:flex-end;height:30px;padding:0 6px 0 9px;gap:4px;border-color:transparent;background:none;font-size:12px;color:var(--muted)}
+.card .compose .xsel:hover,.card .compose .xsel[aria-expanded=true]{border-color:var(--line);background:var(--hover)}
+.card .compose .xsel .xsel-label{max-width:120px}
+.card .compose .xsel[data-mode=plan]{color:var(--accent)}.card .compose .xsel[data-mode=acceptEdits]{color:var(--edit)}.card .compose .xsel[data-mode=bypassPermissions]{color:var(--danger)}
+.card .compose .xsel[data-mode=acceptEdits],.card .compose .xsel[data-mode=bypassPermissions],.card .compose .xsel[data-mode=plan]{border-color:color-mix(in oklab,currentColor 40%,var(--line))}
 .card .compose.shell{border-color:var(--run)}
 .card .compose.shell::before{content:"$";color:var(--run)}
 .card.droptarget .compose{border-color:var(--accent);background:var(--sel)}
-.card textarea{flex:1;min-height:24px;max-height:180px;padding:4px 0;border:0;background:none;font-size:14px;line-height:1.5;resize:none;outline:none;cursor:text}
+.card textarea{flex:1;min-height:24px;max-height:180px;overflow-y:hidden;padding:4px 0;border:0;background:none;font-size:14px;line-height:1.5;resize:none;outline:none;cursor:text}
 .card textarea::placeholder{color:var(--muted)}
 .send{display:grid;place-items:center;width:30px;height:30px;flex:none;border-radius:var(--r-ctl);background:var(--accent);color:var(--on-accent);transition:background .15s,transform .1s}
 .send:active{transform:scale(.94)}
@@ -64,7 +69,6 @@
 /* references to canvas items: chips above the composer, and inside sent bubbles */
 .card .refs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 .chip{display:inline-flex;align-items:center;max-width:100%;height:26px;border:1px solid color-mix(in oklab,var(--kind,var(--line-2)) 50%,var(--line));border-radius:var(--r-ctl);background:var(--bg);font-size:12px;overflow:hidden}
-.chip[data-kind=sketch]{--kind:var(--k-sketch)}.chip[data-kind=diagram]{--kind:var(--k-diagram)}.chip[data-kind=plan]{--kind:var(--k-plan)}.chip[data-kind=note]{--kind:var(--k-note)}.chip[data-kind=file]{--kind:var(--k-file)}
 .chip>button:first-child{height:100%;padding:0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
 .chip>button:first-child:hover{background:var(--hover)}
 .chip .x{width:24px;height:100%;color:var(--muted);border-left:1px solid var(--line)}
@@ -105,6 +109,7 @@ summary:hover{background:var(--hover)}
 summary::before{content:"";flex:none;width:5px;height:5px;border:solid currentColor;border-width:0 1.5px 1.5px 0;transform:rotate(-45deg);opacity:.7;transition:transform .15s var(--ease)}
 details[open]>summary::before{transform:rotate(45deg)}
 summary b{font:500 12.5px var(--mono);color:var(--ink)}
+.tool.canvas>summary b{color:var(--accent)}
 .tool.act-read>summary b{color:var(--read)}.tool.act-edit>summary b{color:var(--edit)}.tool.act-write>summary b{color:var(--write)}.tool.act-run>summary b{color:var(--run)}
 summary .arg{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:12.5px var(--mono)}
 summary .jump{font-size:12px;font-weight:500;color:var(--accent);padding:2px 6px;border-radius:var(--r-ctl)}

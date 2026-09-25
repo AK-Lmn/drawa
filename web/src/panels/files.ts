@@ -1,4 +1,5 @@
 // File tree (in the drawer) and the inspector: a file's diffs from every session, plus the file itself.
+import { tipText } from '../lib/tooltip'
 import { api, q, type TreeItem } from '../lib/api'
 import { $, make, pathEl } from '../lib/dom'
 import { md, enhance, highlighter } from '../lib/markdown'
@@ -60,7 +61,7 @@ export function openInspector(path: string, tab?: 'changes' | 'viewer', focus?: 
     focus.classList.add('flash')
     setTimeout(() => focus.classList.remove('flash'), 900)
   }
-  document.querySelectorAll<HTMLElement>('#tree .file').forEach(b => b.classList.toggle('cur', b.title === path))
+  document.querySelectorAll<HTMLElement>('#tree .file').forEach(b => b.classList.toggle('cur', tipText(b) === path))
   refreshSelection()
 }
 
@@ -96,7 +97,6 @@ export function showTab(which: 'changes' | 'viewer') {
 
 export async function view(p: string) {
   const head = make('div', 'vhead'), ins = make('button', 'btn', 'Insert path')
-  ins.type = 'button'
   ins.title = 'Add this path to the message you are writing'
   ins.onclick = () => {
     const ta = lastInput?.isConnected ? lastInput : document.querySelector<HTMLTextAreaElement>('.card textarea')
@@ -130,7 +130,6 @@ export async function view(p: string) {
     const preview = make('div', 'md mdview'), toggle = make('button', 'btn')
     preview.innerHTML = md(text)
     enhance(preview)
-    toggle.type = 'button'
     const sync = () => { preview.hidden = mdSource; src.hidden = !mdSource; toggle.textContent = mdSource ? 'Preview' : 'Source' }
     toggle.onclick = () => { mdSource = !mdSource; sync() }
     sync()

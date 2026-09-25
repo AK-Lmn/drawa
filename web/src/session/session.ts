@@ -2,17 +2,19 @@
 // or its agents work, like the terminal); output streams in continuously (stream.ts). Every tool call also lands on
 // the graph. This module owns the card itself: creating, focusing, closing, and its header / status.
 import { make, ICON, iconButton, project } from '../lib/dom'
-import { post } from '../lib/api'
+import { api, post } from '../lib/api'
 import { persist, save, saveSoon } from '../lib/store'
-import { front, savedRect, nextColumn, centerOn, fit, view as camera, type Rect } from '../canvas/canvas'
+import { front, savedRect, nextColumn, centerOn, fit, byIds, view as camera, type Rect } from '../canvas/canvas'
 import { makeWindow } from '../canvas/window'
-import { dropSession, redraw } from '../canvas/graph'
-import type { Ref } from '../canvas/refs'
+import { dropSession, redraw, link, itemLinks } from '../canvas/graph'
+import { clearInk } from '../canvas/ink'
+import { referable, type Ref } from '../canvas/refs'
 import type { Pasted } from './images'
 import type { Change } from '../panels/diff'
 import { dropPlans } from '../items/plan'
 import { composer } from './composer'
 import { attach } from './live'
+import { setMode } from './mode'
 import { loadSessions, resume } from './history'
 
 export type ToolRow = HTMLDetailsElement & { chg?: Change }
@@ -37,14 +39,18 @@ export interface Session {
   bg: number // background agents still running
   queued: HTMLElement[] // bubbles waiting for Claude to pick them up
   picked: boolean // Claude echoed a message back during the current turn
+  mode: string // permission mode for this card's Claude (see mode.ts)
+  modeSel?: HTMLSelectElement // its picker in the message bar
+  confirmedMode?: string // the mode Claude last reported (or the card was restored with)
+  reader?: string // this page's reader id on the server stream (canvas tool calls name the page to run them)
   replaying?: boolean // rebuilding a saved transcript: no per-message scroll pinning or header updates (see history.ts)
   asks: Set<string> // approval requests waiting on you
   refs: Ref[] // canvas items attached to the next message
   images: Pasted[] // images pasted or dropped into the message box, sent with the next message
   sentRefs: Set<HTMLElement> // items referenced in messages already sent (their arrows stay)
   chips: HTMLElement
-  stream: AbortController | null
   n: number // next output line to read (for re-attaching)
+  gen?: string // which of the card's processes `n` counts lines of
   ctx: { used: number; max: number; real?: boolean } // context window use, from the latest reply's token counts (real: size reported by the CLI)
 }
 
@@ -54,17 +60,70 @@ export let cur: Session | undefined // the focused card
 export const meta: { models: { value: string; displayName: string; description: string }[]; commands: { name: string; description: string; argumentHint?: string }[] } = { models: [], commands: [] }
 
 /* ---------- saved with the canvas: open cards (by transcript id) and which one had focus ---------- */
-type SavedCard = Rect & { id: string; title: string; cid?: string }
+// A card still waiting for its first reply has no transcript id yet: it's saved by its process (cid) alone and, after a
+// reload, rebuilt from the process's output from the start (live.ts reads from line 0 when n is 0).
+type SavedCard = Rect & { id?: string; title: string; cid?: string; mode?: string }
 persist('cards',
-  () => cards.filter(S => S.sid).map((S): SavedCard => ({ id: S.sid!, title: S.title, cid: S.cid, ...savedRect(S.card) })),
+  () => cards.filter(S => S.sid || S.pending).map((S): SavedCard => ({ id: S.sid ?? undefined, title: S.title, cid: S.cid, mode: S.mode, ...savedRect(S.card) })),
   async (list: SavedCard[], all) => {
-    for (const c of list) await resume(c, c)
-    for (const S of cards) attach(S) // pick up sessions still running on the server (in-flight replies, background agents)
+    // every transcript is fetched at once; they're replayed in order as they arrive
+    const got = new Map(list.filter(c => c.id).map(c => {
+      const p = api('session?id=' + c.id)
+      p.catch(() => {}) // handled when its card is replayed
+      return [c.id!, p] as const
+    }))
+    for (const c of list) {
+      if (!c.id) {
+        if (!c.cid) continue
+        const S = newSession({ rect: c, cid: c.cid })
+        S.title = c.title
+        S.n = 0
+        setMode(S, c.mode ?? 'default', false)
+        renderCard(S)
+        continue
+      }
+      await resume({ ...c, id: c.id }, c, { got: got.get(c.id), quiet: true })
+      // layouts saved before modes were per card carry one global mode (all.mode)
+      const S = cards.find(s => s.sid === c.id)
+      if (S) setMode(S, c.mode ?? all.mode ?? 'default', false)
+    }
+    attach() // pick up sessions still running on the server (in-flight replies, background agents)
+    save()
+    loadSessions()
     const f = cards.find(S => S.sid === all.focus)
     if (f) focus(f)
     if (!all.view || innerWidth < 760) fit(false)
   })
 persist('focus', () => cur?.sid ?? undefined)
+// drop a card on another card's message box: that conversation goes along as context (its recent part, as text)
+referable('session', {
+  icon: '◆',
+  label: el => cards.find(s => s.card === el)?.title ?? 'session',
+  content: (el, label) => {
+    const S = cards.find(s => s.card === el)
+    const lines = [...(S?.log.children ?? [])].flatMap(r => {
+      if (r.matches('.me')) return [`User: ${r.textContent?.trim()}`]
+      if (r.matches('.md')) return [`Claude: ${r.textContent?.trim()}`]
+      if (r.matches('details.tool')) return [`(Claude used ${r.querySelector('summary b')?.textContent ?? 'a tool'} ${r.querySelector('summary .arg')?.textContent ?? ''})`.replace(/ \)$/, ')')]
+      return []
+    })
+    let text = lines.join('\n\n')
+    if (text.length > 30_000) text = '…(earlier part left out)\n\n' + text.slice(-30_000) // ponytail: the recent end is what matters most
+    return { text: `Another Claude session on my canvas, "${label}"${S?.sid ? ` (session ${S.sid})` : ''}:\n\n${text || '(nothing yet)'}` }
+  },
+})
+// arrows to canvas items a card's Claude made or edited: after the cards and the items are back
+// ones whose card or item isn't there on this load are kept and written back (tried again next load), not erased
+type ItemLink = { cid: string; id: string; acts: ('made' | 'edit')[] }
+let unplaced: ItemLink[] = []
+persist('itemLinks', () => [...itemLinks(), ...unplaced], (list: ItemLink[]) => {
+  const ids = byIds()
+  unplaced = list.filter(l => {
+    const S = cards.find(s => s.cid === l.cid), el = ids.get(l.id)
+    if (S && el) l.acts.forEach(a => link(S, el, a))
+    return !(S && el)
+  })
+}, 2)
 
 /* ---------- the card ---------- */
 function emptyState(S: Session) {
@@ -72,9 +131,9 @@ function emptyState(S: Session) {
   e.append(make('h2', '', 'New session'), make('p', '', `Claude works in ${project.root}`))
   const tips: [string, string][] = [
     ['--edit', 'Files Claude reads or changes are listed in a Files window beside this card, changed files first.'],
-    ['--run', 'Commands it runs collect in a terminal below the card.'],
-    ['--write', 'Type / for skills and commands, @ to reference sketches, diagrams, plans, notes or files (or drop them on the message box).'],
-    ['--read', 'Read only by default. Pick Allow edits in the toolbar to let Claude change files.'],
+    ['--run', 'Commands it runs collect in a commands window below the card (click its tab to see the output).'],
+    ['--write', 'Type / for skills and commands, @ to reference whiteboards, diagrams, plans, notes or files (or drop them on the message box).'],
+    ['--read', 'Read only by default. Change it per session in the message bar (Allow edits, Plan only, Allow everything).'],
   ]
   for (const [color, text] of tips) {
     const li = make('li'), i = make('i')
@@ -93,8 +152,8 @@ function emptyState(S: Session) {
 }
 
 export function newSession(opts: { rect?: Rect; cid?: string } = {}) {
-  const r = opts.rect ?? nextColumn(460, 600)
-  const close = iconButton(ICON.x, 'Close session', () => closeSession(S))
+  const r = opts.rect ?? nextColumn(Math.max(340, Math.min(460, innerWidth - 32)), 600) // phones: fits the screen
+  const close = iconButton(ICON.x, 'Close session', () => closeSession(S), 'closebtn')
   const { el: card, head, title, body } = makeWindow({ kind: 'session', cls: 'card', title: 'New session', rect: r, minW: 340, minH: 300, actions: [close] })
   head.prepend(make('span', 'dot'))
   const ctx = make('span', 'ctx') // a span, not a button: the tab's buttons are the window controls at its end
@@ -108,13 +167,17 @@ export function newSession(opts: { rect?: Rect; cid?: string } = {}) {
 
   const S: Session = {
     cid: opts.cid ?? crypto.randomUUID(), sid: null, title: 'New session', model: '', cost: 0, done: false,
-    card, log, ta: null!, stopBtn: null!, blocks: {}, tools: {}, pending: 0, bg: 0, queued: [], picked: false, asks: new Set(), refs: [], images: [], sentRefs: new Set(), chips: null!, stream: null, n: -1, ctx: { used: 0, max: 0 },
+    card, log, ta: null!, stopBtn: null!, blocks: {}, tools: {}, pending: 0, bg: 0, queued: [], picked: false, mode: 'default', asks: new Set(), refs: [], images: [], sentRefs: new Set(), chips: null!, n: -1, ctx: { used: 0, max: 0 },
   }
   composer(S, body) // message box, reference chips, / and @ menu
+  card.dataset.id = S.cid // what canvas tools call this card
   log.dataset.ink = 'c:' + S.cid // drawing over the chat scrolls with it
+  log.dataset.inkRows = '' // and stays on the message it was drawn over (see canvas/ink.ts)
   log.append(emptyState(S))
   cards.push(S)
+  attach() // the page's one stream reads this card too, from its process's first line once it starts
 
+  card.addEventListener('rename', e => { S.title = (e as CustomEvent<string>).detail; renderCard(S); saveSoon() })
   card.addEventListener('pointerdown', () => focus(S), true)
   card.addEventListener('focusin', () => focus(S))
   // a waiting permission prompt answers to Enter / Esc from the card (unless you're typing a message)
@@ -146,12 +209,13 @@ export function focus(S: Session) {
 }
 
 function closeSession(S: Session) {
-  S.stream?.abort()
   post('close', { cid: S.cid }).catch(() => {})
   dropSession(S)
   dropPlans(S)
+  clearInk(S.log) // its ink goes with it, and its rows stop being watched
   S.card.remove()
   cards.splice(cards.indexOf(S), 1)
+  attach() // the page's stream stops reading it
   if (cur === S) cur = undefined
   if (!cards.length) newSession()
   save()
@@ -188,5 +252,19 @@ export function put<T extends HTMLElement>(S: Session, e: T): T {
   S.log.append(e)
   if (stick) S.log.scrollTop = S.log.scrollHeight
   return e
+}
+/** Open at the latest message and stay there while the log settles: rows render at their real height only once
+ *  they're on screen (content-visibility), and diagrams and pictures finish later, so one scroll to the bottom
+ *  lands short. Stops early the moment you scroll or click in the log yourself. */
+const SETTLE_MS = 4000
+export function pinToBottom(S: Session) {
+  const log = S.log, end = performance.now() + SETTLE_MS, yours = new AbortController()
+  for (const t of ['wheel', 'pointerdown', 'touchstart', 'keydown']) log.addEventListener(t, () => yours.abort(), { passive: true, signal: yours.signal })
+  const tick = () => {
+    if (yours.signal.aborted || S.log !== log || performance.now() > end) return yours.abort()
+    log.scrollTop = log.scrollHeight
+    requestAnimationFrame(tick)
+  }
+  tick()
 }
 export const follow = (S: Session) => { if (!S.replaying && nearBottom(S, 200)) S.log.scrollTop = S.log.scrollHeight }

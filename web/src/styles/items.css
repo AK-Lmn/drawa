@@ -2,11 +2,6 @@
    items that aren't windows: file nodes and text notes. */
 
 /* tab glyphs, in the kind's color */
-.tnode>.win-h .t::before{content:"$"}
-.dnode>.win-h .t::before{content:"\25C7"}
-.snode>.win-h .t::before{content:"\270E"}
-.pnode>.win-h .t::before{content:"\25A4"}
-.lnode>.win-h .t::before{content:"\2261"}
 .tnode>.win-h .t,.tnode>.win-h .m,.lnode>.win-h .t,.lnode>.win-h .m{font:500 11.5px var(--mono)}
 .tnode>.win-h .t{color:var(--run)}
 
@@ -22,8 +17,22 @@
 .tcmd[open]>summary{background:var(--hover)}
 .tcmd pre{margin:0;padding:8px 12px 10px 30px;max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:11.5px/1.5 var(--mono);color:var(--ink-2);background:var(--code);border-block:1px solid var(--line)}
 
+/* snippet: terminal output pulled out onto the canvas */
+.xnode[data-type=code]>.win-h .t::before{content:"</>";font-size:10.5px}
+.xnode[data-type=code]{--kind:var(--edit)}
+.xnode[data-type=text]>.win-h .t::before{content:"\00B6"}
+.xnode[data-type=text]{--kind:var(--ink-2)}
+.xnode[data-type=text]>.win-h .t{font:600 12.5px var(--sans)}
+.xnode[data-type=text] .xnode-b{font:13.5px/1.55 var(--sans);color:var(--ink);background:var(--bg)}
+.xnode-b code,.xnode-b code.hljs{display:block;font:inherit;white-space:inherit;background:none;padding:0}
+.xnode>.win-h .t{font:500 11.5px var(--mono);font-variant-ligatures:none}
+.xnode-b{flex:1;min-height:0;margin:0;padding:10px 12px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 var(--mono);color:var(--ink-2);background:var(--code);user-select:text;cursor:text}
+/* pull-out affordances: rows you can drag onto the canvas */
+#world .tcmd>summary,#world .shell>.sh-h{cursor:grab}
+.pinsel{position:fixed;z-index:var(--z-menu);height:28px;padding:0 9px;font-size:12px;box-shadow:var(--shadow-lift);animation:enter .15s var(--ease)}
+.pinsel svg{width:14px;height:14px}
+
 /* Git window */
-.gnode>.win-h .t::before{content:"\2387"}
 .gnode>.win-h .t,.gnode>.win-h .m{font:500 11.5px var(--mono)}
 .glist{flex:1;min-height:0;overflow:auto;padding:4px 0 8px}
 .gsec{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:8px;padding:8px 8px 4px 12px;background:var(--bg);font-size:12px}
@@ -39,7 +48,10 @@
 .gfile[data-state=deleted]{--kind:var(--del)}.gfile[data-state=renamed]{--kind:var(--write)}.gfile[data-state=conflict]{--kind:var(--danger)}
 .grow .s{flex:none;font:11.5px var(--mono)}.grow .s .a{color:var(--add)}.grow .s .r{color:var(--del)}
 .grow .icon{width:24px;height:24px;opacity:0}.grow:hover .icon,.grow .icon:focus-visible{opacity:1}
-.gfile .diff{max-height:320px;overflow:auto;border-block:1px solid var(--line);background:var(--code)}
+.gfile .diff{max-height:420px;overflow:auto;padding:0 0 4px;border-block:1px solid var(--line);background:var(--code)}
+.gfile.open>.grow{background:var(--sel)}
+.diff .hunk{position:sticky;left:0;text-align:left;padding:3px 12px 3px 28px;margin-top:4px;border-block:1px solid var(--line);font-size:11.5px;overflow:hidden;text-overflow:ellipsis}
+.diff .hunk:first-child{margin-top:0;border-top:0}
 .glog{margin:8px 0 0;border-top:1px solid var(--line)}
 .glog>summary{padding:0 12px;border-radius:0}
 .gc{display:flex;align-items:baseline;gap:8px;padding:3px 12px;font-size:12px}
@@ -69,7 +81,10 @@
 .lnode.hide-reads .frow[data-state=read],.lnode.hide-reads .fgroup.reads-only{display:none}
 
 /* a pinned Mermaid diagram, with its source editor under the drawing */
-.dnode-b{flex:1;min-height:0;display:grid;place-items:center;padding:14px;cursor:zoom-in}
+.dnode-b{position:relative;flex:1;min-height:0;display:grid;place-items:center;padding:14px;cursor:pointer;container-type:size}
+.dnode-b::after{content:"Click for full view";position:absolute;right:8px;bottom:6px;padding:2px 7px;border-radius:2px;background:var(--hover);font:500 11px var(--sans);color:var(--muted);opacity:0;transition:opacity .15s;pointer-events:none}
+.dnode-b:hover::after{opacity:1}
+.full .dnode-b{cursor:auto}.full .dnode-b::after{content:none}
 .dnode-b svg{max-width:100%;max-height:100%}
 .dnode-ed{flex:0 0 42%;display:flex;flex-direction:column;min-height:0;border-top:1px solid var(--line);background:var(--code)}
 .dnode-ed textarea{flex:1;min-height:0;padding:10px 12px;border:0;background:none;color:var(--ink);font:12px/1.55 var(--mono);font-variant-ligatures:none;resize:none;outline:none;tab-size:2}
@@ -78,7 +93,8 @@
 .dnode-st.bad{color:var(--warn)}
 
 /* an Excalidraw sketch: preview only, edited in #sketcher */
-.snode-b{display:grid;place-items:center;padding:10px;cursor:crosshair}
+.snode-b{display:grid;place-items:center;padding:10px;cursor:crosshair;container-type:size}
+.snode-b:has(>.none)>.ink-box{display:none}
 .snode-b svg{max-width:100%;max-height:100%}
 
 /* ---------- plan review: a document window ---------- */
@@ -126,8 +142,7 @@
 .fnode .n small{font:11px var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fnode .s{font:11.5px var(--mono);white-space:nowrap}
 .fnode .s .a{color:var(--add)}.fnode .s .r{color:var(--del)}
-.fdel{position:absolute;top:-10px;right:-10px;width:22px;height:22px;border-radius:var(--r-ctl);background:var(--bg);border:1px solid var(--line);box-shadow:var(--shadow);opacity:0;transition:opacity .15s}
-.fdel svg{width:11px;height:11px}
+.fdel{top:-10px;right:-10px;opacity:0;transition:opacity .15s}
 .fnode:hover .fdel,.fdel:focus-visible{opacity:1}
 
 /* ---------- text notes: plain text on the canvas; while editing, a sheet of paper with a folded corner ---------- */
@@ -141,7 +156,84 @@
 .nnode.editing::before,.nnode.editing::after{opacity:1}
 .ntext{min-height:1.5em;font:500 16px/1.5 var(--sans);color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere;outline:none}
 .nnode.editing .ntext:empty::before{content:"Type a note";color:var(--muted);white-space:nowrap}
-.ndel{position:absolute;top:-1px;left:calc(100% + 6px);width:24px;height:24px;border-radius:var(--r-ctl);background:var(--bg);border:1px solid var(--line);box-shadow:var(--shadow);opacity:0;transition:opacity .15s}
+.ndel{top:-1px;left:calc(100% + 6px);width:24px;height:24px;opacity:0;transition:opacity .15s}
 .ndel svg{width:12px;height:12px}
 .nnode:hover .ndel,.ndel:focus-visible{opacity:1}
-.ndel:hover{color:var(--danger)}
+
+/* a picture: shown whole, on the page color so transparent screenshots stay legible */
+.inode-b{display:grid;place-items:center;background:var(--bg);overflow:hidden;container-type:size}
+.inode-img{object-fit:contain;user-select:none;cursor:zoom-in}
+.inode-b .none{padding:16px;color:var(--muted);font-size:12.5px;text-align:center}
+.full .inode-img{cursor:auto}
+.dnode-b:has(>.mmd-err)>.ink-box{display:none}
+
+/* GitHub (items/github.ts, and the pull request strip in the Git window) */
+.ghbody{overflow:auto}
+.ghnote{margin:0;padding:12px;color:var(--muted);font-size:12.5px}.ghnote.bad{color:var(--danger)}
+.ghbar{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--bg)}
+.ghbar .btn{height:28px;padding:0 10px;font-size:12.5px}
+.ghbar .spacer,.ghacts .spacer,.ghsub .spacer{flex:1}
+.ghrow{display:grid;gap:3px;width:100%;padding:8px 12px;border-bottom:1px solid var(--line);text-align:left}
+.ghrow:hover{background:var(--hover)}
+.ghrow-t{display:flex;align-items:baseline;gap:8px;min-width:0;font-size:13px;color:var(--ink)}
+.ghti{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ghn{flex:none;font:12px var(--mono);color:var(--muted)}
+.ghrow-m{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;font-size:11.5px;color:var(--muted)}
+.ghlabel{padding:0 6px;border:1px solid var(--line);border-radius:var(--r-box);font-size:11px;color:var(--ink-2)}
+.ghdot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.ghdot[data-state=pass]{background:var(--add)}.ghdot[data-state=fail]{background:var(--del)}.ghdot[data-state=pending]{background:var(--run)}.ghdot[data-state=skip]{background:var(--line-2)}
+.ghhead{padding:10px 12px 8px;border-bottom:1px solid var(--line)}
+.ghback{height:24px;padding:0 8px;font-size:12px;margin-bottom:8px}
+.ghhead h3{margin:0 0 6px;font-size:15px;line-height:1.35;text-wrap:balance}
+.ghfacts{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin:0;font-size:12px;color:var(--muted)}
+.ghfacts span:not(.ghstate){font-family:var(--mono);font-size:11.5px;overflow-wrap:anywhere}
+.ghstate{padding:1px 7px;border-radius:var(--r-box);font:600 11px var(--sans);text-transform:capitalize;color:var(--ink);background:var(--hover)}
+.ghstate[data-state=open]{background:color-mix(in oklab,var(--add) 22%,var(--bg));color:var(--add)}
+.ghstate[data-state=merged]{background:color-mix(in oklab,var(--write) 22%,var(--bg));color:var(--write)}
+.ghstate[data-state=closed]{background:color-mix(in oklab,var(--del) 18%,var(--bg));color:var(--del)}
+.ghacts{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.ghacts .btn{height:28px;padding:0 9px;font-size:12px}
+.ghsend{font-size:12px;color:var(--muted)}
+.ghtabs{display:flex;gap:4px;padding:8px 12px 0;border-bottom:1px solid var(--line)}
+.ghtabs .btn{height:28px;padding:0 10px;font-size:12px;border-bottom-left-radius:0;border-bottom-right-radius:0;margin-bottom:-1px}
+.ghtabs .btn.on{border-bottom-color:var(--bg);background:var(--bg)}
+.ghpane{padding:4px 0 12px}
+.ghc{margin:10px 12px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-box);font-size:13px}
+.ghc[data-state=approved]{border-color:color-mix(in oklab,var(--add) 50%,var(--line))}
+.ghc[data-state=changes_requested]{border-color:color-mix(in oklab,var(--del) 50%,var(--line))}
+.ghwho{margin:0 0 6px;font-size:12px;color:var(--muted)}.ghwho b{color:var(--ink);font-weight:600}
+.ghc .md>:first-child{margin-top:0}.ghc .md>:last-child{margin-bottom:0}
+.ghfile{border-bottom:1px solid var(--line)}
+.ghfile>summary{display:flex;align-items:center;gap:8px;padding:6px 12px;font:12px var(--mono);cursor:pointer}
+.ghfile>summary .a{color:var(--add)}.ghfile>summary .r{color:var(--del)}
+.ghpath{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.ghfile .diff{background:var(--code)}
+.ghcheck{display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:12.5px;border-bottom:1px solid var(--line)}
+.ghcheck-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.ghcheck-s{font:11px var(--mono);color:var(--muted)}
+.ghcheck .btn{height:24px;padding:0 8px;font-size:11.5px}
+.ghlog{margin:0;max-height:320px;overflow:auto;padding:8px 12px;background:var(--code);font:11.5px/1.45 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;border-bottom:1px solid var(--line)}
+.ghreply{display:grid;gap:8px;margin:10px 12px 0}
+.ghreply textarea,.ghform input:not([type=checkbox]),.ghform textarea{width:100%;padding:7px 9px;border:1px solid var(--line-2);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13px/1.45 var(--sans);resize:vertical;outline:none;cursor:text}
+.ghreply textarea:focus,.ghform input:focus,.ghform textarea:focus{border-color:var(--accent)}
+.ghreply .btn{justify-self:end}
+/* the strip at the top of the Git window */
+.ghstrip{flex:none;padding:6px 8px;border-bottom:1px solid var(--line);background:var(--rail);font-size:12.5px}
+.ghline{display:flex;align-items:center;gap:6px;min-width:0}
+.ghline>.icon{width:26px;height:26px}
+.ghline>.ghti{text-align:left;color:var(--ink)}
+button.ghti:hover{text-decoration:underline}
+.ghsub{flex-wrap:wrap;margin-top:4px;padding-left:32px;color:var(--muted);font-size:12px}
+.ghsub .btn{height:26px;padding:0 9px;font-size:12px}
+.ghsum{display:inline-flex;align-items:center;gap:6px;color:var(--ink-2)}.ghsum:hover{color:var(--ink)}
+.ghstrip>.ghnote{padding:2px 4px}
+.ghform{display:grid;gap:8px;margin-top:8px}
+.ghform .row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.ghform .btn.ai{margin-right:auto}
+.ghbase,.ghdraft{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.ghform .ghbase input{width:110px;padding:4px 7px;font:12px var(--mono)}
+.ghacts a.btn,.ghcheck-n{text-decoration:none;color:var(--ink)}.ghacts a.btn:hover,.ghcheck-n:hover{text-decoration:underline}
+
+/* text that was pinned to the canvas, where it came from (items/pinmarks.ts); click it to jump to the snippet */
+::highlight(pinned){background-color:color-mix(in oklab,var(--accent) 16%,transparent);text-decoration:underline dotted color-mix(in oklab,var(--accent) 70%,transparent);text-underline-offset:3px}
+.pinhover{cursor:pointer}

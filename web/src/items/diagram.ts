@@ -4,13 +4,19 @@ import type { Mermaid } from 'mermaid'
 import { $, make, ICON, iconButton } from '../lib/dom'
 import { persist } from '../lib/store'
 import { isDark, onTheme } from '../lib/theme'
-import { forget } from '../canvas/graph'
-import { items, place, savedRect, track, spotBeside, toWorld, changed, type Rect } from '../canvas/canvas'
-import { makeWindow } from '../canvas/window'
+import { items, savedRect, dragOut, spotBeside, changed, type Rect } from '../canvas/canvas'
+import { makeWindow, removeButton } from '../canvas/window'
+import { toggleFull, isFull } from '../canvas/fullview'
 import { referable } from '../canvas/refs'
+import { creatable } from '../canvas/tools'
+import { inkBox, fitInk } from '../canvas/ink'
 
 let mermaid: Promise<Mermaid> | undefined // big library: loaded on first diagram only
-const init = (m: Mermaid) => m.initialize({ startOnLoad: false, securityLevel: 'strict', theme: isDark() ? 'dark' : 'neutral' })
+// htmlLabels off: labels as SVG text, not HTML inside the SVG. Pictures of windows (canvas_read, plan feedback)
+// come out blank otherwise: HTML-in-SVG nested inside the snapshot's own HTML-in-SVG doesn't render in Chromium.
+const init = (m: Mermaid) => m.initialize({ startOnLoad: false, securityLevel: 'strict', theme: isDark() ? 'dark' : 'neutral',
+  htmlLabels: false, flowchart: { htmlLabels: false },
+  fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--sans').trim() || 'system-ui, sans-serif' })
 // Theme switched: new drawings use it, pinned diagrams redraw. ponytail: diagrams already in chat replies keep their colors.
 onTheme(() => mermaid?.then(m => {
   init(m)
@@ -81,9 +87,11 @@ function parseError(e: unknown) {
   const where = [line && `line ${line}`, got && `unexpected ${got.toLowerCase()}`].filter(Boolean).join(', ')
   return `Diagram not drawn: Mermaid syntax error${where ? ` (${where})` : ''}. Source below.`
 }
+const bareError = (e: unknown) => parseError(e).replace(' Source below.', '')
 
 /* ---------- while a reply streams ---------- */
 const live = new Map<string, string | null>() // mermaid source -> rendered svg (null = rendering or invalid)
+const LIVE_MAX = 50 // streamed diagrams kept drawn; each frame re-renders the tail, so a shown one is still needed
 
 /** Called on every streamed frame (after the markdown is re-rendered): diagrams whose code block is complete
  *  show up drawn right away instead of waiting for the whole reply. Full interactivity comes at the end. */
@@ -96,6 +104,7 @@ export function liveDiagrams(el: HTMLElement, text: string) {
     const svg = live.get(src)
     if (svg) { const d = make('div', 'mermaid'); d.innerHTML = svg; code.parentElement!.replaceWith(d) }
     else if (svg === undefined) {
+      if (live.size >= LIVE_MAX) live.delete(live.keys().next().value!) // the oldest
       live.set(src, null)
       load().then(async m => {
         if (!(await m.parse(src, { suppressErrors: true }))) return
@@ -115,41 +124,34 @@ const spotFor = (d: HTMLElement): Rect => spotBeside(d.closest<HTMLElement>('.ca
 
 /** Drag a rendered diagram out of a card or the inspector: a pinned copy follows the pointer. A plain click still enlarges. */
 function pullOut(d: HTMLElement) {
-  let dragged = false
   d.addEventListener('pointerdown', e => {
     if (e.button !== 0 || (e.target as Element).closest('button')) return
-    let node: HTMLElement | undefined
-    const W = 440, H = 320, grabX = 140, grabY = 18 // pointer holds the new node by its header
-    track(d, e, (dx, dy) => {
-      if (!node && Math.hypot(dx, dy) < 8) return
-      const p = toWorld(e.clientX + dx, e.clientY + dy)
-      if (!node) { node = pin(d.dataset.src!, origin(d), { x: p.x - grabX, y: p.y - grabY, w: W, h: H }); node.classList.add('dragging') }
-      place(node, p.x - grabX, p.y - grabY)
-    }, () => {
-      if (!node) return
-      dragged = true
-      node.classList.remove('dragging')
-      changed()
-    })
+    const W = 440, H = 320 // the pointer holds the new node by its tab
+    dragOut(d, e, (x, y) => pin(d.dataset.src!, origin(d), { x, y, w: W, h: H }), { x: 140, y: 18 })
   })
-  d.addEventListener('click', () => {
-    if (dragged) { dragged = false; return } // the click that ends a pull-out
-    openZoom(d.querySelector('svg')!)
-  })
+  d.addEventListener('click', () => openZoom(d.querySelector('svg')!)) // a drag-out's closing click never gets here
 }
 
 let seq = 0
 const draw = async (into: HTMLElement, src: string) => {
   const { svg } = await (await load()).render(`pin-${Date.now()}-${++seq}`, src)
-  into.innerHTML = svg
-  const el = into.querySelector('svg')!
+  const t = document.createElement('template')
+  t.innerHTML = svg
+  const el = t.content.querySelector('svg')!
   el.removeAttribute('style') // fill the node instead of Mermaid's fixed max-width
   el.setAttribute('width', '100%')
   el.setAttribute('height', '100%')
+  // on the canvas: into the drawing box, shaped like the diagram, keeping the ink drawn on it
+  into.querySelector(':scope > .mmd-err')?.remove()
+  const box = into.querySelector<HTMLElement>(':scope > .ink-box')
+  if (!box) return into.replaceChildren(el)
+  fitInk(box, el)
 }
 
 /** A diagram node on the canvas, drawn from its Mermaid source (so it can be restored after a reload).
  *  Edit opens the source under the drawing; it redraws as you type and keeps the last good drawing on errors. */
+const setSource = new WeakMap<HTMLElement, (src: string) => Promise<void>>()
+
 export function pin(src: string, title: string, r: Rect, id: string = crypto.randomUUID()) {
   const view = make('div', 'dnode-b'), ed = make('div', 'dnode-ed'), ta = make('textarea'), status = make('p', 'dnode-st')
   const edit = iconButton(ICON.pencil, 'Edit source', () => {
@@ -159,20 +161,27 @@ export function pin(src: string, title: string, r: Rect, id: string = crypto.ran
   })
   const { el: node, body } = makeWindow({
     kind: 'diagram', cls: 'dnode', title: title || 'Diagram', rect: r, minW: 220, minH: 160,
-    actions: [edit,
-      iconButton(ICON.expand, 'Enlarge', () => { const s = view.querySelector('svg'); if (s) openZoom(s) }),
-      iconButton(ICON.x, 'Remove from canvas', () => { forget(node); node.remove(); changed() })],
+    actions: [edit, removeButton('Remove from canvas')],
   })
   node.dataset.src = src
   node.dataset.id = id
-  node.dataset.ink = 'd:' + id // drawing over the diagram belongs to it (moves, collapses and saves with it)
+  node.dataset.ink = 'd:' + id // drawing over the window belongs to it (moves, collapses and saves with it)
+  view.append(inkBox('df:' + id)) // drawing on the diagram itself stays on the same spot at any size
   ta.value = src
   ta.spellcheck = false
   ta.setAttribute('aria-label', 'Mermaid source')
   ed.append(ta, status)
   ed.hidden = true
   body.append(view, ed)
-  view.ondblclick = () => { const s = view.querySelector('svg'); if (s) openZoom(s) }
+  view.onclick = () => { if (!isFull(node)) toggleFull(node) } // click the drawing: full view (Esc to come back)
+  // a new source from outside (Claude's canvas_update): checked first, so a bad one leaves the drawing as it was
+  setSource.set(node, async text => {
+    await (await load()).parse(text)
+    await draw(view, text)
+    node.dataset.src = ta.value = text
+    status.textContent = ''
+    status.className = 'dnode-st'
+  })
 
   let timer = 0, n = 0
   ta.addEventListener('input', () => {
@@ -189,14 +198,14 @@ export function pin(src: string, title: string, r: Rect, id: string = crypto.ran
         changed() // persist with the canvas layout
       } catch (e) {
         if (mine !== n) return
-        status.textContent = parseError(e).replace(' Source below.', '').replace('Diagram not drawn: ', '')
+        status.textContent = bareError(e).replace('Diagram not drawn: ', '')
         status.className = 'dnode-st bad'
       }
     }, 250)
   })
   ta.addEventListener('keydown', e => e.stopPropagation()) // typing here isn't a canvas shortcut
 
-  draw(view, src).catch(e => { view.replaceChildren(make('p', 'mmd-err', parseError(e))); ed.hidden = false; edit.classList.add('on') })
+  draw(view, src).catch(e => { view.prepend(make('p', 'mmd-err', parseError(e))); ed.hidden = false; edit.classList.add('on') })
   changed()
   return node
 }
@@ -204,6 +213,17 @@ export function pin(src: string, title: string, r: Rect, id: string = crypto.ran
 persist('diagrams',
   () => items('diagram').map(n => ({ id: n.dataset.id!, src: n.dataset.src!, title: n.querySelector('.t')!.textContent ?? '', ...savedRect(n) })),
   (list: (Rect & { src: string; title: string; id?: string })[]) => list.forEach(d => pin(d.src, d.title, d, d.id)))
+creatable('diagram', {
+  size: () => ({ w: 440, h: 320 }),
+  create: async (a, r) => {
+    const src = String(a.text)
+    try { await (await load()).parse(src) } catch (e) { throw new Error(bareError(e) + ' Fix the Mermaid and try again.') }
+    return pin(src, String(a.title ?? 'Diagram'), r)
+  },
+  update: async (el, a) => {
+    try { await setSource.get(el)!(String(a.text)) } catch (e) { throw new Error(bareError(e) + ' The diagram is unchanged; fix the Mermaid and try again.') }
+  },
+})
 referable('diagram', {
   icon: '◇',
   label: el => el.querySelector('.t')?.textContent ?? '',

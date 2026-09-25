@@ -9,6 +9,8 @@ import { cards, focus, meta, type Session } from './session'
 import { send } from './live'
 import { readImages, thumb } from './images'
 import { runShell } from './shell'
+import { modePicker } from './mode'
+import { enhance } from '../lib/select'
 
 /** Build the composer at the bottom of the card's body and hook it to the session. */
 export function composer(S: Session, body: HTMLElement) {
@@ -24,11 +26,13 @@ export function composer(S: Session, body: HTMLElement) {
   sendBtn.innerHTML = ICON.up
   sendBtn.title = 'Send (Enter)'
   sendBtn.setAttribute('aria-label', 'Send')
-  form.append(ta, stopBtn, sendBtn)
+  const pick = modePicker(S)
+  form.append(ta, pick, stopBtn, sendBtn)
   chips.hidden = true
   const dock = make('div', 'dock') // the card's footer: attached references above a clearly bordered message field
   dock.append(chips, form)
   body.append(dock)
+  enhance(pick) // the custom dropdown, once the picker is in the page
   form.onclick = e => { if (e.target === form) ta.focus() } // the whole field is the click target
   Object.assign(S, { ta, stopBtn, chips })
 
@@ -73,6 +77,7 @@ export function composer(S: Session, body: HTMLElement) {
   ta.oninput = () => {
     ta.style.height = 'auto'
     ta.style.height = ta.scrollHeight + 'px'
+    ta.style.overflowY = ta.scrollHeight > 180 ? 'auto' : 'hidden' // scroll only past the max height
     form.classList.toggle('shell', ta.value.startsWith('!')) // shell mode: amber field, $ prompt
   }
   commandMenu(S, form)
@@ -86,11 +91,12 @@ function commandMenu(S: Session, form: HTMLFormElement) {
   form.before(menu)
   let items: { title: string; sub: string; pick: () => void }[] = [], sel = 0
   // project files for "@": fetched per query (server-side fuzzy search), newest answer wins
-  let fileQ: string | null = null, found: string[] = []
+  let fileQ: string | null = null, found: string[] = [], typing = 0
   const searchFiles = (q: string) => {
     if (q === fileQ) return
     fileQ = q
-    api<string[]>('files?q=' + enc(q)).then(list => { if (fileQ === q) { found = list; if (!menu.hidden || document.activeElement === S.ta) draw() } }).catch(() => {})
+    clearTimeout(typing) // ask once typing pauses, not per keystroke (each ask scans every project file)
+    typing = setTimeout(() => api<string[]>('files?q=' + enc(q)).then(list => { if (fileQ === q) { found = list; if (!menu.hidden || document.activeElement === S.ta) draw() } }).catch(() => {}), 120)
   }
   const pick = (i: number) => {
     const it = items[i]
@@ -122,7 +128,7 @@ function commandMenu(S: Session, form: HTMLFormElement) {
         // like the terminal: the path goes into the message as @path, and Claude reads it
         pick: () => { S.ta.setRangeText(`@${path} `, start, S.ta.selectionStart, 'end') },
       })))
-      if (!items.length) items = [{ title: at[2] ? 'No matches' : 'Type to search files', sub: 'Project files, and sketches, diagrams, plans and notes on the canvas', pick: () => {} }]
+      if (!items.length) items = [{ title: at[2] ? 'No matches' : 'Type to search files', sub: 'Project files, and whiteboards, diagrams, plans and notes on the canvas', pick: () => {} }]
     } else {
       const q = S.ta.value.slice(1).toLowerCase()
       items = !S.ta.value.startsWith('/') || S.ta.value.includes(' ') ? [] : meta.commands
@@ -162,8 +168,9 @@ function commandMenu(S: Session, form: HTMLFormElement) {
 /* ---------- references to canvas items ---------- */
 export function addRef(S: Session, r: Ref) {
   if (!S.refs.some(x => x.el === r.el)) S.refs.push(r)
-  link(S, r.el, 'ref') // dashed arrow card -> item while attached; stays once sent
-  ping(r.el)
+  // dashed arrow card -> item while attached; stays once sent. Things that aren't on the canvas (a GitHub pull
+  // request) are detached elements: no arrow, and clicking their chip runs their own onclick (opens them).
+  if (r.el.isConnected) { link(S, r.el, 'ref'); ping(r.el) }
   drawChips(S)
   S.ta.focus()
 }
@@ -174,7 +181,7 @@ export function chip(r: Ref, remove?: () => void) {
   c.dataset.kind = r.kind
   label.type = 'button'
   label.title = `Show on canvas: ${r.label}`
-  label.onclick = () => centerOn(r.el)
+  label.onclick = () => (r.el.isConnected ? centerOn(r.el) : r.el.click())
   c.append(label)
   if (remove) {
     const x = make('button', 'x', '×')
@@ -206,7 +213,7 @@ for (const t of ['dragover', 'drop']) addEventListener(t, e => { if ((e as DragE
 let hovered: HTMLElement | null = null
 onDrop((el, x, y, final) => {
   const r = refOf(el)
-  const zone = r ? document.elementsFromPoint(x, y).map(e => e.closest<HTMLElement>('#world .card .dock')).find(Boolean) ?? null : null
+  const zone = r ? document.elementsFromPoint(x, y).map(e => e.closest<HTMLElement>('.card .dock')).find(Boolean) ?? null : null
   const card = zone?.closest<HTMLElement>('.card') ?? null
   if (hovered !== card) { hovered?.classList.remove('droptarget'); card?.classList.add('droptarget'); hovered = card }
   if (!final || !card || !r) return !!card

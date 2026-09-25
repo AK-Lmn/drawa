@@ -27,7 +27,7 @@
 #sessions{padding:6px}
 .sess{display:block;width:100%;padding:9px 12px;border-radius:var(--r-ctl);text-align:left}
 .sess:hover{background:var(--hover)}
-.sess .t{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;color:var(--ink-2)}
+.sess .t{overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;color:var(--ink-2)}
 .sess .d{display:flex;gap:8px;margin-top:2px;font-size:11.5px;color:var(--muted)}
 .sess.open .d::after{content:"on canvas";color:var(--accent);font-weight:500}
 
@@ -61,7 +61,8 @@
 .chg.failed .diff{opacity:.45}
 .chg.flash .h{background:var(--sel)}
 #foldall{height:28px;font-size:12px}
-.diff{padding:6px 0;overflow-x:auto;font:12px/20px var(--mono);font-variant-ligatures:none} /* show exactly the characters that change */
+.diff{display:grid;grid-template-columns:minmax(max-content,1fr);padding:6px 0;overflow-x:auto;font:12px/20px var(--mono);font-variant-ligatures:none} /* show exactly the characters that change */
+/* one column as wide as the longest line: every row's color spans the full scroll width, not just the visible part */
 .diff div{display:grid;grid-template-columns:28px max-content;min-width:100%;white-space:pre;color:var(--ink-2)}
 .diff div::before{content:attr(data-s);text-align:center;color:var(--muted)}
 .diff .add{background:var(--add-bg);color:var(--ink)}.diff .add::before{color:var(--add)}
@@ -82,3 +83,29 @@
 .mdview input[type=checkbox]{margin:0 6px 0 0;vertical-align:-1px;accent-color:var(--accent)}
 .mdview li:has(>input[type=checkbox]){list-style:none;margin-left:-1.2em}
 .mdview hr{border:0;border-top:1px solid var(--line);margin:1.5em 0}
+
+/* pinned windows: a sidebar on the right; windows stack and share its height, each keeping its folder tab */
+.pinbar{position:fixed;z-index:var(--z-float);top:64px;right:12px;bottom:12px;width:420px;max-width:calc(100vw - 24px);display:flex;flex-direction:column;gap:12px;padding-left:8px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.pinbar>.edge-grip{position:absolute;left:0;top:0;bottom:0;width:6px;cursor:ew-resize;touch-action:none;z-index:2}
+.pinbar>.edge-grip:hover,.pinbar.resizing>.edge-grip{background:linear-gradient(90deg,var(--accent) 2px,transparent 2px)}
+.pinbar.resizing{user-select:none}
+.pinbar.compact{bottom:auto;width:auto!important;align-items:flex-end;padding-left:0}
+.pinbar.compact>.edge-grip{display:none}
+.pinbar>.win{position:relative;left:auto!important;top:auto!important;width:auto!important;height:auto!important;flex:1 1 0;min-height:200px;z-index:auto!important}
+.pinbar>.win.min{flex:none;min-height:0}
+.pinbar>.win>.grip{display:none}
+.pinbar>.win>.win-h{cursor:default}
+body.has-dock #nav{right:calc(var(--dock-w,420px) + 24px)}
+body.has-dock #hint{display:none}
+
+/* full view: one window lifted out to fill the screen, above the canvas; the dimmed margin closes it */
+.fullview{position:fixed;inset:0;padding:64px 12px 12px;cursor:auto;background:color-mix(in oklab,var(--canvas) 72%,transparent);animation:enter .15s var(--ease)}
+.fullview>.win{position:relative;left:auto!important;top:auto!important;width:100%!important;height:100%!important;z-index:auto!important;--glow:var(--shadow-lift)}
+.fullview>.win>.grip{display:none}
+.fullview>.win>.win-h{cursor:default}
+
+/* stuck to the screen: floats where you put it while the canvas moves underneath; drag its tab to move it */
+.floats{position:fixed;inset:0;pointer-events:none}
+.floats>.win{position:fixed;left:var(--fx)!important;top:var(--fy)!important;z-index:var(--fz,1)!important;pointer-events:auto}
+.floats>.win>.win-h{cursor:grab}
+.floats>.win.dragging>.win-h{cursor:grabbing}

@@ -1,9 +1,11 @@
 // Text on the canvas: double-click empty space (or press T) and type. Click a note to edit it; empty notes vanish.
-import { make, ICON, iconButton } from '../lib/dom'
+import { make } from '../lib/dom'
 import { persist } from '../lib/store'
 import { addItem, items, place, rect, draggable, resizable, front, changed, toWorld, stage, viewCenter } from '../canvas/canvas'
+import { removeButton } from '../canvas/window'
 import { forget } from '../canvas/graph'
 import { referable } from '../canvas/refs'
+import { creatable } from '../canvas/tools'
 
 interface Note { id?: string; text?: string; x: number; y: number; w?: number; edit?: boolean }
 
@@ -13,7 +15,7 @@ export function note(opts: Note) {
   text.textContent = opts.text ?? ''
   text.setAttribute('role', 'textbox')
   text.setAttribute('aria-label', 'Canvas note')
-  const del = iconButton(ICON.x, 'Delete note', () => { forget(el); el.remove(); changed() }, 'ndel')
+  const del = removeButton('Delete note', undefined, 'ndel')
   el.append(text, del)
   addItem(el, 'note')
   place(el, opts.x, opts.y)
@@ -56,6 +58,11 @@ persist('notes',
     return { id: n.dataset.id!, text: noteText(n), x: r.x, y: r.y, w: n.style.width ? r.w : undefined }
   }),
   (list: Note[]) => list.forEach(note))
+creatable('note', {
+  size: a => ({ w: Math.min(360, Math.max(120, String(a.text).length * 8)), h: 60 }),
+  create: (a, r) => note({ x: r.x, y: r.y, text: String(a.text), w: String(a.text).length > 45 ? 360 : undefined }),
+  update: (el, a) => { el.querySelector('.ntext')!.textContent = String(a.text) },
+})
 referable('note', { icon: '¶', label: el => noteText(el).slice(0, 40), content: el => ({ text: `Note from my canvas:\n${noteText(el).trim()}` }) })
 
 /** A new note at the view's center (T key). */

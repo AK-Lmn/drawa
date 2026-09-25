@@ -1,15 +1,14 @@
 // Custom dropdown over a native <select>. The select stays in the DOM (hidden) as the single source of
 // truth, so code that reads/sets .value, assigns onchange, or replaces <option>s keeps working unchanged;
 // we only render a trigger button and a popover listbox that mirror it.
+import { keepOnScreen, make } from './dom'
 
 let seq = 0
 const svg = (d: string) => `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="${d}"/></svg>`
 const CHEVRON = svg('M4.5 6.5 8 10l3.5-3.5'), CHECK = svg('M3.5 8.5l3 3 6-7')
 
 export function enhance(select: HTMLSelectElement): void {
-  const trigger = document.createElement('button')
-  trigger.type = 'button'
-  trigger.className = 'btn xsel'
+  const trigger = make('button', 'btn xsel')
   trigger.setAttribute('aria-haspopup', 'listbox')
   trigger.setAttribute('aria-expanded', 'false')
   trigger.innerHTML = `<span class="xsel-label"></span>${CHEVRON}`
@@ -85,8 +84,7 @@ export function enhance(select: HTMLSelectElement): void {
     m.style.minWidth = `${r.width}px`
     const below = innerHeight - r.bottom, up = m.offsetHeight + 12 > below && r.top > below
     m.classList.toggle('up', up)
-    m.style.left = `${Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8))}px`
-    m.style.top = `${up ? r.top - 6 - m.offsetHeight : r.bottom + 6}px`
+    keepOnScreen(m, r.left, up ? r.top - 6 - m.offsetHeight : r.bottom + 6)
   }
 
   function open() {

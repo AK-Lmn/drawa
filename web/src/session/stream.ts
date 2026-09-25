@@ -1,7 +1,7 @@
 // Rendering Claude's stream-json output into a card: text, thinking, tool calls and their results, sub-agent
 // activity, background-agent notifications. Saved transcripts replay through the same path, so the graph rebuilds too.
 import type { ContentBlock, SavedMessage } from '../lib/api'
-import { make, ui, rel } from '../lib/dom'
+import { make, rel } from '../lib/dom'
 import { save } from '../lib/store'
 import { md, enhance } from '../lib/markdown'
 import { touch, run, settle, quiet, type Act } from '../canvas/graph'
@@ -9,11 +9,12 @@ import { change, settleChange, type Change } from '../panels/diff'
 import { tree, openInspector, inspecting } from '../panels/files'
 import { liveDiagrams } from '../items/diagram'
 import { showPlan, planResult, focusPlan } from '../items/plan'
-import { cur, put, follow, renderCard, type Session, type ToolRow, type Block } from './session'
+import { put, follow, renderCard, type Session, type ToolRow, type Block } from './session'
 import { approval } from './asks'
 import { thumb } from './images'
 import { notify } from './notify'
 import { replayShell } from './shell'
+import { setMode, modeRefused } from './mode'
 import { TASK_TOOLS, taskCall, taskResult } from './tasks'
 import { loadSessions } from './history'
 
@@ -29,6 +30,12 @@ function fold(cls: string, title: string) {
 export const describe = (i: Record<string, unknown>) => String(i.command ?? i.file_path ?? i.pattern ?? i.url ?? i.query ?? i.description ?? i.prompt ?? '')
 const plain = (c: ContentBlock['content']) => (typeof c === 'string' ? c : (c ?? []).map(x => x.text ?? '').join('\n'))
 const ACTS: Record<string, Act> = { Read: 'read', Edit: 'edit', MultiEdit: 'edit', NotebookEdit: 'edit', Write: 'write', Bash: 'run' }
+/** Is this user message already on the card? */
+function shown(S: Session, text: string, uuid?: string) {
+  if (uuid && S.log.querySelector(`:scope > .me[data-uuid="${CSS.escape(uuid)}"]`)) return true
+  const last = [...S.log.querySelectorAll(':scope > .me')].pop()
+  return !!last && (last.textContent ?? '').trim().startsWith(text.trim()) // the bubble may add chips after the text
+}
 const tag = (xml: string, name: string) => xml.match(new RegExp(`<${name}>([\\s\\S]*?)</${name}>`))?.[1]?.trim()
 
 /** A tool call's effect on the graph (file nodes, terminal). Returns the diff block for edits. */
@@ -51,7 +58,8 @@ function start(S: Session, i: number, b: ContentBlock) {
     S.blocks[i] = { type: 'thinking', buf: '', el: d.appendChild(make('div')), d }
   } else if (b.type === 'tool_use') {
     const act = ACTS[b.name ?? '']
-    const d = put(S, fold(`tool run${act ? ' act-' + act : ''}${b.name === 'Agent' || b.name === 'Task' ? ' agent' : ''}`, b.name ?? 'Tool'))
+    const label = (b.name ?? 'Tool').replace(/^mcp__canvas__canvas_/, 'Canvas · ') // our own canvas tools read as such
+    const d = put(S, fold(`tool run${act ? ' act-' + act : ''}${b.name === 'Agent' || b.name === 'Task' ? ' agent' : ''}${b.name?.startsWith('mcp__canvas__') ? ' canvas' : ''}`, label))
     S.tools[b.id!] = d
     S.blocks[i] = { type: 'tool_use', buf: '', d, name: b.name, id: b.id }
   }
@@ -61,8 +69,9 @@ function delta(S: Session, i: number, dl: { text?: string; thinking?: string; pa
   const k = S.blocks[i]
   if (!k) return
   k.buf += dl.text ?? dl.thinking ?? dl.partial_json ?? ''
-  if (k.type === 'thinking') { k.el!.textContent = k.buf; follow(S) }
-  else if (k.type === 'text' && !k.raf) k.raf = requestAnimationFrame(() => { k.raf = 0; streamText(k); follow(S) })
+  if (k.raf) return // one repaint per frame, however many deltas arrive
+  if (k.type === 'thinking') k.raf = requestAnimationFrame(() => { k.raf = 0; k.el!.textContent = k.buf; follow(S) })
+  else if (k.type === 'text') k.raf = requestAnimationFrame(() => { k.raf = 0; streamText(k); follow(S) })
 }
 
 /** Where the streamed text can be split for good: the last blank line after `from` that isn't inside a code
@@ -104,7 +113,9 @@ function stop(S: Session, i: number) {
     k.el!.innerHTML = md(k.buf)
     enhance(k.el!)
   } else if (k.type === 'thinking') {
+    cancelAnimationFrame(k.raf ?? 0)
     if (!k.buf.trim()) return k.d!.remove()
+    k.el!.textContent = k.buf
     k.d!.classList.remove('run')
     k.d!.open = false
     k.d!.querySelector('b')!.textContent = 'Thought'
@@ -237,7 +248,11 @@ export function on(S: Session, m: Msg) {
   if (m.session_id && m.session_id !== S.sid && !m.parent_tool_use_id) { S.sid = m.session_id; save() }
   if (m.parent_tool_use_id) return subagent(S, m)
   if (m.type === 'control_request' && m.request?.subtype === 'can_use_tool') return approval(S, m)
-  if (m.type === 'system' && m.subtype === 'status' && m.permissionMode && S === cur) { ui.mode.value = m.permissionMode; ui.mode.dataset.mode = m.permissionMode; ui.mode.dispatchEvent(new Event('sync')) }
+  if (m.type === 'system' && m.subtype === 'status' && m.permissionMode) setMode(S, m.permissionMode, false)
+  if (m.type === 'control_response' && m.response?.subtype === 'error') {
+    put(S, make('div', 'err', `Claude refused: ${m.response.error}`))
+    if (/permission mode/i.test(m.response.error ?? '')) modeRefused(S)
+  }
   if (m.type === 'system' && m.subtype === 'init') {
     S.model = m.model
     renderCard(S)
@@ -251,7 +266,14 @@ export function on(S: Session, m: Msg) {
     const c = m.message?.content
     const text = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((b: ContentBlock) => b.type === 'text').map((b: ContentBlock) => b.text).join('\n') : ''
     if (text.startsWith('<task-notification>')) notification(S, text)
-    else if (text) { S.queued.shift()?.classList.remove('queued'); S.picked = true } // Claude picked up a message we sent
+    else if (text) { // Claude picked up a message: ours (queued here), or one this page didn't send (restored card, another tab)
+      const q = S.queued.shift()
+      if (q) q.classList.remove('queued')
+      // (skipped when already shown: by its uuid when this page rendered it from the stream, else by text, since the
+      // transcript writes it when queued but the stream echoes it only once Claude starts)
+      else if (!shown(S, text, m.uuid)) { S.log.querySelector('.empty')?.remove(); put(S, make('div', 'me', text)).dataset.uuid = m.uuid ?? '' }
+      S.picked = true
+    }
     if (Array.isArray(c)) for (const b of c) if (b.type === 'tool_result') result(S, b)
   } else if (m.type === 'assistant' && m.message?.model === '<synthetic>') {
     // replies that don't come from the model (local slash commands like /model): whole, not streamed
@@ -300,11 +322,11 @@ export function replay(S: Session, m: SavedMessage & { usage?: Msg }) {
       else if (b.type === 'text' && b.text!.startsWith('<task-notification>')) notification(S, b.text!)
       else if (b.type === 'text' && b.text!.startsWith('<bash-input>')) { const rest = replayShell(S, b.text!); if (rest) bubble = put(S, make('div', 'me', rest)) }
       else if (b.type === 'text' && !b.text!.startsWith('<')) bubble = put(S, make('div', 'me', b.text))
-      else if (b.type === 'image' && (b as any).source?.data) { // images you sent: thumbnails in your message
+      else if (b.type === 'image' && ((b as any).source?.data || (b as any).source?.url)) { // images you sent: thumbnails
         bubble ??= put(S, make('div', 'me'))
         const row = bubble.querySelector('.refs.sent') ?? bubble.appendChild(make('div', 'refs sent'))
-        const src = (b as any).source
-        row.append(thumb({ type: src.media_type, data: src.data, url: `data:${src.media_type};base64,${src.data}` }))
+        const src = (b as any).source // the server sends a stored image's address instead of its base64
+        row.append(thumb({ type: src.media_type, data: src.data ?? '', url: src.url ?? `data:${src.media_type};base64,${src.data}` }))
       }
     }
   } else {

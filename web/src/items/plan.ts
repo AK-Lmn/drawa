@@ -1,17 +1,20 @@
 // Plan review. In plan mode Claude presents its plan through ExitPlanMode, which needs your approval: the plan
 // becomes a document node on the canvas where you can comment on any block, draw on it (Draw mode), then approve
 // or send the feedback back so Claude revises it (same node, next version).
-import { make, ui, ICON, iconButton, button, ping } from '../lib/dom'
+import { make, ICON, iconButton, button, ping } from '../lib/dom'
 import { post } from '../lib/api'
+import { imageBlock } from '../lib/blobs'
 import { persist } from '../lib/store'
 import { md, enhance } from '../lib/markdown'
 import { rect, savedRect, freeSpot, changed, centerOn } from '../canvas/canvas'
 import { makeWindow } from '../canvas/window'
 import { link, savedPos, forget } from '../canvas/graph'
-import { strokesIn, setDrawing, hasInk, clearInk } from '../canvas/ink'
+import { setDrawing, clearInk } from '../canvas/ink'
+import { snapshot } from '../canvas/snapshot'
 import { referable } from '../canvas/refs'
 import type { Session } from '../session/session'
 import { send } from '../session/live'
+import { setMode } from '../session/mode'
 
 interface Comment { excerpt: string; text: string; el: HTMLElement }
 interface Plan {
@@ -34,10 +37,10 @@ const current = new Map<Session, Plan>()
 const dismissed = new Set<string>()
 const all: Plan[] = []
 persist('dismissed', () => [...dismissed], (ids: string[]) => ids.forEach(id => dismissed.add(id)), 0)
-persist('plans', () => Object.fromEntries(all.map(p => ['p:' + p.key, savedRect(p.el)])), v => Object.assign(savedPos, v), 0)
+// each plan's place, and its name if you renamed it (older layouts saved the place alone)
+persist('plans', () => Object.fromEntries(all.map(p => ['p:' + p.key, { ...savedRect(p.el), ...(p.el.dataset.name ? { name: p.el.dataset.name } : {}) }])), v => Object.assign(savedPos, v), 0)
 referable('plan', {
   icon: '▤',
-  label: el => el.querySelector('.t')?.textContent ?? '',
   content: (el, label) => ({ text: `Plan "${label}":\n\n${all.find(p => p.el === el)?.md ?? ''}` }),
 })
 
@@ -46,12 +49,16 @@ function create(S: Session, key: string): Plan {
   const body = make('div', 'pnode-b md'), foot = make('div', 'pnode-f')
   const state = make('span', 'pstate'), general = make('textarea'), row = make('div', 'row')
   const c = rect(S.card)
-  const close = iconButton(ICON.x, 'Remove plan from canvas (rejects it if Claude is still waiting)', () => remove(p))
+  const close = iconButton(ICON.x, 'Remove plan from canvas (rejects it if Claude is still waiting)', () => remove(p), 'closebtn')
   const { el, head } = makeWindow({
     kind: 'plan', cls: 'pnode', title: 'Plan', minW: 320, minH: 280, actions: [close],
     rect: { ...freeSpot({ x: c.x + c.w + 150, y: c.y - 20, w: 560, h: 680 }), ...savedPos['p:' + key] },
   })
+  el.dataset.id = 'p:' + key // stable across reloads, so arrows and pins come back
   head.querySelector('.t')!.after(state)
+  const name = (savedPos['p:' + key] as { name?: string } | undefined)?.name
+  if (name) el.dataset.name = name
+  el.addEventListener('rename', e => { el.dataset.name = (e as CustomEvent<string>).detail; changed() })
   general.rows = 2
   general.placeholder = 'General feedback (optional). Hover a paragraph and click + to comment on it.'
   general.setAttribute('aria-label', 'General feedback')
@@ -79,7 +86,7 @@ function setState(p: Plan, text: string, cls: string) {
   p.state.textContent = text
   p.el.dataset.state = cls
   for (const b of p.buttons) b.disabled = p.done
-  p.el.querySelector('.win-h .t')!.textContent = `Plan v${p.version} · ${p.S.title}`
+  p.el.querySelector('.win-h .t')!.textContent = p.el.dataset.name ?? `Plan v${p.version} · ${p.S.title}` // renamed: kept
 }
 
 /** Claude wrote a plan (ExitPlanMode call, live or replayed from history). */
@@ -185,7 +192,6 @@ function lastNoteAfter(p: Plan, blk: HTMLElement) {
 const countComments = (p: Plan) => { p.buttons[0].textContent = p.comments.length ? `Send feedback (${p.comments.length})` : 'Send feedback' }
 
 /* ---------- answering Claude ---------- */
-const setMode = (m: string) => { ui.mode.value = m; ui.mode.dispatchEvent(new Event('change')) }
 
 /** Tell Claude the plan is off: no implementation, wait for the next instruction. */
 async function reject(p: Plan) {
@@ -216,7 +222,7 @@ async function approve(p: Plan, mode?: string) {
   p.done = true
   setState(p, 'Approved', 'approved')
   // leaving plan mode: the chosen mode, or back to asking for each action
-  if (mode || ui.mode.value === 'plan') setMode(mode ?? 'default')
+  if (mode || p.S.mode === 'plan') setMode(p.S, mode ?? 'default')
   if (req) {
     await post('respond', { cid: p.S.cid, request_id: req, allow: true, mode }).catch(() => { p.req = req; p.done = false; setState(p, 'Could not reach Claude, try again', 'review') })
   } else {
@@ -229,7 +235,7 @@ async function feedback(p: Plan) {
   const lines = p.comments.map((c, i) => `${i + 1}. On "${c.excerpt}": ${c.text}`)
   const general = p.general.value.trim()
   if (general) lines.push(`General: ${general}`)
-  const image = await snapshot(p)
+  const image = await snapshot(p.el, { skip: ['pnode-f', 'padd'] }) // the plan as drawn on, without its buttons
   if (!lines.length && !image) { p.general.focus(); p.general.placeholder = 'Nothing to send yet: comment on a paragraph (+), write feedback here, or use Draw on plan'; return }
   const message = ['The user reviewed your plan and wants changes:', '', ...lines,
     ...(image ? ['', 'They also drew on the plan: the annotated image follows in their next message.'] : []),
@@ -239,15 +245,15 @@ async function feedback(p: Plan) {
   setState(p, 'Sending feedback…', 'revising')
   try {
     if (!req) { // not waiting any more: send the feedback as a message, and stay in plan mode for the revision
-      setMode('plan')
+      setMode(p.S, 'plan')
       send(p.S, 'Feedback on the plan', [{ type: 'text', text: message.replace('They also drew on the plan: the annotated image follows in their next message.', 'They also drew on the plan: see the annotated image below.') },
-        ...(image ? [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: image } }] : [])])
+        ...(image ? [imageBlock('image/png', image)] : [])])
       return
     }
     await post('respond', { cid: p.S.cid, request_id: req, allow: false, message })
     if (image) send(p.S, 'Annotated plan (my drawing on it)', [
       { type: 'text', text: 'My drawing on your plan, as an annotated screenshot:' },
-      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: image } },
+      imageBlock('image/png', image),
     ])
   } catch {
     p.req = req
@@ -255,23 +261,6 @@ async function feedback(p: Plan) {
   }
 }
 
-/** PNG of the plan node with any ink drawn over it, or null if nothing was drawn there. */
-async function snapshot(p: Plan): Promise<string | null> {
-  const r = rect(p.el), strokes = strokesIn(r)
-  if (!strokes.length && !hasInk(p.el)) return null
-  const { toCanvas } = await import('html-to-image')
-  const canvas = await toCanvas(p.el, {
-    pixelRatio: 1.5,
-    backgroundColor: getComputedStyle(p.el).backgroundColor,
-    style: { left: '0', top: '0', transform: 'none', margin: '0' },
-    filter: n => !(n instanceof HTMLElement && (n.classList.contains('pnode-f') || n.classList.contains('padd') || n.classList.contains('grip'))),
-  })
-  const ctx = canvas.getContext('2d')!
-  ctx.scale(canvas.width / p.el.offsetWidth, canvas.height / p.el.offsetHeight)
-  ctx.translate(-r.x, -r.y) // ink is in world coordinates
-  for (const s of strokes) { ctx.fillStyle = s.color; ctx.fill(new Path2D(s.d)) }
-  return canvas.toDataURL('image/png').split(',')[1]
-}
 
 /* ---------- canvas bookkeeping ---------- */
 export function dropPlans(S: Session) {

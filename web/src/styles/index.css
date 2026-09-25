@@ -15,10 +15,10 @@
 @import "./dialogs.css";
 @import "./select.css";
 
+@media (max-width:1080px){#hint{display:none}} /* it's wide: below this it would cover the zoom controls */
 @media (max-width:760px){
-  #ppath,#bar .sep,#hint,#minimap{display:none}
+  #ppath,#bar .sep,#minimap{display:none}
   #bar{right:12px}
-  #btn-new,#btn-drawer{padding:0 9px;font-size:0;gap:0}
   #drawer{width:auto;right:12px}
 }
 @media (prefers-reduced-motion:reduce){

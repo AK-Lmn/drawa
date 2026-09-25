@@ -6,7 +6,7 @@ button,select,textarea{font:inherit;color:inherit}
 button{background:none;border:0;padding:0;cursor:pointer}
 :focus-visible{outline:2px solid color-mix(in oklab,var(--accent) 75%,transparent);outline-offset:2px}
 textarea:focus-visible{outline:none}
-code,pre{font-family:var(--mono);font-size:12.5px}
+code,pre{font-family:var(--mono);font-size:12.5px;font-variant-ligatures:none} /* code shows the characters typed: != stays two, not ≠ */
 button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
 [hidden]{display:none!important}
 *{scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}

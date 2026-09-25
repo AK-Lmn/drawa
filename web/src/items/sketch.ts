@@ -8,6 +8,9 @@ import { forget } from '../canvas/graph'
 import { items, savedRect, freeSpot, viewCenter, centerOn, changed, type Rect } from '../canvas/canvas'
 import { makeWindow } from '../canvas/window'
 import { referable } from '../canvas/refs'
+import { inkBox, fitInk } from '../canvas/ink'
+import { base64 } from '../lib/blobs'
+import { removable } from '../canvas/select'
 
 type Excalidraw = typeof import('@excalidraw/excalidraw')
 interface Scene { elements: readonly any[]; files: Record<string, any> }
@@ -36,12 +39,12 @@ export function sketch(opts: { id?: string; title?: string; rect?: Rect; edit?: 
   const id = opts.id ?? crypto.randomUUID()
   const c = viewCenter()
   const { el: node, body } = makeWindow({
-    kind: 'sketch', cls: 'snode', title: opts.title ?? `Sketch ${++count}`, minW: 220, minH: 160,
+    kind: 'sketch', cls: 'snode', title: opts.title ?? `Whiteboard ${++count}`, minW: 220, minH: 160,
     rect: opts.rect ?? freeSpot({ x: c.x - 210, y: c.y - 150, w: 420, h: 300 }),
     actions: [
-      iconButton(ICON.pencil, 'Edit sketch', () => edit(node)),
-      iconButton(ICON.x, 'Delete sketch', async () => {
-        if (!await confirmBox('Delete this sketch?', 'The drawing is removed from this browser and can\'t be recovered.', 'Delete sketch')) return
+      iconButton(ICON.pencil, 'Edit whiteboard', () => edit(node)),
+      iconButton(ICON.x, 'Delete whiteboard', async () => {
+        if (!await confirmBox('Delete this whiteboard?', 'The drawing is removed from this browser and can\'t be recovered.', 'Delete whiteboard')) return
         discard(node)
       }),
     ],
@@ -49,6 +52,7 @@ export function sketch(opts: { id?: string; title?: string; rect?: Rect; edit?: 
   node.dataset.id = id
   node.dataset.ink = 's:' + id
   body.classList.add('snode-b')
+  body.append(inkBox('sf:' + id)) // drawing on the picture stays on the same spot at any size
   body.ondblclick = () => edit(node)
   preview(node)
   if (opts.edit) { centerOn(node); edit(node, !opts.id) }
@@ -59,7 +63,8 @@ export function sketch(opts: { id?: string; title?: string; rect?: Rect; edit?: 
 async function preview(node: HTMLElement) {
   const body = node.querySelector<HTMLElement>('.snode-b')!
   const scene = loadScene(node.dataset.id!)
-  if (!scene.elements.some(e => !e.isDeleted)) return body.replaceChildren(make('p', 'none', 'Empty sketch. Double-click to draw.'))
+  body.querySelector(':scope > .none')?.remove()
+  if (!scene.elements.some(e => !e.isDeleted)) return body.prepend(make('p', 'none', 'Empty whiteboard. Double-click to draw.'))
   const { exportToSvg } = await excalidraw()
   const svg = await exportToSvg({
     elements: scene.elements as any,
@@ -69,7 +74,7 @@ async function preview(node: HTMLElement) {
   })
   svg.setAttribute('width', '100%')
   svg.setAttribute('height', '100%')
-  body.replaceChildren(svg)
+  fitInk(body.querySelector<HTMLElement>(':scope > .ink-box')!, svg)
 }
 
 /** PNG (base64) of a sketch, for sending to Claude; null if it's empty. */
@@ -84,7 +89,7 @@ export async function sketchPng(id: string): Promise<string | null> {
     appState: { exportBackground: true, viewBackgroundColor: '#ffffff', exportWithDarkMode: false },
     exportPadding: 24,
   })
-  return new Promise(res => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.readAsDataURL(blob) })
+  return base64(blob)
 }
 
 onTheme(() => items('sketch').forEach(preview)) // previews are drawn in the theme's colors
@@ -93,10 +98,9 @@ persist('sketches',
   (list: (Rect & { id: string; title: string })[]) => list.forEach(s => sketch({ id: s.id, title: s.title, rect: s })))
 referable('sketch', {
   icon: '✎',
-  label: el => el.querySelector('.t')?.textContent ?? '',
   content: async (el, label) => {
     const image = await sketchPng(el.dataset.id!)
-    return image ? { text: `Sketch "${label}"`, image } : { text: `Sketch "${label}": (empty)` }
+    return image ? { text: `Whiteboard "${label}"`, image } : { text: `Whiteboard "${label}": (empty)` }
   },
 })
 
@@ -132,6 +136,7 @@ async function edit(node: HTMLElement, isNew = false) {
   nameInput.blur() // showModal focuses the name field; tool keys (R, O, A...) should go to the drawing
 }
 
+removable('sketch', node => discard(node)) // its × asks first; a deleted selection has already asked
 function discard(node: HTMLElement) {
   try { localStorage.removeItem(KEY(node.dataset.id!)) } catch {}
   forget(node)
@@ -150,7 +155,7 @@ function close(keep: boolean) {
   if (isNew && (!keep || empty)) return discard(node) // nothing to keep: no leftover empty sketch
   saveScene(node.dataset.id!, keep ? scene : JSON.parse(original)) // Cancel: back to how it was before this edit
   if (!keep) return preview(node)
-  node.querySelector('.t')!.textContent = nameInput.value.trim() || 'Sketch'
+  node.querySelector('.t')!.textContent = nameInput.value.trim() || 'Whiteboard'
   preview(node)
   changed()
 }

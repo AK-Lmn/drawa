@@ -4,7 +4,7 @@ claude-ui is a browser canvas around the Claude Code CLI. `server.py` runs `clau
 
 ## Before you finish any change
 
-1. `cd web && npm run build`. This runs `tsc` and the Vite build. Both must pass with no new errors.
+1. `cd web && npm run build`. This runs `tsc` and the Vite build. Both must pass with no new errors. After touching `server.py`, also run `python3 test_server.py` (stdlib unittest; it imports the server without starting it).
 2. Look at what you changed. For anything visible, take a screenshot in headless Chromium in **both** light and dark themes (`Emulation.setEmulatedMedia` with `prefers-color-scheme`). You can import modules straight from the dev server to set up state, e.g. `await import('/src/items/diagram.ts')`.
 3. Reload the page and check that your change survives restore from the saved layout.
 4. Say plainly what you verified and what you didn't.
@@ -14,10 +14,10 @@ claude-ui is a browser canvas around the Claude Code CLI. `server.py` runs `clau
 ```
 web/src/
   main.ts      boot, toolbar, keyboard shortcuts; imports features (importing a feature registers it)
-  lib/         no knowledge of the app: api, store (persistence), dom helpers, markdown, select, fonts
+  lib/         no knowledge of the app: api, store (persistence), blobs (IndexedDB), dom helpers, markdown, select, fonts
   canvas/      the canvas engine: view, items, window shape, graph edges, ink, references registry
   session/     session cards: card, composer, stream rendering, asks, live connection, history
-  items/       one file per kind of canvas item: notes, sketch, diagram, plan
+  items/       one file per kind of canvas item: notes, sketch, diagram, plan, snippet, git, image, github (+ gh.ts, its data and Send to Claude)
   panels/      side panels: file tree + inspector, diffs
   styles/      index.css imports tokens.css, then one stylesheet per area
 ```
@@ -31,7 +31,7 @@ Import cycles between feature modules are tolerated only when every cross-use ha
 
 ## The registries: extend by adding, not by editing
 
-The app scales through three registration points. A new feature should plug into them rather than add special cases elsewhere.
+The app scales through these registration points. A new feature should plug into them rather than add special cases elsewhere.
 
 | Need | Use | Where |
 |---|---|---|
@@ -39,12 +39,20 @@ The app scales through three registration points. A new feature should plug into
 | Survive a reload | `persist(key, save, load, phase)` | `lib/store.ts` |
 | Referenceable with `@` or by dropping on a card | `referable(kind, { icon, label, content })` | `canvas/refs.ts` |
 | Recover after the server comes back | `onReconnect(fn)` | `lib/connection.ts` |
+| Claude can create or edit it (canvas tools) | `creatable(kind, { size, create, update })` | `canvas/tools.ts` |
+| Removed as part of a deleted selection, without its own confirm | `removable(kind, fn)` (only if its × button asks first or it has none; otherwise its × is clicked) | `canvas/select.ts` |
 
 **Adding a new kind of canvas item** should mean one new file in `items/`, an import in `main.ts`, and CSS in `styles/items.css`. The item file should:
 - Build the element with `makeWindow()`, which handles the folder tab, dragging, collapsing and resizing.
-- Call `persist()` for its saved state.
-- Call `referable()` if Claude should be able to receive it.
-- Add a `--k-<kind>` color in `tokens.css`, plus minimap and tab-glyph rules.
+- Call `persist()` for its saved state. Binary data (images) goes in IndexedDB via `lib/blobs.ts`, keyed by the item's id; localStorage only holds the layout.
+- If its content scales with the window (a picture, a drawing), put it in `inkBox()` from `canvas/ink.ts`, so pen strokes on it keep their spot at any size, including full view.
+- Something Claude should receive that isn't on the canvas (a GitHub pull request) can still be a reference: `referable()` a kind, then `addRef()` a detached element whose dataset says what to fetch at send time (see `sendToClaude` in `items/gh.ts`). Such chips have no arrow; clicking one runs the element's `onclick`.
+- Text marked in place (like pinned snippets' sources in `items/pinmarks.ts`) uses the CSS Custom Highlight API, never wrapper elements: the chat re-renders while streaming and skips off-screen rows.
+- Give it a `data-id` that is the same after a reload: arrows, pins and canvas tools find items by it.
+- Call `referable()` if Claude should be able to receive it (that also makes it readable with `canvas_read`).
+- Call `creatable()` if Claude should be able to create it with `canvas_create` (add the kind to that tool's `enum` in `CANVAS_TOOLS` in `server.py`), with an `update` if Claude should be able to edit it with `canvas_update`.
+- Windows get renaming, pinning (sidebar or screen) and full view from `makeWindow()`; don't rebuild these per kind. Anything that asks "where is this item on screen" should use `liveRect()` (handles pinned, floating and collapsed windows); `rect()` is the canvas geometry that gets saved.
+- Add a `--k-<kind>` color in `tokens.css`, one `[data-kind=<kind>]` entry in the kind map at the top of `canvas.css` (it colors windows, Ctrl+K rows and chips alike), and a minimap rule. The tab's glyph is the kind's `referable` icon; don't add a per-kind `::before` rule.
 
 If you find yourself adding the new kind to a list in `canvas.ts`, the minimap, `main.ts` restore code or a CSS `:not(...)` selector, stop: that list should be a registry or a `data-kind` rule.
 
@@ -55,7 +63,7 @@ Rules for these registries:
 
 ## Code conventions
 
-- **Match the surrounding code:** short functions, early returns, `make()` / `iconButton()` / `button()` from `lib/dom.ts` rather than hand-built buttons, and `confirmBox()` rather than `confirm()`. No native browser dialogs or `alert`.
+- **Match the surrounding code:** short functions, early returns, `make()` / `iconButton()` / `button()` from `lib/dom.ts` rather than hand-built buttons, and `confirmBox()` rather than `confirm()`. Reuse the small helpers there before writing another: `shortcutOk(e)` / `typing(t)` for keyboard guards, `keepOnScreen()` for anything floating, `closestAt()` for hit-testing through overlays, `perFrame()` for once-a-frame work; and `edgeGrip()` / `track()` in `canvas.ts` for drag handles. No native browser dialogs or `alert`.
 - **Keep modules small.** When a file passes about 350 lines or does two jobs, split it by responsibility the way `session/` is split: card, composer, stream, asks and live are separate modules.
 - **No new dependency** for what a few lines or the platform can do. Big libraries (Mermaid, Excalidraw, html-to-image) are loaded with dynamic `import()` on first use. Keep it that way.
 - **Comments say why,** not what. A deliberate shortcut gets a `ponytail:` comment naming its limit and the upgrade path.
@@ -96,7 +104,8 @@ These are measured, not guessed. Reopening a 27MB transcript went from 7.6s to 0
 - **Animations must not force layout.** Use the Web Animations API (`el.animate`), as `ping()` does, not the remove-class/`offsetWidth`/add-class trick.
 - **No decorative glows or big blurred shadows** on canvas windows. They cost paint on every pan and zoom frame, and the user rejected them visually too. Show state with `--edge` and the tab's top line.
 - **Long lists skip what's off-screen:** log entries use `content-visibility: auto`. Keep new per-entry elements as direct children of `.log`.
-- **The server sends only what the page shows.** `clip()` in `server.py` drops images returned by tools and thinking signatures, and trims tool outputs to 20k characters. New transcript fields should be trimmed the same way.
+- **The server sends only what the page shows.** `clip()` in `server.py` drops images returned by tools and thinking signatures, trims tool outputs and tool inputs to 20k characters, and turns images you sent into `/api/images` addresses. It runs on transcripts and on big live lines (`trimmed()`, which also drops the CLI's duplicate `tool_use_result`). The live buffer per card is capped by lines and bytes. New fields should be trimmed the same way.
+- **One stream per page.** Browsers allow ~6 connections per host over HTTP/1.1, so never add a long-lived request per card or per window: the page reads every card over one `/api/events` stream (`session/live.ts`).
 - **Big libraries load on first use** (Mermaid, Excalidraw, html-to-image) with a dynamic `import()`.
 
 ## Server (`server.py`)
@@ -107,7 +116,8 @@ These are measured, not guessed. Reopening a 27MB transcript went from 7.6s to 0
   - POSTs require a matching `Origin`.
   - Every file path goes through `inside()` so it can't escape the project root.
   - Any new endpoint needs the same checks.
-- One long-lived `claude -p` process per card, speaking the stream-json protocol. The page reads output from `/api/events` and answers control requests via `/api/respond`. Don't break re-attaching: a reload must pick up a running session where it left off.
+- **Canvas tools:** each card's Claude gets an MCP server at `/mcp/<card>/<token>` (in `Live`). The token is per process, and requests carrying an `Origin` are refused, so only that process can call it. Calls are relayed to the newest page reading the card's stream and answered via `/api/canvas`. Tool definitions live in `CANVAS_TOOLS`; reading is auto-allowed with `--allowedTools`, while changing things goes through the normal approval flow.
+- One long-lived `claude -p` process per card, speaking the stream-json protocol. The page reads all its cards' output over one `/api/events?page=…&c=cid:line:gen,…` stream (lines tagged `_c` with the card) and answers control requests via `/api/respond`. Don't break re-attaching: a reload must pick up a running session where it left off, including the message being streamed (`Live.open_msg`). GET routes live in the `GET` table; add new ones there.
 - The server restarts itself when server.py changes. Test changes against a separate port rather than killing the user's running instance.
 
 ## When a request is vague

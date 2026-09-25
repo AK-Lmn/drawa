@@ -9,6 +9,7 @@ import { chip } from './composer'
 import { on, type Msg } from './stream'
 import { thumb, imageBlock, type Pasted } from './images'
 import { askPermission } from './notify'
+import { canvasCall } from '../canvas/tools'
 import { takeShell } from './shell'
 
 /** Send a message (text, or content blocks like images with a short label for the bubble). */
@@ -33,7 +34,7 @@ export async function send(S: Session, prompt: string, content?: object[], refs:
     const shell = takeShell(S) // shell runs since the last message go first, like the terminal's bash mode
     if (shell) p = typeof p === 'string' ? shell + p : [{ type: 'text', text: shell }, ...p]
     if (images.length) p = [...(typeof p === 'string' ? [{ type: 'text', text: p }] : p), ...images.map(imageBlock)]
-    await post('send', { cid: S.cid, sid: S.sid, p, mode: ui.mode.value, model: ui.model.value })
+    await post('send', { cid: S.cid, sid: S.sid, p, mode: S.mode, model: ui.model.value })
     attach(S)
   } catch (e) {
     S.queued.splice(S.queued.indexOf(bubble), 1)
@@ -44,19 +45,46 @@ export async function send(S: Session, prompt: string, content?: object[], refs:
   }
 }
 
-/** Read this card's live output until the process exits. Re-attaches after network drops; no-op if already reading. */
-export async function attach(S: Session) {
-  if (S.stream) return
-  const ctrl = (S.stream = new AbortController())
-  let exited = false
+/* ---------- reading: one stream per page for all its cards ---------- */
+// Browsers allow ~6 connections per host over HTTP/1.1: a stream per card would stall every other request once a few
+// cards are open. So the page reads every card's output over one /api/events stream (lines tagged with the card).
+// It's re-opened (from each card's next line) when cards come or go, and after a drop.
+const page = crypto.randomUUID().replace(/-/g, '').slice(0, 16) // names this page for canvas tool calls
+let conn: AbortController | null = null, subscribed = '', soon = 0
+
+/** Make sure this card's output is being read (it's a no-op when the stream already covers it). */
+export function attach(_S?: Session) {
+  clearTimeout(soon)
+  soon = setTimeout(listen, 30) // cards restored or opened together share one re-open
+}
+
+function listen() {
+  // re-open when cards come or go, or when a card not attached yet got a different start (a restore sets it after the
+  // card exists: e.g. line 0 for one whose transcript isn't written yet)
+  const want = cards.map(S => (S.gen ? S.cid : `${S.cid}:${S.n}`)).sort().join()
+  if (conn && want === subscribed) return
+  conn?.abort()
+  subscribed = want
+  if (!cards.length) { conn = null; return }
+  const ctrl = (conn = new AbortController())
+  read(ctrl).finally(() => {
+    if (conn !== ctrl) return // replaced by a newer stream
+    conn = null
+    setTimeout(listen, 1000) // dropped (server restart, network): pick up where each card left off
+  })
+}
+
+async function read(ctrl: AbortController) {
+  const c = cards.map(S => `${S.cid}:${S.n}:${S.gen ?? ''}`).join()
+  let res: Response
+  try { res = await fetch(`/api/events?page=${page}&c=${c}`, { signal: ctrl.signal }) } catch { return }
+  if (!res.ok || !res.body) return
+  const rd = res.body.getReader(), dec = new TextDecoder()
+  let buf = ''
   try {
-    const res = await fetch(`/api/events?cid=${S.cid}&from=${S.n}`, { signal: ctrl.signal })
-    if (!res.ok || !res.body) return // nothing live for this card (e.g. after a server restart)
-    const rd = res.body.getReader(), dec = new TextDecoder()
-    let buf = ''
     for (;;) {
       const { done, value } = await rd.read()
-      if (done) break
+      if (done) return
       buf += dec.decode(value, { stream: true })
       const lines = buf.split('\n')
       buf = lines.pop()!
@@ -64,21 +92,32 @@ export async function attach(S: Session) {
         if (!l.trim()) continue // keep-alive
         let m: Msg
         try { m = JSON.parse(l) } catch { continue }
-        if (m.type === 'attach') { S.n = m.from; continue }
-        S.n++
-        if (m.type === 'exit') { exited = true; continue }
-        try { on(S, m) } catch (x) { console.error(x, l) }
+        const S = cards.find(s => s.cid === (m as any)._c)
+        if (S) line(S, m, l)
       }
     }
-  } catch (e) {
-    if ((e as Error).name === 'AbortError') return
-  } finally {
-    if (S.stream === ctrl) S.stream = null
+  } catch { /* aborted, or the connection dropped */ }
+}
+
+/** One line of a card's output. */
+function line(S: Session, m: Msg, raw: string) {
+  if (m.type === 'attach') {
+    S.n = m.from
+    S.gen = m.gen // the process these line numbers belong to
+    S.reader = m.reader
+    // mid-turn when this page (re)attached, e.g. after a reload: show it working (and stoppable) until the result
+    if (m.busy && !S.pending) { S.pending = 1; renderCard(S) }
+    return
   }
-  if (exited) {
-    // process ended (closed as idle, crashed, or server restarted): the next message starts a new one resuming this session
-    S.n = -1
+  S.n++
+  if (m.type === 'exit') {
+    // process ended (closed as idle, crashed, or server restarted): the next message starts a new one resuming this
+    // session, and the same stream picks that one up from its first line
     S.queued.splice(0).forEach(b => b.classList.replace('queued', 'failed'))
     if (S.pending || S.bg) { S.pending = S.bg = 0; quiet(S); renderCard(S) }
-  } else if (cards.includes(S)) setTimeout(() => attach(S), 1000) // connection dropped: pick up where we left off
+    return
+  }
+  // a canvas tool call for this page (older ones replayed after a reconnect name an old reader: skip them)
+  if (m.type === 'canvas_call') { if (m.to === S.reader) canvasCall(S, m as any); return }
+  try { on(S, m) } catch (x) { console.error(x, raw) }
 }
