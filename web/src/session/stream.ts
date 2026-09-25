@@ -208,6 +208,17 @@ function result(S: Session, r: ContentBlock) {
   }
 }
 
+/** An Agent row whose agent can't report back any more (its session's Claude process ended): no longer running. */
+export function rowStopped(S: Session, call: string, why: string) {
+  const d = S.tools[call]
+  if (!d || d.classList.contains('bad')) return
+  d.classList.remove('run', 'bg')
+  d.classList.add('bad')
+  d.querySelector('.st')!.textContent = 'stopped'
+  const io = d.querySelector('.io') ?? d.appendChild(make('div', 'io'))
+  io.appendChild(make('pre', '', why)).dataset.l = 'Result'
+}
+
 /** An agent's report without the harness's wrapping (the hand-back preface, its id line and usage). */
 const report = (t: string) => {
   const body = t.replace(/^[\s\S]*?The report follows:\n/, '').replace(/\n?agentId: [\s\S]*$/, '')

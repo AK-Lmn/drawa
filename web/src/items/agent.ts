@@ -13,7 +13,7 @@ import { link, savedPos, forget } from '../canvas/graph'
 import { referable } from '../canvas/refs'
 import { renderCard, type Session } from '../session/session'
 import { send } from '../session/live'
-import { describe, plain, replay } from '../session/stream'
+import { describe, plain, replay, rowStopped } from '../session/stream'
 
 interface Agent {
   call: string; S: Session; el: HTMLElement; log: HTMLElement; state: HTMLElement; ta: HTMLTextAreaElement; res?: HTMLElement
@@ -121,7 +121,8 @@ export function dropAgents(S: Session) {
 }
 /** The card's process ended: agents still running can't finish any more. */
 export function agentsStopped(S: Session) {
-  for (const call of runningAgents(S)) agentDone(call, "Stopped: its session's Claude process ended.", true)
+  const why = "Stopped: its session's Claude process ended."
+  for (const call of runningAgents(S)) { agentDone(call, why, true); rowStopped(S, call, why) } // its window and its row in the card
 }
 
 /** The relay: what the card shows, and what its Claude is asked to do (SendMessage to the agent). */
