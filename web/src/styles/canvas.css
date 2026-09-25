@@ -1,0 +1,49 @@
+/* The canvas: stage, world transform, edges, ink, minimap. */
+#stage{position:fixed;inset:0;overflow:hidden;cursor:grab;touch-action:none;
+  background-color:var(--canvas);background-image:radial-gradient(circle,var(--dot) 1px,transparent 1.3px);background-size:24px 24px}
+#stage.panning{cursor:grabbing}
+#stage.glide{transition:background-position .45s var(--ease),background-size .45s var(--ease)}
+#world{position:absolute;left:0;top:0;width:0;height:0;transform-origin:0 0;isolation:isolate}
+#world.glide{transition:transform .45s var(--ease)}
+.item{position:absolute}
+.item[data-kind=session]{--kind:var(--k-session)}.item[data-kind=run]{--kind:var(--k-run)}.item[data-kind=diagram]{--kind:var(--k-diagram)}
+.item[data-kind=sketch]{--kind:var(--k-sketch)}.item[data-kind=plan]{--kind:var(--k-plan)}.item[data-kind=note]{--kind:var(--k-note)}.item[data-kind=file]{--kind:var(--k-file)}.item[data-kind=files]{--kind:var(--k-file)}.item[data-kind=git]{--kind:var(--write)}
+
+/* edges: color = action, dashed flow = a tool is running on it right now */
+#edges{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+.edge{fill:none;stroke-width:1.75;vector-effect:non-scaling-stroke;opacity:.85}
+.edge.read{stroke:var(--read);stroke-dasharray:2 5;stroke-linecap:round;marker-end:url(#m-read)}
+.edge.edit{stroke:var(--edit);marker-end:url(#m-edit)}.edge.write{stroke:var(--write);marker-end:url(#m-write)}.edge.run{stroke:var(--run);marker-end:url(#m-run)}
+.edge.plan{stroke:var(--accent);stroke-width:2.25;marker-end:url(#m-plan)}
+.edge.ref{stroke:var(--ink-2);stroke-dasharray:6 5;marker-end:url(#m-ref)}
+#m-read path{fill:var(--read)}#m-edit path{fill:var(--edit)}#m-write path{fill:var(--write)}#m-run path{fill:var(--run)}#m-plan path{fill:var(--accent)}#m-ref path{fill:var(--ink-2)}
+.edge.live{stroke-width:2.25;stroke-dasharray:7 6;animation:flow .7s linear infinite;opacity:1}
+@keyframes flow{to{stroke-dashoffset:-13}}
+/* edge labels: a flat tag in the edge's color, opaque so the line doesn't run through the text */
+.elabel{position:absolute;transform:translate(-50%,-50%);padding:1px 7px;border-radius:2px;background:color-mix(in oklab,currentColor 16%,var(--canvas));font:600 10.5px/16px var(--sans);letter-spacing:.02em;white-space:nowrap;pointer-events:none;z-index:1}
+.elabel.plan{color:var(--accent)}.elabel.ref{color:var(--ink-2)}.elabel.read{color:var(--read)}.elabel.edit{color:var(--edit)}.elabel.write{color:var(--write)}.elabel.run{color:var(--run)}
+
+/* ink: drawn above every canvas item; the capture layer takes the pointer only in draw mode */
+#inkworld{position:absolute;left:0;top:0;width:0;height:0;transform-origin:0 0;pointer-events:none}
+#inkworld.glide{transition:transform .45s var(--ease)}
+#ink{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+#ink path{pointer-events:none}
+/* a window's own ink: overlay inside it (scroll containers carry it along with their content) */
+.ink-local{position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible;pointer-events:none;z-index:3}
+.ink-local path{pointer-events:none}
+body.erasing .ink-local path{pointer-events:visiblePainted;stroke:transparent;stroke-width:14px}
+.ink-ink{fill:var(--ink)}.ink-edit{fill:var(--edit)}.ink-write{fill:var(--write)}.ink-run{fill:var(--run)}.ink-danger{fill:var(--danger)}
+#ink-capture{position:absolute;inset:0;cursor:crosshair;touch-action:none;background:color-mix(in oklab,var(--accent) 3%,transparent)}
+body.erasing #ink-capture{cursor:cell}
+body.erasing #ink path{pointer-events:visiblePainted;stroke:transparent;stroke-width:14px;vector-effect:non-scaling-stroke}
+body.erasing #ink path:hover{opacity:.45}
+
+/* minimap: one box per item, in its kind's color */
+#minimap{position:relative;width:200px;height:128px;border-radius:2px;background:var(--canvas);overflow:hidden;cursor:pointer}
+#mm i{position:absolute;display:block;border-radius:1px;background:color-mix(in oklab,var(--kind,var(--line-2)) 60%,transparent)}
+#mm i[data-k=session]{--kind:color-mix(in oklab,var(--ink) 50%,transparent)}
+#mm i[data-k=session][data-s=busy]{--kind:var(--accent)}#mm i[data-k=session][data-s=asking]{--kind:var(--run)}
+#mm i[data-k=run]{--kind:var(--run)}#mm i[data-k=diagram]{--kind:var(--write)}#mm i[data-k=sketch]{--kind:var(--run)}
+#mm i[data-k=plan]{--kind:var(--accent)}#mm i[data-k=files]{--kind:var(--edit)}#mm i[data-k=git]{--kind:var(--write)}#mm i[data-k=note]{--kind:var(--ink-2)}
+#mm i[data-k=file][data-s=edit]{--kind:var(--edit)}#mm i[data-k=file][data-s=write]{--kind:var(--write)}#mm i[data-k=file][data-s=fail]{--kind:var(--danger)}
+#mm i[data-k=vp]{background:none;border:1.5px solid var(--accent)}

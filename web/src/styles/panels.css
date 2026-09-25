@@ -1,0 +1,84 @@
+/* Side panels: the drawer (history + file tree) and the inspector (a file's diffs + the file).
+   Their section switchers are folder tabs too: the open tab joins the panel's content. */
+.panel{position:fixed;z-index:var(--z-panel);display:flex;flex-direction:column;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow-lift);overflow:hidden}
+#drawer{top:64px;left:12px;bottom:12px;width:320px;animation:from-left .25s var(--ease)}
+#inspector{top:12px;right:12px;bottom:12px;width:min(560px,calc(100vw - 24px));max-width:calc(100vw - 24px);animation:from-right .25s var(--ease)}
+@keyframes from-left{from{transform:translateX(-16px);opacity:0}}
+@keyframes from-right{from{transform:translateX(16px);opacity:0}}
+.panel .bar{display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid var(--line)}
+.pane{flex:1;min-height:0;overflow:auto}
+#ipath{flex:1;min-width:0;padding-left:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:12.5px var(--mono);color:var(--muted)}
+#ipath b{color:var(--ink);font-weight:500}
+#inspector>.bar:first-child{border-bottom:0;padding-bottom:4px}
+#inspector .edge-grip{position:absolute;left:0;top:0;bottom:0;width:8px;cursor:ew-resize;touch-action:none;z-index:2}
+#inspector .edge-grip:hover,#inspector.resizing .edge-grip{background:linear-gradient(90deg,var(--accent) 2px,transparent 2px)}
+#inspector.resizing{user-select:none}
+
+/* tab strip: tabs sit on the strip's bottom line; the open one is the content's color and hides that line */
+.panel .bar.tabs{align-items:flex-end;padding:8px 8px 0 10px;background:var(--rail)}
+.bar.tabs .seg{flex:none;gap:2px;padding:0;background:none}
+.bar.tabs .seg button{position:relative;flex:none;height:32px;margin-bottom:-1px;padding:0 14px;border:1px solid transparent;border-bottom:0;border-radius:var(--r-tab) var(--r-tab) 0 0;color:var(--muted)}
+.bar.tabs .seg button:hover{color:var(--ink)}
+.bar.tabs .seg button.on{background:var(--bg);border-color:var(--line);color:var(--ink);box-shadow:none}
+.bar.tabs>:not(.seg){margin:0 0 5px}
+.bar.tabs>.seg+*{margin-left:auto} /* buttons sit at the strip's right end */
+
+/* history */
+#sessions{padding:6px}
+.sess{display:block;width:100%;padding:9px 12px;border-radius:var(--r-ctl);text-align:left}
+.sess:hover{background:var(--hover)}
+.sess .t{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;color:var(--ink-2)}
+.sess .d{display:flex;gap:8px;margin-top:2px;font-size:11.5px;color:var(--muted)}
+.sess.open .d::after{content:"on canvas";color:var(--accent);font-weight:500}
+
+/* file tree */
+#tree,#tree ul{list-style:none;margin:0;padding:0}
+#tree{padding:6px}
+#tree ul{margin-left:13px;padding-left:4px;border-left:1px solid var(--line)}
+#tree button{display:flex;align-items:center;width:100%;height:26px;padding:0 8px;border-radius:var(--r-ctl);text-align:left;font-size:13px;color:var(--ink-2);white-space:nowrap}
+#tree button:hover{background:var(--hover);color:var(--ink)}
+#tree button span{overflow:hidden;text-overflow:ellipsis}
+#tree .dir::before{content:"";flex:none;width:5px;height:5px;margin:0 9px 0 2px;border:solid var(--muted);border-width:0 1.5px 1.5px 0;transform:rotate(-45deg);transition:transform .15s var(--ease)}
+#tree li.open>.dir::before{transform:rotate(45deg) translate(-1px,-1px)}
+#tree .file{padding-left:24px}
+#tree .file.cur{background:var(--sel);color:var(--ink)}
+#tree .mod::after{content:"M";margin-left:auto;padding-left:8px;font:500 11px var(--mono);color:var(--edit)}
+
+/* changes: one diff block per edit */
+.chg{border-bottom:1px solid var(--line)}
+.chg .h{display:flex;align-items:center;gap:10px;min-height:38px;padding:6px 12px;position:sticky;top:0;z-index:1;background:var(--bg);border-bottom:1px solid var(--line);cursor:pointer;user-select:none}
+.chg .h:hover{background:var(--hover)}
+.chg .h::before{content:"";flex:none;width:5px;height:5px;border:solid var(--muted);border-width:0 1.5px 1.5px 0;transform:rotate(45deg);transition:transform .15s var(--ease)}
+.chg.folded .h::before{transform:rotate(-45deg)}
+.chg.folded .diff{display:none}
+.chg.folded .h{border-bottom:0}
+.chg .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;color:var(--ink-2)}
+.chg .who b{font:500 11px var(--mono);margin-right:6px;padding:1px 6px;border-radius:2px;text-transform:uppercase;color:var(--edit);background:color-mix(in oklab,var(--edit) 14%,transparent)}
+.chg .who b.write{color:var(--write);background:color-mix(in oklab,var(--write) 14%,transparent)}
+.chg .stat{font:12px var(--mono);white-space:nowrap}.stat .a{color:var(--add)}.stat .r{color:var(--del)}
+.chg .state{font-size:11.5px;font-weight:500;color:var(--muted)}
+.chg.failed .state{color:var(--danger)}
+.chg.failed .diff{opacity:.45}
+.chg.flash .h{background:var(--sel)}
+#foldall{height:28px;font-size:12px}
+.diff{padding:6px 0;overflow-x:auto;font:12px/20px var(--mono);font-variant-ligatures:none} /* show exactly the characters that change */
+.diff div{display:grid;grid-template-columns:28px max-content;min-width:100%;white-space:pre;color:var(--ink-2)}
+.diff div::before{content:attr(data-s);text-align:center;color:var(--muted)}
+.diff .add{background:var(--add-bg);color:var(--ink)}.diff .add::before{color:var(--add)}
+.diff .del{background:var(--del-bg);color:var(--ink)}.diff .del::before{color:var(--del)}
+.diff .sep{display:block;width:auto;height:auto;text-align:center;color:var(--muted);background:var(--hover)}
+.diff .sep::before{content:none}
+
+/* the file itself */
+.vhead{display:flex;align-items:center;justify-content:flex-end;gap:8px;height:44px;padding:0 8px;position:sticky;top:0;z-index:1;background:var(--bg);border-bottom:1px solid var(--line)}
+.src{display:grid;grid-template-columns:auto 1fr;font:12px/19px var(--mono)}
+.src pre{margin:0;padding:10px 0;font:inherit}
+.src .ln{padding:10px 12px 10px 14px;text-align:right;color:var(--muted);opacity:.7;user-select:none;border-right:1px solid var(--line)}
+.src code{display:block;padding:0 14px;font:inherit;overflow-x:auto}
+.src code.hljs{padding:0 14px}
+.mdview{max-width:72ch;margin:0;padding:20px 24px 40px}
+.mdview h1{font-size:22px;padding-bottom:6px;border-bottom:1px solid var(--line)}.mdview h2{font-size:18px}
+.mdview img{max-width:100%}
+.mdview input[type=checkbox]{margin:0 6px 0 0;vertical-align:-1px;accent-color:var(--accent)}
+.mdview li:has(>input[type=checkbox]){list-style:none;margin-left:-1.2em}
+.mdview hr{border:0;border-top:1px solid var(--line);margin:1.5em 0}

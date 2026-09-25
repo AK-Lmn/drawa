@@ -1,0 +1,33 @@
+/* Rendered markdown (replies, plans, file previews) and Mermaid diagrams inside it. */
+.md{font-size:14.5px;line-height:1.65;overflow-wrap:anywhere;text-wrap:pretty;margin:8px 0}
+.md>:first-child{margin-top:0}.md>:last-child{margin-bottom:0}
+.md p,.md ul,.md ol{margin:0 0 .75em}
+.md h1,.md h2,.md h3{margin:1.2em 0 .5em;line-height:1.3;font-weight:600;text-wrap:balance}
+.md h1{font-size:19px}.md h2{font-size:17px}.md h3{font-size:15px}
+.md a{color:var(--accent);text-underline-offset:2px}
+.md pre{margin:.75em 0;border:1px solid var(--line);border-radius:var(--r-box);background:var(--code);overflow-x:auto}
+.md pre code{display:block;padding:12px 14px;font-size:12.5px;line-height:1.6}
+pre code.hljs{background:none;padding:12px 14px}
+.md :not(pre)>code{padding:1px 5px;border-radius:3px;background:var(--hover);font-size:.86em}
+.md table{border-collapse:collapse;display:block;overflow-x:auto;font-size:13.5px;margin:.75em 0}
+.md th{text-align:left;font-weight:600}.md td,.md th{padding:6px 12px;border-bottom:1px solid var(--line)}
+.md blockquote{margin:.75em 0;padding:2px 14px;color:var(--ink-2);background:var(--hover);border-radius:var(--r-box)}
+
+.mermaid{position:relative;margin:.75em 0;padding:16px;border:1px solid var(--line);border-radius:var(--r-box);background:var(--bg);overflow-x:auto;text-align:center;white-space:pre;color:var(--muted);font:12px var(--mono);cursor:grab;user-select:none;touch-action:none}
+.mermaid svg{max-width:100%;height:auto}
+.mmd-note{margin:.75em 0 -.35em;font-size:12px;color:var(--muted)}
+.mmd-err{margin:.75em 0 -.35em;font-size:12.5px;color:var(--warn)}
+.dtools{position:absolute;top:6px;right:6px;display:flex;gap:2px;padding:2px;border-radius:var(--r-ctl);background:var(--bg);border:1px solid var(--line);opacity:0;transition:opacity .15s}
+.dtools .icon{width:26px;height:26px}
+.mermaid:hover .dtools,.dtools:focus-within{opacity:1}
+
+/* code highlighting (highlight.js classes) from theme tokens, so it follows the toolbar's theme choice */
+.hljs{color:var(--ink)}
+.hljs-keyword,.hljs-selector-tag,.hljs-meta .hljs-keyword,.hljs-doctag,.hljs-type{color:var(--syn-key)}
+.hljs-string,.hljs-regexp,.hljs-addition,.hljs-selector-attr,.hljs-template-tag{color:var(--syn-str)}
+.hljs-number,.hljs-literal,.hljs-symbol,.hljs-variable.constant_,.hljs-attr,.hljs-attribute{color:var(--syn-num)}
+.hljs-title,.hljs-title.function_,.hljs-title.class_,.hljs-built_in,.hljs-section,.hljs-name,.hljs-selector-id,.hljs-selector-class{color:var(--syn-fn)}
+.hljs-comment,.hljs-quote,.hljs-meta{color:var(--syn-com);font-style:italic}
+.hljs-meta{font-style:normal}
+.hljs-deletion{color:var(--del)}
+.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:600}

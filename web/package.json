@@ -1,0 +1,41 @@
+{
+  "name": "claude-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "check": "tsc",
+    "postinstall": "node -e \"require('fs').cpSync('node_modules/@excalidraw/excalidraw/dist/prod/fonts','public/excalidraw/fonts',{recursive:true})\""
+  },
+  "dependencies": {
+    "@excalidraw/excalidraw": "^0.18.1",
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@panzoom/panzoom": "^4.6.2",
+    "diff": "^9.0.0",
+    "dompurify": "^3.4.16",
+    "highlight.js": "^11.12.0",
+    "html-to-image": "^1.11.13",
+    "marked": "^18.0.14",
+    "mermaid": "^11.17.2",
+    "perfect-freehand": "^1.2.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1"
+  },
+  "overrides": {
+    "lodash-es": "4.18.1",
+    "@excalidraw/excalidraw": {
+      "nanoid": "3.3.19",
+      "@excalidraw/mermaid-to-excalidraw": {
+        "nanoid": "5.1.16"
+      }
+    }
+  }
+}

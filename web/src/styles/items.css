@@ -1,0 +1,147 @@
+/* What each kind of canvas item puts inside its window (the window itself is window.css), plus the two
+   items that aren't windows: file nodes and text notes. */
+
+/* tab glyphs, in the kind's color */
+.tnode>.win-h .t::before{content:"$"}
+.dnode>.win-h .t::before{content:"\25C7"}
+.snode>.win-h .t::before{content:"\270E"}
+.pnode>.win-h .t::before{content:"\25A4"}
+.lnode>.win-h .t::before{content:"\2261"}
+.tnode>.win-h .t,.tnode>.win-h .m,.lnode>.win-h .t,.lnode>.win-h .m{font:500 11.5px var(--mono)}
+.tnode>.win-h .t{color:var(--run)}
+
+/* terminal: the commands a session ran, newest first */
+.cmds-list{flex:1;min-height:0;overflow:auto;padding:4px 0;font:12px/1.5 var(--mono)}
+.tcmd{margin:0;font-size:12px}
+.tcmd>summary{display:block;height:auto;min-height:24px;padding:2px 10px;border-radius:0;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:12px/1.5 var(--mono)}
+.tcmd>summary::before{display:inline-block;width:12px;margin-right:8px;border:0;transform:none;opacity:1;text-align:center}
+.tcmd.ok>summary::before{content:"\2713";color:var(--add)}
+.tcmd.bad>summary::before{content:"\2717";color:var(--danger)}
+.tcmd.live>summary::before{content:"\25CF";color:var(--run);animation:pulse .8s ease-in-out infinite alternate}
+.tcmd.stopped>summary::before{content:"\25CB";color:var(--muted)}
+.tcmd[open]>summary{background:var(--hover)}
+.tcmd pre{margin:0;padding:8px 12px 10px 30px;max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:11.5px/1.5 var(--mono);color:var(--ink-2);background:var(--code);border-block:1px solid var(--line)}
+
+/* Git window */
+.gnode>.win-h .t::before{content:"\2387"}
+.gnode>.win-h .t,.gnode>.win-h .m{font:500 11.5px var(--mono)}
+.glist{flex:1;min-height:0;overflow:auto;padding:4px 0 8px}
+.gsec{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:8px;padding:8px 8px 4px 12px;background:var(--bg);font-size:12px}
+.gsec b{font-weight:600}.gsec .n{color:var(--muted);font:11.5px var(--mono);margin-right:auto}
+.gsec .btn{height:24px;padding:0 8px;font-size:11.5px}
+.grow{display:flex;align-items:center;gap:6px;padding:0 6px 0 8px}
+.grow:hover{background:var(--hover)}
+.gname{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;height:28px;align-items:center;text-align:left;font:12.5px var(--mono);color:var(--ink)}
+.gs{flex:none;width:14px;text-align:center;font-weight:600;color:var(--kind,var(--muted))}
+.gp{flex:none;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gd{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--muted)}
+.gfile[data-state=modified]{--kind:var(--edit)}.gfile[data-state=added],.gfile[data-state=untracked]{--kind:var(--add)}
+.gfile[data-state=deleted]{--kind:var(--del)}.gfile[data-state=renamed]{--kind:var(--write)}.gfile[data-state=conflict]{--kind:var(--danger)}
+.grow .s{flex:none;font:11.5px var(--mono)}.grow .s .a{color:var(--add)}.grow .s .r{color:var(--del)}
+.grow .icon{width:24px;height:24px;opacity:0}.grow:hover .icon,.grow .icon:focus-visible{opacity:1}
+.gfile .diff{max-height:320px;overflow:auto;border-block:1px solid var(--line);background:var(--code)}
+.glog{margin:8px 0 0;border-top:1px solid var(--line)}
+.glog>summary{padding:0 12px;border-radius:0}
+.gc{display:flex;align-items:baseline;gap:8px;padding:3px 12px;font-size:12px}
+.gc code{flex:none;font-size:11.5px;color:var(--accent)}.gc .gm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gc .gw{flex:none;font-size:11px;color:var(--muted)}
+.gfoot{flex:none;padding:10px;border-top:1px solid var(--line);background:var(--rail)}
+.gfoot textarea{width:100%;min-height:44px;max-height:160px;padding:7px 9px;border:1px solid var(--line-2);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13px/1.45 var(--sans);resize:none;outline:none}
+.gfoot textarea:focus{border-color:var(--accent)}
+.gfoot .row{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;margin-top:8px}
+.gfoot .btn.ai{margin-right:auto}
+.gout{margin:6px 0 0;font:11.5px/1.45 var(--mono);color:var(--muted);white-space:pre-wrap;max-height:90px;overflow:auto}
+.gout:empty{display:none}.gout.bad{color:var(--danger)}
+.gempty{padding:28px 20px;text-align:center}.gempty p{margin:0 0 14px;color:var(--muted);font-size:13px}
+
+/* Files window: every file a session touched, grouped by folder, changed files first */
+.flist{flex:1;min-height:0;overflow:auto;padding:4px 0 8px}
+.fdir{position:sticky;top:0;z-index:1;padding:6px 12px 3px;background:var(--bg);font:11px var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.frow{display:flex;align-items:center;gap:8px;width:100%;height:26px;padding:0 12px 0 14px;text-align:left;font:12.5px var(--mono);color:var(--ink);--kind:var(--read)}
+.frow:hover{background:var(--hover)}
+.frow.sel{background:var(--sel)}
+.frow[data-state=edit]{--kind:var(--edit)}.frow[data-state=write]{--kind:var(--write)}.frow[data-state=fail]{--kind:var(--danger)}
+.frow .g{flex:none;width:7px;height:7px;border-radius:1px;background:var(--kind)}
+.frow[data-state=read] .g{background:none;border:1.5px dotted var(--kind)}
+.frow[data-state=read] .n{color:var(--ink-2)}
+.frow .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.frow .s{flex:none;font-size:11.5px}.frow .s .a{color:var(--add)}.frow .s .r{color:var(--del)}
+.frow.live .g{border:1.5px solid var(--line-2);border-top-color:var(--kind);border-radius:50%;background:none;width:10px;height:10px;animation:spin .8s linear infinite}
+.lnode.hide-reads .frow[data-state=read],.lnode.hide-reads .fgroup.reads-only{display:none}
+
+/* a pinned Mermaid diagram, with its source editor under the drawing */
+.dnode-b{flex:1;min-height:0;display:grid;place-items:center;padding:14px;cursor:zoom-in}
+.dnode-b svg{max-width:100%;max-height:100%}
+.dnode-ed{flex:0 0 42%;display:flex;flex-direction:column;min-height:0;border-top:1px solid var(--line);background:var(--code)}
+.dnode-ed textarea{flex:1;min-height:0;padding:10px 12px;border:0;background:none;color:var(--ink);font:12px/1.55 var(--mono);font-variant-ligatures:none;resize:none;outline:none;tab-size:2}
+.dnode-st{flex:none;margin:0;padding:4px 12px 6px;font-size:11.5px;color:var(--muted)}
+.dnode-st:empty::before{content:"Edits redraw as you type"}
+.dnode-st.bad{color:var(--warn)}
+
+/* an Excalidraw sketch: preview only, edited in #sketcher */
+.snode-b{display:grid;place-items:center;padding:10px;cursor:crosshair}
+.snode-b svg{max-width:100%;max-height:100%}
+
+/* ---------- plan review: a document window ---------- */
+.pnode[data-state=review]{--edge:color-mix(in oklab,var(--accent) 70%,var(--line))}
+.pnode[data-state=review]>.win-h{box-shadow:inset 0 2px 0 var(--accent)}
+.pnode[data-state=approved]{--edge:color-mix(in oklab,var(--add) 50%,var(--line))}
+.pnode>.win-h{min-width:min(300px,100%)}
+.pstate{flex:none;margin-right:4px;padding:1px 7px;border-radius:2px;font-size:11px;font-weight:500;color:var(--muted);background:var(--hover);white-space:nowrap}
+.pnode[data-state=review] .pstate{color:var(--on-accent);background:var(--accent)}
+.pnode[data-state=approved] .pstate{color:var(--add);background:var(--add-bg)}
+.pnode[data-state=rejected] .pstate{color:var(--danger);background:color-mix(in oklab,var(--danger) 12%,transparent)}
+.pnode[data-state=revising] .pstate{color:var(--write);background:color-mix(in oklab,var(--write) 14%,transparent)}
+.pnode[data-state=rejected] .pnode-b{opacity:.55}
+.pnode[data-state=rejected] .pnode-f,.pnode[data-state=approved] .pnode-f{display:none}
+.pnode-b{position:relative;flex:1;min-height:0;overflow:auto;margin:0;padding:18px 26px 26px 22px;font-size:14px}
+.pnode-b h1{font-size:19px}.pnode-b h2{font-size:16px;margin-top:1.3em}.pnode-b h3{font-size:14.5px}
+.pblk{border-radius:2px;transition:background .15s}
+.pblk:hover{background:color-mix(in oklab,var(--accent) 6%,transparent)}
+.padd{position:absolute;right:8px;z-index:2;width:24px;height:24px;border-radius:var(--r-ctl);background:var(--accent);color:var(--on-accent);box-shadow:var(--shadow)}
+.padd:hover{background:color-mix(in oklab,var(--accent) 88%,var(--ink));color:var(--on-accent)}
+.pedit{margin:6px 0 12px;padding:8px;border:1px solid var(--accent);border-radius:var(--r-box);background:var(--bg)}
+.pedit textarea,.pnode-f textarea{width:100%;resize:none;min-height:44px;padding:6px 8px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13.5px/1.5 var(--sans);outline:none}
+.pedit textarea{border:0;padding:2px 4px}
+.pnode-f textarea:focus{border-color:var(--accent)}
+.pedit .row,.pnode-f .row{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:6px;margin-top:6px}
+.pnote{display:flex;align-items:flex-start;gap:8px;margin:4px 0 12px 14px;padding:7px 8px 7px 12px;border-radius:var(--r-box);background:color-mix(in oklab,var(--run) 16%,var(--bg));color:var(--ink);font-size:13px;line-height:1.5}
+.pnote span{flex:1;white-space:pre-wrap}
+.pnote .icon{width:22px;height:22px;flex:none}
+.pnote .icon svg{width:12px;height:12px}
+.pnode-f{flex:none;padding:10px 12px 12px;border-top:1px solid var(--line);background:var(--rail)}
+.pnode-f .btn.draw{margin-right:auto}
+.pnode-f .btn.draw::before{content:"\270E";font-size:13px;color:var(--run)}
+.pnode-f .btn.reject:not(:disabled):hover{color:var(--danger);border-color:color-mix(in oklab,var(--danger) 50%,var(--line))}
+
+/* ---------- file node: a file Claude touched, labelled with its extension ---------- */
+.fnode{display:flex;align-items:center;gap:10px;min-width:170px;max-width:280px;height:44px;padding:0 12px 0 6px;
+  background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow);cursor:pointer;user-select:none;transition:border-color .2s,box-shadow .2s}
+.fnode:hover,.fnode.dragging{border-color:var(--line-2);box-shadow:var(--shadow-lift)}
+.fnode.sel{border-color:var(--accent)}
+.fnode{--kind:var(--read)}.fnode[data-state=edit]{--kind:var(--edit)}.fnode[data-state=write]{--kind:var(--write)}.fnode[data-state=fail]{--kind:var(--danger)}
+.fnode .g{display:grid;place-items:center;width:32px;height:32px;flex:none;border-radius:2px;font:600 10px var(--mono);letter-spacing:.02em;text-transform:uppercase;
+  color:var(--kind);background:color-mix(in oklab,var(--kind) 15%,transparent)}
+.fnode .n{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
+.fnode .n b{font:500 12.5px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fnode .n small{font:11px var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fnode .s{font:11.5px var(--mono);white-space:nowrap}
+.fnode .s .a{color:var(--add)}.fnode .s .r{color:var(--del)}
+.fdel{position:absolute;top:-10px;right:-10px;width:22px;height:22px;border-radius:var(--r-ctl);background:var(--bg);border:1px solid var(--line);box-shadow:var(--shadow);opacity:0;transition:opacity .15s}
+.fdel svg{width:11px;height:11px}
+.fnode:hover .fdel,.fdel:focus-visible{opacity:1}
+
+/* ---------- text notes: plain text on the canvas; while editing, a sheet of paper with a folded corner ---------- */
+.nnode{width:max-content;min-width:40px;max-width:480px;padding:6px 18px 6px 10px;outline:1px dashed transparent;outline-offset:0;cursor:grab;transition:outline-color .15s}
+.nnode:hover{outline-color:var(--line-2)}
+.nnode[style*="width"]{max-width:none} /* resized by hand: that width wins */
+.nnode::before,.nnode::after{content:"";position:absolute;pointer-events:none;opacity:0;transition:opacity .15s}
+.nnode::before{inset:0;z-index:-1;background:var(--bg);clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%);filter:drop-shadow(0 6px 14px oklch(0.2 0.02 255 / 0.14))}
+.nnode::after{top:0;right:0;width:12px;height:12px;background:linear-gradient(to bottom left,transparent 50%,var(--accent) 50%)}
+.nnode.editing{outline-color:transparent;cursor:text}
+.nnode.editing::before,.nnode.editing::after{opacity:1}
+.ntext{min-height:1.5em;font:500 16px/1.5 var(--sans);color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere;outline:none}
+.nnode.editing .ntext:empty::before{content:"Type a note";color:var(--muted);white-space:nowrap}
+.ndel{position:absolute;top:-1px;left:calc(100% + 6px);width:24px;height:24px;border-radius:var(--r-ctl);background:var(--bg);border:1px solid var(--line);box-shadow:var(--shadow);opacity:0;transition:opacity .15s}
+.ndel svg{width:12px;height:12px}
+.nnode:hover .ndel,.ndel:focus-visible{opacity:1}
+.ndel:hover{color:var(--danger)}

@@ -1,0 +1,28 @@
+/* Stylesheet entry (linked from index.html so there's no unstyled flash while scripts load).
+   tokens -> base controls -> canvas -> the shared window shape -> what goes inside each kind of window -> chrome. */
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+@import "./schemes.css";
+@import "./tokens.css";
+@import "./base.css";
+@import "./canvas.css";
+@import "./window.css";
+@import "./session.css";
+@import "./markdown.css";
+@import "./items.css";
+@import "./chrome.css";
+@import "./panels.css";
+@import "./dialogs.css";
+@import "./select.css";
+
+@media (max-width:760px){
+  #ppath,#bar .sep,#hint,#minimap{display:none}
+  #bar{right:12px}
+  #btn-new,#btn-drawer{padding:0 9px;font-size:0;gap:0}
+  #drawer{width:auto;right:12px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+  .edge.live{stroke-dasharray:none;stroke-width:2.5}
+  .run>summary .st{border-color:var(--accent)}
+}

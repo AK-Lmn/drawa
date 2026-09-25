@@ -1,0 +1,44 @@
+/* Floating chrome over the canvas: toolbar, drawing tools, fonts panel, minimap + zoom, hint. */
+.float{position:fixed;z-index:var(--z-float)}
+#bar{top:12px;left:12px;display:flex;align-items:center;gap:8px;max-width:calc(100vw - 24px);padding:6px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow)}
+.brand{display:flex;align-items:baseline;gap:8px;min-width:0;padding:0 6px}
+.logo{align-self:center;width:18px;height:18px;flex:none;background:conic-gradient(from 200deg,var(--edit),var(--write),var(--run),var(--read),var(--edit));
+  clip-path:polygon(0 30%,30% 30%,40% 0,100% 0,100% 100%,0 100%)} /* a tiny folder */
+.brand b{font-weight:650;font-size:14px;white-space:nowrap}
+#ppath{font:11.5px var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:28vw}
+#btn-draw.on{background:var(--sel);border-color:var(--accent)}
+#btn-theme{width:32px;padding:0;justify-content:center}
+#btn-fonts .aa{font:600 14px/1 var(--sans);letter-spacing:-.02em}
+#btn-fonts[aria-expanded=true]{background:var(--sel);border-color:var(--accent)}
+
+#inkbar{top:64px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:4px;padding:6px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow);animation:enter .2s var(--ease)}
+#inkbar .sep{margin:0 4px}
+#inkbar .sw{width:26px;height:26px;border-radius:50%;border:2px solid transparent;background:var(--c);box-shadow:inset 0 0 0 2px var(--bg)}
+#inkbar .sw.on{border-color:var(--c)}
+#inkbar .sz{display:grid;place-items:center;width:30px;height:30px;border-radius:var(--r-ctl)}
+#inkbar .sz i{width:var(--d);height:var(--d);border-radius:50%;background:var(--ink)}
+#inkbar .sz.on,#inkbar .sz:hover{background:var(--hover)}
+
+#fontpanel{top:64px;left:12px;display:flex;flex-direction:column;gap:6px;width:280px;padding:12px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow-lift);animation:enter .18s var(--ease)}
+#fontpanel hr{width:100%;margin:8px 0 2px;border:0;border-top:1px solid var(--line)}
+#fontpanel label{margin-top:4px;font-size:12px;font-weight:500;color:var(--muted)}
+#fontpanel .xsel{width:100%;justify-content:space-between}
+#fontpanel input{height:32px;padding:0 10px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13px var(--sans);outline:none}
+#fontpanel input:focus{border-color:var(--accent)}
+#fontpanel .preview{margin:8px 0 0;padding:10px;border-radius:var(--r-box);background:var(--rail);font:15px var(--sans);color:var(--ink)}
+#fontpanel .preview code{font:13px var(--mono);padding:1px 5px;border-radius:3px;background:var(--hover)}
+
+#nav{right:12px;bottom:12px;display:flex;flex-direction:column;gap:6px;padding:6px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow)}
+.zoom{display:flex;align-items:center;gap:2px}
+.zl{flex:1;height:30px;border-radius:var(--r-ctl);font:500 12px var(--mono);color:var(--ink-2)}
+.zl:hover{background:var(--hover)}
+#hint{left:50%;bottom:14px;transform:translateX(-50%);margin:0;padding:6px 12px;border-radius:var(--r-box);background:color-mix(in oklab,var(--bg) 92%,transparent);border:1px solid var(--line);font-size:12px;color:var(--muted);white-space:nowrap;transition:opacity .4s}
+#hint.gone{opacity:0;pointer-events:none}
+
+/* server connection notice: bottom center, above the hint */
+#conn{left:50%;bottom:14px;z-index:var(--z-panel);transform:translateX(-50%);display:flex;align-items:center;gap:8px;margin:0;padding:7px 12px;border:1px solid var(--line);border-radius:var(--r-box);background:var(--bg);box-shadow:var(--shadow-lift);font-size:12.5px;font-weight:500;white-space:nowrap;animation:enter .2s var(--ease)}
+#conn i{width:8px;height:8px;border-radius:50%;flex:none}
+#conn[data-state=down]{color:var(--danger);border-color:color-mix(in oklab,var(--danger) 45%,var(--line))}
+#conn[data-state=down] i{background:var(--danger);animation:pulse .8s ease-in-out infinite alternate}
+#conn[data-state=back]{color:var(--add)}
+#conn[data-state=back] i{background:var(--add)}

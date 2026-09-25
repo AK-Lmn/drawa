@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Claude UI</title>
+<script>/* theme before first paint, no flash of the wrong one (lib/theme.ts owns it after boot; same defaults) */
+  (function(){var c={};try{c=JSON.parse(localStorage.getItem('claude-ui:theme')||'{}')||{}}catch(e){}
+  var m=c.mode||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'),r=document.documentElement
+  r.dataset.theme=m;r.dataset.scheme=c[m]||(m==='dark'?'claude-dark':'claude-light')})()</script>
+<link rel="stylesheet" href="/src/styles/index.css"><!-- linked, not imported from JS: no unstyled flash while scripts load -->
+
+<div id="stage" aria-label="Canvas: drag to pan, Ctrl+scroll to zoom">
+  <div id="world">
+    <svg id="edges" width="1" height="1" aria-hidden="true">
+      <defs>
+        <marker id="m-read" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1 1 9 5 1 9z"/></marker>
+        <marker id="m-edit" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1 1 9 5 1 9z"/></marker>
+        <marker id="m-write" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1 1 9 5 1 9z"/></marker>
+        <marker id="m-plan" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1 1 9 5 1 9z"/></marker>
+        <marker id="m-ref" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1 1 9 5 1 9z"/></marker>
+        <marker id="m-run" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1 1 9 5 1 9z"/></marker>
+      </defs>
+    </svg>
+  </div>
+  <div id="inkworld"><svg id="ink" width="1" height="1" aria-hidden="true"></svg></div>
+  <div id="ink-capture" hidden aria-label="Drawing surface"></div>
+</div>
+
+<header id="bar" class="float">
+  <div class="brand">
+    <span class="logo" aria-hidden="true"></span>
+    <b id="pname">Claude UI</b>
+    <span id="ppath"></span>
+  </div>
+  <span class="sep"></span>
+  <button id="btn-new" class="btn primary" title="New session (N)"><svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>New session</button>
+  <button id="btn-draw" class="btn" title="Draw on the canvas (D)" aria-pressed="false"><svg viewBox="0 0 16 16"><path d="M2.5 13.5c2-1 3-4.5 5.5-4.5s2 3 4 3 1.5-2.5 1.5-2.5"/></svg>Draw</button>
+  <button id="btn-sketch" class="btn" title="New sketch (S)"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-8 8H2.5v-3z"/></svg>Sketch</button>
+  <button id="btn-git" class="btn" title="Git: changes, commit, push (G)"><svg viewBox="0 0 16 16"><circle cx="4.5" cy="3.5" r="1.5"/><circle cx="4.5" cy="12.5" r="1.5"/><circle cx="11.5" cy="6" r="1.5"/><path d="M4.5 5v6M11.5 7.5c0 2.5-3 2.5-7 3.5"/></svg>Git</button>
+  <button id="btn-drawer" class="btn" title="History and files (H)" aria-expanded="false"><svg viewBox="0 0 16 16"><path d="M2.5 4h11M2.5 8h11M2.5 12h7"/></svg>History &amp; files</button>
+  <button id="btn-theme" class="btn icon-btn"></button>
+  <button id="btn-fonts" class="btn" title="Appearance: color schemes and fonts" aria-expanded="false" aria-controls="fontpanel"><span class="aa">Aa</span></button>
+  <select id="model" class="btn" aria-label="Model" title="Model for your next message"><option value="">Default model</option></select>
+  <select id="mode" class="btn" aria-label="Permission mode" title="What Claude may do without asking">
+    <option value="default">Read only</option>
+    <option value="acceptEdits">Allow edits</option>
+    <option value="plan">Plan only</option>
+    <option value="bypassPermissions">Allow everything</option>
+  </select>
+</header>
+
+<div id="fontpanel" class="float" hidden role="dialog" aria-label="Appearance">
+  <label for="scheme-light">Light scheme</label>
+  <select id="scheme-light"></select>
+  <label for="scheme-dark">Dark scheme</label>
+  <select id="scheme-dark"></select>
+  <hr>
+  <label for="font-ui">Interface font</label>
+  <select id="font-ui"></select>
+  <input id="font-ui-custom" placeholder="Installed font name, e.g. IBM Plex Sans" hidden>
+  <label for="font-code">Code font</label>
+  <select id="font-code"></select>
+  <input id="font-code-custom" placeholder="Installed font name, e.g. Fira Code" hidden>
+  <p class="preview">The quick brown fox <code>const x = 42</code></p>
+</div>
+
+<div id="inkbar" class="float" hidden role="toolbar" aria-label="Drawing tools">
+  <button data-ink="color:ink" class="sw on" style="--c:var(--ink)" aria-label="Ink color"></button>
+  <button data-ink="color:edit" class="sw" style="--c:var(--edit)" aria-label="Teal"></button>
+  <button data-ink="color:write" class="sw" style="--c:var(--write)" aria-label="Violet"></button>
+  <button data-ink="color:run" class="sw" style="--c:var(--run)" aria-label="Amber"></button>
+  <button data-ink="color:danger" class="sw" style="--c:var(--danger)" aria-label="Red"></button>
+  <span class="sep"></span>
+  <button data-ink="size:2" class="sz" aria-label="Thin pen"><i style="--d:3px"></i></button>
+  <button data-ink="size:4" class="sz on" aria-label="Medium pen"><i style="--d:6px"></i></button>
+  <button data-ink="size:9" class="sz" aria-label="Thick pen"><i style="--d:10px"></i></button>
+  <span class="sep"></span>
+  <button data-ink="erase" class="btn" title="Eraser (E)">Eraser</button>
+  <button data-ink="undo" class="icon" title="Undo (Ctrl+Z)" aria-label="Undo"><svg viewBox="0 0 16 16"><path d="M5.5 4 2.5 7l3 3M2.5 7h7a4 4 0 0 1 0 8h-2"/></svg></button>
+  <button data-ink="clear" class="btn" title="Erase everything">Clear</button>
+  <button data-ink="done" class="btn primary" title="Stop drawing (D or Esc)">Done</button>
+</div>
+
+<aside id="drawer" class="panel" hidden aria-label="History and files">
+  <div class="bar tabs">
+    <div class="seg"><button data-l="sessions" class="on">History</button><button data-l="tree">Files</button></div>
+    <button id="refresh" class="icon" title="Refresh" aria-label="Refresh"><svg viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"/></svg></button>
+    <button id="dclose" class="icon" title="Close (Esc or H)" aria-label="Close history and files"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+  </div>
+  <div id="sessions" class="pane"></div>
+  <ul id="tree" class="pane" hidden></ul>
+</aside>
+
+<aside id="inspector" class="panel" hidden aria-label="File inspector">
+  <div class="bar">
+    <span id="ipath" class="path"></span>
+    <button id="iclose" class="icon" aria-label="Close inspector" title="Close (Esc)"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+  </div>
+  <div class="bar tabs"><div class="seg"><button data-r="changes" class="on">Changes <span id="nchg" class="count"></span></button><button data-r="viewer">File</button></div><button id="foldall" class="btn" title="Collapse or expand every diff">Collapse all</button></div>
+  <div id="changes" class="pane"></div>
+  <div id="viewer" class="pane" hidden></div>
+</aside>
+
+<div id="nav" class="float">
+  <div id="minimap" title="Click to jump"><div id="mm"></div></div>
+  <div class="zoom">
+    <button id="z-out" class="icon" aria-label="Zoom out" title="Zoom out"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button>
+    <button id="z-label" class="zl" title="Reset to 100% (0)">100%</button>
+    <button id="z-in" class="icon" aria-label="Zoom in" title="Zoom in"><svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg></button>
+    <button id="z-fit" class="btn" title="Fit everything (F)">Fit</button>
+  </div>
+</div>
+<p id="conn" class="float" hidden role="status" aria-live="polite"><i></i><span></span></p>
+<p id="hint" class="float">Drag to pan &middot; <kbd>Ctrl</kbd>+scroll to zoom &middot; <kbd>N</kbd> new session &middot; double-click for text &middot; <kbd>D</kbd> draw &middot; <kbd>S</kbd> sketch &middot; <kbd>F</kbd> fit</p>
+
+<dialog id="zoom" aria-label="Diagram">
+  <div class="bar">
+    <span>Scroll to zoom, drag to pan, Esc to close</span>
+    <button class="icon" data-z="out" aria-label="Zoom out" title="Zoom out (-)"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button>
+    <button class="icon" data-z="in" aria-label="Zoom in" title="Zoom in (+)"><svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg></button>
+    <button class="btn" data-z="fit" title="Fit (0)">Fit</button>
+    <button class="icon" data-z="close" aria-label="Close" title="Close (Esc)"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+  </div>
+  <div class="stage"><div class="content"></div></div>
+</dialog>
+<dialog id="confirm" aria-labelledby="confirm-t">
+  <form method="dialog">
+    <h2 id="confirm-t"></h2>
+    <p></p>
+    <div class="row"><button value="" class="btn" autofocus>Cancel</button><button value="ok" class="btn danger"></button></div>
+  </form>
+</dialog>
+<dialog id="sketcher" aria-label="Sketch editor">
+  <div class="bar">
+    <input aria-label="Sketch name" placeholder="Sketch name">
+    <span class="status" aria-live="polite"></span>
+    <button class="btn cancel" title="Discard this editing session (a new, never-finished sketch is removed)">Cancel</button>
+    <button class="btn primary done">Done</button>
+  </div>
+  <div class="host"></div>
+</dialog>
+<script type="module" src="/src/main.ts"></script>
+</html>

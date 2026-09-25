@@ -1,0 +1,280 @@
+// Plan review. In plan mode Claude presents its plan through ExitPlanMode, which needs your approval: the plan
+// becomes a document node on the canvas where you can comment on any block, draw on it (Draw mode), then approve
+// or send the feedback back so Claude revises it (same node, next version).
+import { make, ui, ICON, iconButton, button, ping } from '../lib/dom'
+import { post } from '../lib/api'
+import { persist } from '../lib/store'
+import { md, enhance } from '../lib/markdown'
+import { rect, savedRect, freeSpot, changed, centerOn } from '../canvas/canvas'
+import { makeWindow } from '../canvas/window'
+import { link, savedPos, forget } from '../canvas/graph'
+import { strokesIn, setDrawing, hasInk, clearInk } from '../canvas/ink'
+import { referable } from '../canvas/refs'
+import type { Session } from '../session/session'
+import { send } from '../session/live'
+
+interface Comment { excerpt: string; text: string; el: HTMLElement }
+interface Plan {
+  S: Session
+  key: string // first ExitPlanMode tool id: stable id for the saved position
+  ids: string[] // every ExitPlanMode call shown in this node (all versions)
+  el: HTMLElement
+  body: HTMLElement
+  general: HTMLTextAreaElement
+  state: HTMLElement
+  buttons: HTMLButtonElement[]
+  version: number
+  comments: Comment[]
+  md: string
+  req?: string // open approval request, if Claude is waiting on us
+  done: boolean
+}
+const current = new Map<Session, Plan>()
+// plans you removed (every version's tool id), so replaying history on reload doesn't bring them back
+const dismissed = new Set<string>()
+const all: Plan[] = []
+persist('dismissed', () => [...dismissed], (ids: string[]) => ids.forEach(id => dismissed.add(id)), 0)
+persist('plans', () => Object.fromEntries(all.map(p => ['p:' + p.key, savedRect(p.el)])), v => Object.assign(savedPos, v), 0)
+referable('plan', {
+  icon: '▤',
+  label: el => el.querySelector('.t')?.textContent ?? '',
+  content: (el, label) => ({ text: `Plan "${label}":\n\n${all.find(p => p.el === el)?.md ?? ''}` }),
+})
+
+/* ---------- the node ---------- */
+function create(S: Session, key: string): Plan {
+  const body = make('div', 'pnode-b md'), foot = make('div', 'pnode-f')
+  const state = make('span', 'pstate'), general = make('textarea'), row = make('div', 'row')
+  const c = rect(S.card)
+  const close = iconButton(ICON.x, 'Remove plan from canvas (rejects it if Claude is still waiting)', () => remove(p))
+  const { el, head } = makeWindow({
+    kind: 'plan', cls: 'pnode', title: 'Plan', minW: 320, minH: 280, actions: [close],
+    rect: { ...freeSpot({ x: c.x + c.w + 150, y: c.y - 20, w: 560, h: 680 }), ...savedPos['p:' + key] },
+  })
+  head.querySelector('.t')!.after(state)
+  general.rows = 2
+  general.placeholder = 'General feedback (optional). Hover a paragraph and click + to comment on it.'
+  general.setAttribute('aria-label', 'General feedback')
+  body.dataset.ink = 'p:' + key // drawing over the plan belongs to (and scrolls with) its text
+  const p: Plan = { S, key, ids: [], el, body, general, state, buttons: [], version: 0, comments: [], md: '', done: false }
+  p.buttons = [
+    button('Send feedback', '', () => feedback(p)),
+    button('Reject', 'reject', () => reject(p)),
+    button('Approve', '', () => approve(p)),
+    button('Approve + allow edits', 'primary', () => approve(p, 'acceptEdits')),
+  ]
+  // drawing happens in the canvas-wide Draw mode; this puts the plan in view and picks up the pen
+  const pen = button('Draw on plan', 'draw', () => { centerOn(el); setDrawing(true) })
+  pen.title = 'Draw on the plan (then press Done, D or Esc). Your drawing is sent with the feedback.'
+  row.append(pen, ...p.buttons)
+  foot.append(general, row)
+  el.querySelector('.win-b')!.append(body, foot)
+  commentHover(p)
+  link(S, el, 'plan')
+  all.push(p)
+  return p
+}
+
+function setState(p: Plan, text: string, cls: string) {
+  p.state.textContent = text
+  p.el.dataset.state = cls
+  for (const b of p.buttons) b.disabled = p.done
+  p.el.querySelector('.win-h .t')!.textContent = `Plan v${p.version} · ${p.S.title}`
+}
+
+/** Claude wrote a plan (ExitPlanMode call, live or replayed from history). */
+export function showPlan(S: Session, toolId: string, markdown: string): Plan | null {
+  if (dismissed.has(toolId)) return null
+  let p = current.get(S)
+  if (!p || p.done) { p = create(S, toolId); current.set(S, p) }
+  p.version++
+  p.done = false
+  p.ids.push(toolId)
+  render(p, markdown)
+  setState(p, 'Drafted', 'draft')
+  changed()
+  return p
+}
+
+function render(p: Plan, markdown: string) {
+  if (p.md && p.md !== markdown) clearInk(p.body) // marks were about the previous text
+  p.md = markdown
+  p.comments = []
+  p.general.value = ''
+  const overlay = p.body.querySelector(':scope > svg.ink-local') // keep the ink layer across re-renders
+  p.body.innerHTML = markdown.trim() ? md(markdown) : '<p class="none">Waiting for the plan text…</p>'
+  if (overlay) p.body.append(overlay)
+  enhance(p.body)
+  for (const [i, blk] of [...p.body.children].filter(c => !c.matches('svg.ink-local')).entries()) { (blk as HTMLElement).dataset.i = String(i); blk.classList.add('pblk') }
+}
+
+/** Claude is waiting for approval of the plan. */
+export function reviewPlan(S: Session, req: string, toolId: string, markdown?: string): Plan | null {
+  if (dismissed.has(toolId)) { // you removed this plan: decline it quietly
+    post('respond', { cid: S.cid, request_id: req, allow: false, message: 'The user removed this plan. Do not implement it; wait for their next instruction.' }).catch(() => {})
+    return null
+  }
+  let p: Plan | null | undefined = current.get(S)
+  if (!p || p.done) p = showPlan(S, toolId, markdown ?? '')
+  if (!p) return null
+  // the streamed tool call may not carry the plan text (the CLI adds it when asking): use the request's copy
+  else if (markdown && markdown !== p.md) render(p, markdown)
+  p.req = req
+  setState(p, 'Waiting for your review', 'review')
+  ping(p.el)
+  return p
+}
+
+/** The ExitPlanMode call finished: approved, or sent back with feedback. */
+export function planResult(S: Session, approved: boolean) {
+  const p = current.get(S)
+  if (!p || p.done) return // already decided here (approved or rejected): keep that state
+  p.req = undefined
+  if (approved) { p.done = true; setState(p, 'Approved', 'approved') }
+  else setState(p, 'Revising…', 'revising')
+}
+
+export const focusPlan = (S: Session) => { const p = current.get(S); if (p) centerOn(p.el) }
+
+/* ---------- comments on any block ---------- */
+function commentHover(p: Plan) {
+  const add = iconButton(ICON.plus, 'Comment on this part of the plan', () => { if (target) editor(p, target) }, 'padd')
+  add.hidden = true
+  p.el.append(add)
+  let target: HTMLElement | null = null
+  p.body.addEventListener('mousemove', e => {
+    const blk = (e.target as Element).closest<HTMLElement>('.pblk')
+    if (!blk || p.done) return
+    target = blk
+    const b = blk.getBoundingClientRect(), n = p.el.getBoundingClientRect(), k = n.width / p.el.offsetWidth // canvas zoom
+    add.style.top = `${(b.top - n.top) / k}px`
+    add.hidden = false
+  })
+  p.el.addEventListener('mouseleave', () => (add.hidden = true))
+}
+
+function editor(p: Plan, blk: HTMLElement) {
+  const box = make('div', 'pedit'), ta = make('textarea'), row = make('div', 'row')
+  ta.rows = 2
+  ta.placeholder = 'What should change here?'
+  const ok = button('Add comment', 'primary', () => {}), cancel = button('Cancel', '', () => box.remove())
+  row.append(cancel, ok)
+  box.append(ta, row)
+  lastNoteAfter(p, blk).after(box)
+  ta.focus()
+  ta.onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) ok.click(); if (e.key === 'Escape') box.remove() }
+  ok.onclick = () => {
+    const text = ta.value.trim()
+    if (!text) return ta.focus()
+    const excerpt = (blk.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 140)
+    const note = make('div', 'pnote')
+    const c: Comment = { excerpt, text, el: note }
+    note.append(make('span', '', text), iconButton(ICON.x, 'Remove comment', () => { note.remove(); p.comments.splice(p.comments.indexOf(c), 1); countComments(p) }))
+    note.dataset.for = blk.dataset.i
+    box.replaceWith(note)
+    p.comments.push(c)
+    countComments(p)
+  }
+}
+/** New notes go after the block's existing notes, so they read in order. */
+function lastNoteAfter(p: Plan, blk: HTMLElement) {
+  let at: Element = blk
+  while (at.nextElementSibling?.matches(`.pnote[data-for="${blk.dataset.i}"], .pedit`)) at = at.nextElementSibling
+  return at
+}
+const countComments = (p: Plan) => { p.buttons[0].textContent = p.comments.length ? `Send feedback (${p.comments.length})` : 'Send feedback' }
+
+/* ---------- answering Claude ---------- */
+const setMode = (m: string) => { ui.mode.value = m; ui.mode.dispatchEvent(new Event('change')) }
+
+/** Tell Claude the plan is off: no implementation, wait for the next instruction. */
+async function reject(p: Plan) {
+  if (p.done) return
+  const req = p.req
+  p.req = undefined
+  p.done = true
+  setState(p, 'Rejected', 'rejected')
+  const message = 'The user rejected this plan. Do not implement it or make any changes; stop and wait for their next instruction.'
+  if (req) await post('respond', { cid: p.S.cid, request_id: req, allow: false, message }).catch(() => {})
+  else send(p.S, 'Rejected the plan: don\u2019t implement it. Wait for my next instruction.')
+}
+
+/** Take the plan off the canvas (rejecting it first if Claude is still waiting on it). */
+function remove(p: Plan) {
+  if (p.req) reject(p)
+  p.ids.forEach(id => dismissed.add(id))
+  forget(p.el)
+  p.el.remove()
+  all.splice(all.indexOf(p), 1)
+  if (current.get(p.S) === p) current.delete(p.S)
+  changed()
+}
+
+async function approve(p: Plan, mode?: string) {
+  const req = p.req
+  p.req = undefined
+  p.done = true
+  setState(p, 'Approved', 'approved')
+  // leaving plan mode: the chosen mode, or back to asking for each action
+  if (mode || ui.mode.value === 'plan') setMode(mode ?? 'default')
+  if (req) {
+    await post('respond', { cid: p.S.cid, request_id: req, allow: true, mode }).catch(() => { p.req = req; p.done = false; setState(p, 'Could not reach Claude, try again', 'review') })
+  } else {
+    // Claude isn't waiting any more (its process ended, e.g. a server restart): say it as a message, which resumes the session
+    send(p.S, 'Approved the plan. Go ahead and implement it.')
+  }
+}
+
+async function feedback(p: Plan) {
+  const lines = p.comments.map((c, i) => `${i + 1}. On "${c.excerpt}": ${c.text}`)
+  const general = p.general.value.trim()
+  if (general) lines.push(`General: ${general}`)
+  const image = await snapshot(p)
+  if (!lines.length && !image) { p.general.focus(); p.general.placeholder = 'Nothing to send yet: comment on a paragraph (+), write feedback here, or use Draw on plan'; return }
+  const message = ['The user reviewed your plan and wants changes:', '', ...lines,
+    ...(image ? ['', 'They also drew on the plan: the annotated image follows in their next message.'] : []),
+    '', 'Revise the plan accordingly and present it again with ExitPlanMode.'].join('\n')
+  const req = p.req
+  p.req = undefined
+  setState(p, 'Sending feedback…', 'revising')
+  try {
+    if (!req) { // not waiting any more: send the feedback as a message, and stay in plan mode for the revision
+      setMode('plan')
+      send(p.S, 'Feedback on the plan', [{ type: 'text', text: message.replace('They also drew on the plan: the annotated image follows in their next message.', 'They also drew on the plan: see the annotated image below.') },
+        ...(image ? [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: image } }] : [])])
+      return
+    }
+    await post('respond', { cid: p.S.cid, request_id: req, allow: false, message })
+    if (image) send(p.S, 'Annotated plan (my drawing on it)', [
+      { type: 'text', text: 'My drawing on your plan, as an annotated screenshot:' },
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: image } },
+    ])
+  } catch {
+    p.req = req
+    setState(p, 'Could not reach Claude, try again', 'review')
+  }
+}
+
+/** PNG of the plan node with any ink drawn over it, or null if nothing was drawn there. */
+async function snapshot(p: Plan): Promise<string | null> {
+  const r = rect(p.el), strokes = strokesIn(r)
+  if (!strokes.length && !hasInk(p.el)) return null
+  const { toCanvas } = await import('html-to-image')
+  const canvas = await toCanvas(p.el, {
+    pixelRatio: 1.5,
+    backgroundColor: getComputedStyle(p.el).backgroundColor,
+    style: { left: '0', top: '0', transform: 'none', margin: '0' },
+    filter: n => !(n instanceof HTMLElement && (n.classList.contains('pnode-f') || n.classList.contains('padd') || n.classList.contains('grip'))),
+  })
+  const ctx = canvas.getContext('2d')!
+  ctx.scale(canvas.width / p.el.offsetWidth, canvas.height / p.el.offsetHeight)
+  ctx.translate(-r.x, -r.y) // ink is in world coordinates
+  for (const s of strokes) { ctx.fillStyle = s.color; ctx.fill(new Path2D(s.d)) }
+  return canvas.toDataURL('image/png').split(',')[1]
+}
+
+/* ---------- canvas bookkeeping ---------- */
+export function dropPlans(S: Session) {
+  for (const p of all.filter(p => p.S === S)) { p.el.remove(); all.splice(all.indexOf(p), 1) }
+  current.delete(S)
+}

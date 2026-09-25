@@ -1,0 +1,38 @@
+/* Page reset and the shared controls (buttons, segmented tabs, counts). */
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden}
+body{background:var(--canvas);color:var(--ink);font:14px/1.5 var(--sans);font-feature-settings:"cv11","ss01";-webkit-font-smoothing:antialiased}
+button,select,textarea{font:inherit;color:inherit}
+button{background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid color-mix(in oklab,var(--accent) 75%,transparent);outline-offset:2px}
+textarea:focus-visible{outline:none}
+code,pre{font-family:var(--mono);font-size:12.5px}
+button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+[hidden]{display:none!important}
+*{scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
+kbd{font:11px var(--mono);padding:0 4px;border:1px solid var(--line-2);border-radius:var(--r-ctl)}
+::selection{background:color-mix(in oklab,var(--accent) 28%,transparent)}
+textarea::placeholder,input::placeholder{color:var(--muted)}
+
+.icon{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:var(--r-ctl);color:var(--muted);transition:background .15s,color .15s}
+.icon:hover{background:var(--hover);color:var(--ink)}
+.icon.on{color:var(--accent);background:var(--sel)}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 11px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--bg);font-size:13px;font-weight:500;white-space:nowrap;transition:border-color .15s,background .15s,transform .1s}
+.btn:hover{border-color:var(--line-2);background:var(--hover)}
+.btn:active{transform:translateY(1px)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.primary:hover{background:color-mix(in oklab,var(--accent) 88%,var(--ink))}
+.btn.danger{background:var(--danger);border-color:var(--danger);color:oklch(1 0 0)}
+.btn.danger:hover{background:color-mix(in oklab,var(--danger) 88%,var(--ink))}
+.btn.on{background:var(--sel);border-color:var(--accent);color:var(--ink)}
+.count{display:inline-block;min-width:18px;height:18px;padding:0 5px;border-radius:var(--r-ctl);background:var(--accent);color:var(--on-accent);font:600 11px/18px var(--sans);text-align:center}
+.count:empty{display:none}
+.seg{display:flex;gap:2px;padding:3px;border-radius:var(--r-ctl);background:var(--hover)}
+.seg button{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:26px;padding:0 10px;border-radius:3px;font-size:12.5px;font-weight:500;color:var(--muted);transition:background .15s,color .15s}
+.seg button.on{background:var(--bg);color:var(--ink);box-shadow:0 1px 2px oklch(0 0 0 / 0.1)}
+.none{color:var(--muted);padding:28px 20px;text-align:center;font-size:13px;text-wrap:balance}
+.sep{width:1px;height:22px;background:var(--line)}
+@keyframes enter{from{opacity:.35;transform:translateY(3px)}}
+@keyframes pulse{to{opacity:.3}}
+@keyframes spin{to{transform:rotate(360deg)}}

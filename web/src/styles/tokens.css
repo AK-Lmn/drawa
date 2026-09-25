@@ -1,0 +1,43 @@
+/* Design tokens. A canvas you fly: sessions are windows, files are nodes, actions are colored edges.
+   Four action colors carry meaning (read / edit / write / run); everything else stays neutral.
+   Shape language: square-cut surfaces, and one soft curve where a window's tab rises out of its body. */
+:root{
+  /* every color comes from the active scheme's 13 base colors (schemes.css) */
+  --canvas:var(--c-canvas);--bg:var(--c-bg);
+  --rail:color-mix(in oklab,var(--c-bg) 55%,var(--c-canvas));
+  --hover:color-mix(in oklab,var(--c-text) 7%,var(--c-bg));
+  --sel:color-mix(in oklab,var(--c-accent) 16%,var(--c-bg));
+  --line:color-mix(in oklab,var(--c-text) 13%,var(--c-bg));--line-2:color-mix(in oklab,var(--c-text) 25%,var(--c-bg));
+  --dot:color-mix(in oklab,var(--c-text) 22%,var(--c-canvas));
+  --ink:var(--c-text);--ink-2:var(--c-sub);--muted:var(--c-muted);
+  --accent:var(--c-accent);--on-accent:var(--c-bg);
+  --read:color-mix(in oklab,var(--c-blue) 60%,var(--c-muted));--edit:var(--c-cyan);--write:var(--c-purple);--run:var(--c-orange);
+  --code:color-mix(in oklab,var(--c-canvas) 55%,var(--c-bg));
+  --syn-key:var(--c-purple);--syn-str:var(--c-green);--syn-num:var(--c-orange);--syn-fn:var(--c-blue);--syn-com:var(--c-muted);
+  --add:var(--c-green);--add-bg:color-mix(in oklab,var(--c-green) 15%,var(--c-bg));
+  --del:var(--c-red);--del-bg:color-mix(in oklab,var(--c-red) 13%,var(--c-bg));
+  --warn:var(--c-orange);--warn-bg:color-mix(in oklab,var(--c-yellow) 14%,var(--c-bg));--danger:var(--c-red);
+  --shadow:0 1px 2px oklch(0.2 0.02 255 / 0.06),0 8px 28px oklch(0.2 0.02 255 / 0.1);
+  --shadow-lift:0 2px 4px oklch(0.2 0.02 255 / 0.08),0 18px 48px oklch(0.2 0.02 255 / 0.18);
+  --sans:"Inter Variable",system-ui,sans-serif;--mono:"JetBrains Mono Variable",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --ease:cubic-bezier(.22,1,.36,1);
+
+  /* shape: the tab's curve is the only round corner on a surface; everything else is cut nearly square */
+  --r-tab:10px; /* a window tab's top corners, and the shoulder where it meets the body */
+  --r-box:3px;  /* surfaces: window bodies, panels, toolbar, dialogs, menus, callouts */
+  --r-ctl:4px;  /* controls: buttons, inputs, list rows */
+  --tab-h:34px;
+
+  /* what each kind of canvas item is colored by (tab glyph, focus line, minimap, reference chips) */
+  --k-session:var(--accent);--k-run:var(--run);--k-diagram:var(--write);--k-sketch:var(--run);--k-plan:var(--accent);--k-note:var(--ink-2);--k-file:var(--read);
+
+  /* z scale: canvas items stack inside #world's own context; these are the overlays above it */
+  --z-float:20;--z-panel:30;--z-menu:40;
+  color-scheme:light;
+}
+/* dark: <html data-theme=dark> (lib/theme.ts); colors come from the dark scheme, only depth changes here */
+:root[data-theme=dark]{
+  --shadow:0 1px 2px oklch(0 0 0 / 0.3),0 10px 32px oklch(0 0 0 / 0.35);
+  --shadow-lift:0 2px 6px oklch(0 0 0 / 0.35),0 22px 56px oklch(0 0 0 / 0.5);
+  color-scheme:dark;
+}
