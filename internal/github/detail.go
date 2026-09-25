@@ -3,26 +3,46 @@ package github
 import (
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
-// Pr fetches one pull request in full: its diff, comments, reviews and inline (line) comments.
+// Pr fetches one pull request in full: its diff, comments, reviews and inline (line) comments. The three `gh`
+// calls are independent (none needs another's result), so they run concurrently rather than one after another.
 func Pr(n string) (map[string]any, error) {
 	n, err := Num(n)
 	if err != nil {
 		return nil, err
 	}
 	var p map[string]any
-	fields := PRList + ",url,body,additions,deletions,changedFiles,reviews,comments,mergeable,createdAt"
-	if err := GhJSON(0, "", &p, "pr", "view", n, "--json", fields); err != nil {
-		return nil, err
+	var pages []any
+	var diff string
+	var viewErr, pagesErr error
+	var derr error
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		fields := PRList + ",url,body,additions,deletions,changedFiles,reviews,comments,mergeable,createdAt"
+		viewErr = GhJSON(0, "", &p, "pr", "view", n, "--json", fields)
+	}()
+	go func() {
+		defer wg.Done()
+		// comments on lines of code (reviews' inline comments): not in `pr view`. --slurp: every page, as one list of pages.
+		pagesErr = GhJSON(0, "", &pages, "api", "--paginate", "--slurp", "repos/{owner}/{repo}/pulls/"+n+"/comments?per_page=100")
+	}()
+	go func() {
+		defer wg.Done()
+		diff, derr = Gh(0, "", "pr", "diff", n)
+	}()
+	wg.Wait()
+	if viewErr != nil {
+		return nil, viewErr
 	}
-	// comments on lines of code (reviews' inline comments): not in `pr view`. --slurp: every page, as one list of pages.
 	var inline []map[string]any
 	inlineError := ""
-	var pages []any
-	if err := GhJSON(0, "", &pages, "api", "--paginate", "--slurp", "repos/{owner}/{repo}/pulls/"+n+"/comments?per_page=100"); err != nil {
-		inlineError = strings.SplitN(err.Error(), "\n", 2)[0]
+	if pagesErr != nil {
+		inlineError = strings.SplitN(pagesErr.Error(), "\n", 2)[0]
 	} else {
 		for _, page := range pages {
 			if items, ok := page.([]any); ok {
@@ -34,7 +54,6 @@ func Pr(n string) (map[string]any, error) {
 			}
 		}
 	}
-	diff, derr := Gh(0, "", "pr", "diff", n)
 	if derr != nil {
 		diff = "(no diff: " + derr.Error() + ")"
 	}

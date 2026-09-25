@@ -8,9 +8,15 @@ let unread = 0
 const away = () => document.hidden || !document.hasFocus()
 const title = () => { document.title = `${unread ? `(${unread}) ` : ''}${project.name} · Claude UI` }
 
-/** Ask for notification permission once, from a user action (sending a message). */
+/** Ask for notification permission once ever, from a user action (sending a message). Dismissing the browser's
+ *  prompt (neither allow nor block) leaves permission 'default', so a plain permission check would ask again on
+ *  every message; the localStorage flag remembers we already asked. */
+const ASKED_KEY = 'claude-ui:notify:asked'
 export function askPermission() {
-  if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {})
+  if (!('Notification' in window) || Notification.permission !== 'default') return
+  try { if (localStorage.getItem(ASKED_KEY)) return } catch {}
+  try { localStorage.setItem(ASKED_KEY, '1') } catch {}
+  Notification.requestPermission().catch(() => {})
 }
 
 export function notify(S: Session, why: 'done' | 'ask' | 'plan') {

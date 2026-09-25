@@ -43,11 +43,12 @@ type Call struct {
 }
 
 type Live struct {
-	mu    sync.Mutex
-	Token string
-	Gen   string
-	Mode  string
-	Model string
+	mu      sync.Mutex
+	writeMu sync.Mutex // serializes Write (the stdin pipe) so callers only need live.Mu around Registry itself
+	Token   string
+	Gen     string
+	Mode    string
+	Model   string
 
 	cmd   *exec.Cmd
 	stdin io.WriteCloser
@@ -263,6 +264,8 @@ func (l *Live) Alive() bool {
 }
 
 func (l *Live) Write(obj map[string]any) error {
+	l.writeMu.Lock() // one line at a time on this card's stdin; other cards are unaffected
+	defer l.writeMu.Unlock()
 	if obj["type"] == "user" {
 		l.mu.Lock()
 		l.busy = true
