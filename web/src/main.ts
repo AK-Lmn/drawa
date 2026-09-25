@@ -15,16 +15,18 @@ import { setMode } from './canvas/mode'
 import { selected } from './canvas/select' // also Ctrl/Cmd+A, Delete, arrow-key nudges
 import { addImage } from './items/image'
 import { noteHere } from './items/notes'
-import { sketch } from './items/sketch'
+import { doc } from './items/doc'
+import './items/sketch' // whiteboards you already have still load (new ones: the Scratchpad replaced it)
 import './items/diagram'
 import './items/plan'
 import './items/snippet'
 import './items/image'
+import './items/agent'
 import './canvas/find'
 import { openGit } from './items/git'
 import { openGitHub } from './items/github'
 import { tree, closeInspector, showTab } from './panels/files'
-import { cards, cur, newSession, meta } from './session/session'
+import { cards, cur, newSession, meta, cycleCards } from './session/session'
 import { attach } from './session/live'
 import { loadSessions } from './session/history'
 
@@ -32,7 +34,7 @@ const drawer = $('#drawer'), inspector = $('#inspector'), drawerBtn = $('#btn-dr
 const toggleDrawer = (open = drawer.hidden) => { drawer.hidden = !open; drawerBtn.setAttribute('aria-expanded', String(open)) }
 
 $('#btn-new').onclick = () => newSession()
-$('#btn-sketch').onclick = () => sketch({ edit: true })
+$('#btn-scratch').onclick = () => doc({ edit: true })
 $('#btn-git').onclick = () => openGit()
 drawerBtn.onclick = () => toggleDrawer()
 $('#dclose').onclick = () => toggleDrawer(false)
@@ -73,9 +75,12 @@ addEventListener('keydown', e => {
     else if (c === 'Digit0') zoomAt(1, undefined, undefined, true)
     else if (k === 'g') openGitHub()
     else if (k === 'h') toggleDrawer()
+    else if (k === 'c') cycleCards(-1)
     return
   }
   if (k === 'n') { e.preventDefault(); newSession() }
+  else if (k === 'c') cycleCards(1) // step through the session cards
+  else if (e.key === 'Enter' && cur && document.activeElement === document.body) { e.preventDefault(); cur.ta.focus() } // type in the focused card
   else if (k === 'd') setDrawing(!drawing)
   else if (drawing) return // in Draw mode, P/A/E/T and 7/5/0/8 pick its tools (canvas/ink.ts)
   else if (k === 'v' || c === 'Digit1') setMode('select')
@@ -83,7 +88,7 @@ addEventListener('keydown', e => {
   else if (k === 't') { e.preventDefault(); noteHere() }
   else if (toolKey(e)) useTool(toolKey(e)!) // the draw tools' keys switch Draw mode on with that tool
   else if (c === 'Digit9') pickImage.click()
-  else if (k === 's') { e.preventDefault(); sketch({ edit: true }) }
+  else if (k === 's') { e.preventDefault(); doc({ edit: true }) } // a scratchpad (T: a sticky note)
   else if (k === 'f') fit()
   else if (k === 'g') openGit()
 })

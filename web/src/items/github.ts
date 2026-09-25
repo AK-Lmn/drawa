@@ -2,7 +2,7 @@
 // conversation, the files changed, the checks. Anything here can go to Claude (see gh.ts). One per canvas, like Git.
 import { make, ICON, iconButton, button, confirmBox, ping, extLink, ago } from '../lib/dom'
 import { api, q } from '../lib/api'
-import { md, enhance } from '../lib/markdown'
+import { md, enhance, enhanceMarked } from '../lib/markdown'
 import { enhance as enhanceSelect } from '../lib/select'
 import { persist } from '../lib/store'
 import { items, savedRect, centerOn, spotBeside, changed, type Rect } from '../canvas/canvas'
@@ -128,9 +128,10 @@ async function prDetail(n: number) {
     const b = button(label, (v.sub ?? 'conv') === k ? 'on' : '', () => { v.sub = k; tabs.querySelectorAll('.on').forEach(x => x.classList.remove('on')); b.classList.add('on'); fill(); changed() })
     tabs.append(b)
   }
-  const fill = () => pane.replaceChildren(...(v.sub === 'files' ? files(p.diff) : v.sub === 'checks' ? checkList(p.checks) : conversation(p.body, [...p.comments, ...p.reviews])))
-  fill()
+  // on the page first: diagrams and code tools need it (conversation() builds them off it, enhanceMarked finishes them)
+  const fill = () => { pane.replaceChildren(...(v.sub === 'files' ? files(p.diff) : v.sub === 'checks' ? checkList(p.checks) : conversation(p.body, [...p.comments, ...p.reviews]))); enhanceMarked(pane) }
   w.body.replaceChildren(header(p.title, n, 'All pull requests', stateOf(p), [`@${p.author}`, `${p.head} → ${p.base}`, `+${p.additions} −${p.deletions}`, ...(REVIEW[p.review] ? [REVIEW[p.review]] : [])]), acts, tabs, pane)
+  fill()
 }
 
 function conversation(body: string, notes: Note[]) {
@@ -212,6 +213,7 @@ async function issueDetail(n: number) {
   }
   pane.append(...conversation(i.body, i.comments), box)
   w.body.replaceChildren(header(i.title, n, 'All issues', i.state.toLowerCase(), [`@${i.author}`, ago(i.created), ...i.labels]), acts, pane)
+  enhanceMarked(pane)
 }
 
 /* ---------- saved, and readable by Claude ---------- */

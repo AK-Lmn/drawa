@@ -5,15 +5,15 @@
 import { tipText } from '../lib/tooltip'
 import { make, ping, iconButton } from '../lib/dom'
 import { persist } from '../lib/store'
-import { world, onCanvas, liveRect, view, onChange, addItem, place, rect, savedRect, draggable, freeSpot, spotBeside, changed, type Rect } from './canvas'
+import { world, onCanvas, liveRect, view, onChange, addItem, place, rect, savedRect, draggable, freeSpot, spotBeside, changed, items, byIds, type Rect } from './canvas'
 import { makeWindow } from './window'
 import { referable } from './refs'
 import type { Session } from '../session/session'
 import type { Change } from '../panels/diff'
 import { openInspector, inspecting } from '../panels/files'
 
-export type Act = 'read' | 'edit' | 'write' | 'run' | 'plan' | 'made' | 'ref'
-const RANK: Act[] = ['plan', 'write', 'edit', 'run', 'made', 'read', 'ref'] // which action colors an edge that carries several
+export type Act = 'read' | 'edit' | 'write' | 'run' | 'plan' | 'made' | 'agent' | 'ref'
+const RANK: Act[] = ['plan', 'write', 'edit', 'run', 'agent', 'made', 'read', 'ref'] // which action colors an edge that carries several
 /** Everything known about one file across sessions: its diffs (for the inspector) and where it's shown. */
 interface FileInfo { path: string; add: number; del: number; changes: Change[]; kind: Act | 'fail'; rows: Set<HTMLElement>; node?: HTMLElement }
 interface FileList { el: HTMLElement; list: HTMLElement; count: HTMLElement; rows: Map<string, HTMLElement> }
@@ -37,6 +37,7 @@ referable('files', {
 })
 referable('run', {
   icon: '$',
+  name: 'commands',
   label: () => 'commands a session ran',
   content: el => {
     let budget = 20_000 // ponytail: long outputs are cut, newest commands first to keep
@@ -213,7 +214,8 @@ function schedule(viewOnly: boolean) {
 
 function geometry(e: Edge) {
   // full view covers the canvas: its arrows would only draw over it. Pinned windows keep theirs.
-  const hide = e.S.card.classList.contains('full') || e.target.classList.contains('full')
+  // (and arrows to windows gathered under their collapsed session: they sit right there)
+  const hide = e.S.card.classList.contains('full') || e.target.classList.contains('full') || !!e.target.dataset.home
   e.path.style.display = e.label.style.display = hide ? 'none' : ''
   if (hide) return
   const a = liveRect(e.S.card), b = liveRect(e.target)
@@ -233,7 +235,7 @@ function geometry(e: Edge) {
     sx = right ? a.x + a.w : a.x
     tx = right ? hx - 4 : hx + hw + 4
     ty = b.y + (head ? (head.offsetTop + head.offsetHeight / 2) * s : b.h / 2)
-    sy = Math.min(Math.max(ty, a.y + 60), a.y + a.h - 40)
+    sy = Math.min(Math.max(ty, a.y + Math.min(60, a.h / 2)), a.y + a.h - Math.min(40, a.h / 2)) // a collapsed card: its tab's middle
     const d = Math.max(60, Math.abs(tx - sx) / 2) * (right ? 1 : -1)
     c1x = sx + d; c1y = sy; c2x = tx - d; c2y = ty
   }
@@ -330,6 +332,59 @@ export function link(S: Session, el: HTMLElement, act: Act) {
   paintEdge(e)
   redraw()
 }
+
+/* ---------- a session's own windows (Files, commands, plans, what its Claude made) fold with it ---------- */
+const owned = (e: Edge) => !!(e.counts.made || e.counts.plan || e.counts.agent) || ['files', 'run'].includes(e.target.dataset.kind ?? '')
+const minBtn = (el: HTMLElement) => el.querySelector<HTMLElement>(':scope > .win-h .minbtn')
+document.addEventListener('collapse', ev => {
+  const S = [...edges.keys()].find(s => s.card === ev.target), min = (ev as CustomEvent<boolean>).detail
+  if (!S) return
+  // collapse what's open, and on expand reopen only those: windows you collapsed yourself stay collapsed. On the
+  // canvas they also gather as a stack of tabs under the session's tab, and go back to their places on expand
+  // (saved: see 'gathered' below). Stacked by the tab's height: no layout reads in the loop.
+  const a = rect(S.card), step = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tab-h')) || 34) + 6
+  let y = a.y + a.h + 10
+  for (const e of edges.get(S)!.values()) {
+    const t = e.target
+    if (!owned(e) || t.classList.contains('full')) continue
+    if (min) {
+      if (!t.classList.contains('min')) { t.dataset.folded = '1'; minBtn(t)?.click() }
+      if (onCanvas(t) && t.classList.contains('win') && !t.dataset.home) { // already collapsed ones come along too
+        t.dataset.home = `${parseFloat(t.style.left) || 0},${parseFloat(t.style.top) || 0}`
+        place(t, a.x + 24, y)
+        y += step
+      }
+    } else {
+      if (t.dataset.home && onCanvas(t)) { const [x, hy] = t.dataset.home.split(',').map(Number); place(t, x, hy) }
+      delete t.dataset.home
+      if (t.dataset.folded) { delete t.dataset.folded; if (t.classList.contains('min')) minBtn(t)?.click() }
+    }
+  }
+  redraw()
+  changed()
+})
+
+// a window you drag out of the pile is yours again: it stays where you put it (and its arrow shows again)
+document.addEventListener('moved', ev => {
+  const t = ev.target as HTMLElement
+  if (!t.dataset.home) return
+  delete t.dataset.home
+  redraw()
+})
+// where gathered windows came from, and which ones the session folded, so expanding after a reload still undoes it
+persist('gathered',
+  () => Object.fromEntries(items().filter(el => el.dataset.id && (el.dataset.home || el.dataset.folded))
+    .map(el => [el.dataset.id!, { home: el.dataset.home, folded: !!el.dataset.folded }])),
+  (v: Record<string, { home?: string; folded?: boolean }>) => {
+    const found = byIds()
+    for (const [id, g] of Object.entries(v ?? {})) {
+      const el = found.get(id)
+      if (!el) continue
+      if (g.home) el.dataset.home = g.home
+      if (g.folded) el.dataset.folded = '1'
+    }
+    redraw()
+  }, 2)
 
 /** Links to canvas items a session's Claude made or edited (canvas tools). Replaying the transcript rebuilds file
  *  links, not these, so they're saved with the layout (see session.ts). */

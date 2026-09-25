@@ -98,6 +98,7 @@ persist('sketches',
   (list: (Rect & { id: string; title: string })[]) => list.forEach(s => sketch({ id: s.id, title: s.title, rect: s })))
 referable('sketch', {
   icon: '✎',
+  name: 'whiteboard',
   content: async (el, label) => {
     const image = await sketchPng(el.dataset.id!)
     return image ? { text: `Whiteboard "${label}"`, image } : { text: `Whiteboard "${label}": (empty)` }

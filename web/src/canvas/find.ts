@@ -2,7 +2,7 @@
 // title and content, Enter flies to it, brings it to the front and expands it if it was collapsed.
 import { $, make, ping } from '../lib/dom'
 import { items, centerOn, front, onCanvas } from './canvas'
-import { refIcon } from './refs'
+import { refIcon, kindName } from './refs'
 import { titleOf, expand, focusInput } from './window'
 
 const box = document.body.appendChild(make('div', 'finder'))
@@ -15,7 +15,6 @@ input.setAttribute('aria-label', 'Find a window')
 const list = box.appendChild(make('div', 'finder-list'))
 list.setAttribute('role', 'listbox')
 
-const KIND: Record<string, string> = { session: 'session', note: 'note', diagram: 'diagram', sketch: 'whiteboard', plan: 'plan', snippet: 'snippet', file: 'file', files: 'files', run: 'commands', git: 'git' }
 const TEXT = 40_000
 /** What a window's content search covers: a chat log's newest ~40k characters (read row by row from the end, so a
  *  huge transcript isn't turned into one string), other windows' first 40k. */
@@ -35,7 +34,7 @@ let hits: Hit[] = [], sel = 0, index: Entry[] = []
 function build() {
   // most recently brought to the front first: that's the order you used them in
   index = items().sort((a, b) => (Number(b.style.zIndex) || 0) - (Number(a.style.zIndex) || 0)).map(el => {
-    const title = titleOf(el) || KIND[el.dataset.kind!] || '', body = textOf(el)
+    const title = titleOf(el) || kindName(el.dataset.kind ?? ''), body = textOf(el)
     return { el, title, t: title.toLowerCase(), kind: el.dataset.kind ?? '', body, b: body.toLowerCase() }
   })
 }
@@ -50,7 +49,7 @@ function search(q: string): Hit[] {
     let score = 0, inBody = -1
     for (const w of words) {
       if (t.includes(w)) score += 10
-      else if (KIND[kind]?.startsWith(w)) score += 4
+      else if (kindName(kind).startsWith(w)) score += 4
       else if (b.includes(w)) { score += 1; if (inBody < 0) inBody = b.indexOf(w) }
       else { score = -1; break }
     }
@@ -71,7 +70,7 @@ function draw() {
     row.dataset.kind = h.kind
     const main = make('span', 'fr-main')
     main.append(make('b', '', h.title || '(untitled)'), ...(h.excerpt ? [make('small', '', h.excerpt)] : []))
-    row.append(make('i', 'fr-g', refIcon(h.kind)), main, make('span', 'fr-k', KIND[h.kind] ?? h.kind))
+    row.append(make('i', 'fr-g', refIcon(h.kind)), main, make('span', 'fr-k', kindName(h.kind)))
     row.onmousedown = e => { e.preventDefault(); go(h.el) }
     return row
   }) : [make('p', 'none', 'No window matches.')]))

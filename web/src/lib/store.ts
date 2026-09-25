@@ -24,7 +24,7 @@ export function save(slices?: string[] | Event) {
   try { localStorage.setItem(KEY(), json); written = json; warned = false }
   catch (e) {
     // full (or storage blocked): the layout stops saving, so say it once instead of losing changes silently
-    if (!warned) toast(`The canvas couldn't be saved in this browser (${(e as Error).name}). Remove big snippets or whiteboards to make room.`)
+    if (!warned) toast(`The canvas couldn't be saved in this browser (${(e as Error).name}). Remove big snippets or scratchpads to make room.`)
     warned = true
   }
 }

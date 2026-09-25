@@ -9,7 +9,7 @@
 .brand b{min-width:0;font-weight:650;font-size:14px;white-space:nowrap}
 /* narrower windows: the toolbar steps down instead of overlapping (labels stay as aria-labels and tooltips) */
 @media (max-width:1280px){#ppath{display:none}}
-@media (max-width:1100px){#btn-find{padding:0 8px}#btn-draw .lbl,#btn-sketch .lbl,#btn-git .lbl,#btn-drawer .lbl{display:none}#btn-draw,#btn-sketch,#btn-git,#btn-drawer{padding:0 8px}#bar .xsel-label{max-width:150px}}
+@media (max-width:1100px){#btn-find{padding:0 8px}#btn-draw .lbl,#btn-scratch .lbl,#btn-git .lbl,#btn-drawer .lbl{display:none}#btn-draw,#btn-scratch,#btn-git,#btn-drawer{padding:0 8px}#bar .xsel-label{max-width:150px}}
 @media (max-width:560px){#pname{display:none}} /* phones: the logo stays; a squeezed name would be a sliver */
 @media (max-width:820px){#btn-new .lbl{display:none}#btn-new{padding:0 8px}#bar .xsel-label{max-width:110px}}
 #ppath{font:11.5px var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:28vw}

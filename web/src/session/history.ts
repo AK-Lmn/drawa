@@ -5,6 +5,7 @@ import { enhanceMarked } from '../lib/markdown'
 import { save } from '../lib/store'
 import { cards, newSession, focus, renderCard, pinToBottom } from './session'
 import { replay } from './stream'
+import { agentsStopped } from '../items/agent'
 import { centerOn, type Rect } from '../canvas/canvas'
 import { redraw } from '../canvas/graph'
 
@@ -58,14 +59,21 @@ export async function resume(s: { id: string; title: string; cid?: string }, at?
     try {
       // long sessions: only the newest messages go into the page; older ones are still replayed (so the Files
       // window, terminal and plans are complete) but built off-page, and shown when you ask for them
-      let cut = Math.max(0, msgs.length - SHOWN)
-      while (cut > 0 && msgs[cut].role !== 'user') cut--
+      // sub-agents' messages (their ids, what they did) go to their windows, not the log: counted apart
+      const own = (m: SavedMessage & { parent?: string }) => !m.parent
+      const main = msgs.filter(own), agents = msgs.filter(m => !own(m))
+      let cut = Math.max(0, main.length - SHOWN)
+      while (cut > 0 && main[cut].role !== 'user') cut--
+      agents.filter(m => (m as { aid?: string }).aid).forEach(m => replay(S, m)) // ids first: replayed SendMessage calls need them
       S.log = older
-      msgs.slice(0, cut).forEach(m => replay(S, m))
+      main.slice(0, cut).forEach(m => replay(S, m))
       S.log = live
-      msgs.slice(cut).forEach(m => replay(S, m))
+      main.slice(cut).forEach(m => replay(S, m))
+      agents.filter(m => !(m as { aid?: string }).aid).forEach(m => replay(S, m)) // after: their Agent calls made their windows
     } finally { S.log = live; S.replaying = false; quietPings(false) }
     if (older.childElementCount) live.prepend(earlier(live, older))
+    if (S.gone) agentsStopped(S) // the stream said so before the transcript arrived
+    renderCard(S) // skipped while replaying: its state (a background agent still running) and header
     pinToBottom(S)
   } catch (e) {
     // restored mid-way through its first reply: the CLI hasn't written the transcript yet, but the live process has

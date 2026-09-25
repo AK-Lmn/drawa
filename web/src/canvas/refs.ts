@@ -9,6 +9,8 @@ interface Content { text: string; image?: string; imageType?: string }
 export interface Ref { kind: string; label: string; el: HTMLElement }
 interface Referable {
   icon: string
+  /** What the kind is called (Ctrl+K rows, search by kind); default: the kind itself. */
+  name?: string
   /** What a chip and the @ menu call it (default: the window's title). */
   label?: (el: HTMLElement) => string
   content: (el: HTMLElement, label: string) => Promise<Content> | Content
@@ -18,6 +20,7 @@ const kinds = new Map<string, Referable>()
 /** Let items of this kind be referenced in messages. */
 export const referable = (kind: string, r: Referable) => { kinds.set(kind, r) }
 export const refIcon = (kind: string) => kinds.get(kind)?.icon ?? '•'
+export const kindName = (kind: string) => kinds.get(kind)?.name ?? kind
 
 export function refOf(el: HTMLElement): Ref | null {
   const kind = el.dataset.kind, r = kind ? kinds.get(kind) : undefined

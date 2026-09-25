@@ -8,6 +8,7 @@
 .xsel:disabled{opacity:.55;cursor:default}
 /* permission-mode colors, set from the select's data-mode */
 .xsel[data-mode=acceptEdits]{color:var(--edit);border-color:color-mix(in oklab,var(--edit) 50%,var(--line))}
+.xsel[data-mode=auto]{color:var(--write);border-color:color-mix(in oklab,var(--write) 50%,var(--line))}
 .xsel[data-mode=bypassPermissions]{color:var(--danger);border-color:color-mix(in oklab,var(--danger) 55%,var(--line))}
 .xsel[data-mode] svg{color:currentColor}
 

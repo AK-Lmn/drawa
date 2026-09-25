@@ -121,5 +121,45 @@ class Stream(unittest.TestCase):
         self.assertLess(len(d["message"]["content"][0]["content"]), 21_000)
 
 
+class Sessions(unittest.TestCase):
+    def test_subagent_ids_first(self):
+        import pathlib
+        root, keep = pathlib.Path(tempfile.mkdtemp()), server.SESSIONS
+        (root / "s.jsonl").write_text(json.dumps({"type": "user", "message": {"content": "hi"}}) + "\n")
+        sub = root / "s" / "subagents"
+        sub.mkdir(parents=True)
+        (sub / "agent-a1b2.meta.json").write_text(json.dumps({"toolUseId": "toolu_X"}))
+        (sub / "agent-a1b2.jsonl").write_text(json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}}) + "\n")
+        try:
+            server.SESSIONS = root
+            msgs = server.load_session("s")
+        finally:
+            server.SESSIONS = keep
+        self.assertEqual(msgs[0], {"role": "agent", "content": [], "parent": "toolu_X", "aid": "a1b2"})
+        self.assertEqual(msgs[-1]["parent"], "toolu_X")
+
+    def test_subagent_partial_line_and_finished_agents(self):
+        """An agent still writing its transcript (reload mid-agent) mustn't break loading; a finished agent's messages
+        are left for its window to fetch."""
+        import pathlib
+        root, keep = pathlib.Path(tempfile.mkdtemp()), server.SESSIONS
+        line = lambda t, c: json.dumps({"type": t, "message": {"content": c}}) + "\n"
+        (root / "s.jsonl").write_text(line("user", "hi") + line("user", [{"type": "tool_result", "tool_use_id": "toolu_DONE", "content": "the report"}]) + '{"type": "assist')
+        sub = root / "s" / "subagents"
+        sub.mkdir(parents=True)
+        for aid, call in (("run1", "toolu_RUN"), ("done1", "toolu_DONE")):
+            (sub / f"agent-{aid}.meta.json").write_text(json.dumps({"toolUseId": call}))
+            (sub / f"agent-{aid}.jsonl").write_text(line("assistant", [{"type": "text", "text": "working"}]) + '{"type": "user", "mess')
+        try:
+            server.SESSIONS = root
+            msgs = server.load_session("s")
+            one = server.load_session("s", "toolu_DONE")
+        finally:
+            server.SESSIONS = keep
+        self.assertIn({"role": "agent", "content": [], "parent": "toolu_DONE", "aid": "done1", "lazy": True}, msgs)
+        self.assertEqual([m["parent"] for m in msgs if m.get("parent") and "aid" not in m], ["toolu_RUN"])  # finished: not sent
+        self.assertEqual([m.get("aid") or m["content"][0]["text"] for m in one], ["done1", "working"])  # fetched on demand
+
+
 if __name__ == "__main__":
     unittest.main()

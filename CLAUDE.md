@@ -17,7 +17,7 @@ web/src/
   lib/         no knowledge of the app: api, store (persistence), blobs (IndexedDB), dom helpers, markdown, select, fonts
   canvas/      the canvas engine: view, items, window shape, graph edges, ink, references registry
   session/     session cards: card, composer, stream rendering, asks, live connection, history
-  items/       one file per kind of canvas item: notes, sketch, diagram, plan, snippet, git, image, github (+ gh.ts, its data and Send to Claude)
+  items/       one file per kind of canvas item: notes, sketch, diagram, plan, snippet, git, image, github (+ gh.ts, its data and Send to Claude), agent (a sub-agent's window), doc (a Markdown window)
   panels/      side panels: file tree + inspector, diffs
   styles/      index.css imports tokens.css, then one stylesheet per area
 ```
@@ -37,7 +37,7 @@ The app scales through these registration points. A new feature should plug into
 |---|---|---|
 | Something on the canvas | `addItem(el, kind)` for bare nodes, or `makeWindow({...})` for windows | `canvas/canvas.ts`, `canvas/window.ts` |
 | Survive a reload | `persist(key, save, load, phase)` | `lib/store.ts` |
-| Referenceable with `@` or by dropping on a card | `referable(kind, { icon, label, content })` | `canvas/refs.ts` |
+| Referenceable with `@` or by dropping on a card | `referable(kind, { icon, name, label, content })` (`name`: what Ctrl+K calls the kind) | `canvas/refs.ts` |
 | Recover after the server comes back | `onReconnect(fn)` | `lib/connection.ts` |
 | Claude can create or edit it (canvas tools) | `creatable(kind, { size, create, update })` | `canvas/tools.ts` |
 | Removed as part of a deleted selection, without its own confirm | `removable(kind, fn)` (only if its × button asks first or it has none; otherwise its × is clicked) | `canvas/select.ts` |

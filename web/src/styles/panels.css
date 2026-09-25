@@ -109,3 +109,4 @@ body.has-dock #hint{display:none}
 .floats>.win{position:fixed;left:var(--fx)!important;top:var(--fy)!important;z-index:var(--fz,1)!important;pointer-events:auto}
 .floats>.win>.win-h{cursor:grab}
 .floats>.win.dragging>.win-h{cursor:grabbing}
+body.has-full :is(#nav,#hint){display:none} /* a window in full view fills the screen: nothing to navigate, and it would cover the message box */

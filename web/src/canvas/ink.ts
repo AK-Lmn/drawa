@@ -5,23 +5,27 @@
 // stored in units of its width (FIT across), so they stay on the same spot at any size, full view included.
 import { getStroke } from 'perfect-freehand'
 import { $, confirmBox, shortcutOk, closestAt, perFrame } from '../lib/dom'
-import { toWorld, view, changed, onChange } from './canvas'
+import { toWorld, view, changed, onChange, type Mover } from './canvas'
 import { persist } from '../lib/store'
 import { startLink } from './links'
+import { SHAPES, SHAPE_NAME, outlinePoints, fillPath, constrain, type Shape } from './shapes'
 
 // a stroke with `t` is text: p[0] is its top-left corner, s its font size (both in the same units as a stroke's)
 // In a host marked data-ink-rows (a chat log), `a` is the row the stroke was drawn over and `o` that row's offsetTop
 // then: rows off screen are laid out at an estimated height (content-visibility) until they render, so the stroke
 // follows its row, not the top of the log.
 // `rid` is the row's own id when it has one (tool rows): the surest way back to it after a reload.
+// A stroke with `sh` is a shape (canvas/shapes.ts): p holds its two corners (a line's two ends), `f` fills it.
 // `row` and `bb` (bounding box) are only kept in memory.
-interface Stroke { c: string; s: number; sim: boolean; p: number[][]; t?: string; a?: number; o?: number; k?: string; rid?: string; h?: string
-  host?: HTMLElement; el?: SVGPathElement | SVGTextElement; row?: HTMLElement; bb?: [number, number, number, number] }
+export interface Stroke { c: string; s: number; sim: boolean; p: number[][]; t?: string; sh?: Shape; f?: boolean; a?: number; o?: number; k?: string; rid?: string; h?: string
+  host?: HTMLElement; el?: SVGPathElement | SVGTextElement | SVGGElement; row?: HTMLElement; bb?: [number, number, number, number]; sel?: boolean }
 const NS = 'http://www.w3.org/2000/svg'
 const svg = $<SVGSVGElement>('#ink'), capture = $('#ink-capture'), bar = $('#inkbar'), btn = $('#btn-draw')
 const strokes: Stroke[] = []
 const FIT = 1000
 const fits = (host?: HTMLElement) => !!host && 'inkFit' in host.dataset
+/** Stored units per host px: FIT across a fitted host (a picture, a diagram), otherwise its own pixels. */
+const unitsPerHostPx = (host?: HTMLElement) => (fits(host) ? FIT / host!.offsetWidth : 1)
 const rows = (host: HTMLElement) => [...host.children].filter(c => !c.matches('svg.ink-local')) as HTMLElement[]
 
 const rowKey = (row: Element) => (row.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 60)
@@ -67,14 +71,15 @@ function unwatch(host: HTMLElement) {
   w.added.disconnect()
   watchers.delete(host)
 }
-let color = 'ink', size = 4
+let color = 'ink', size = 4, fill = false
 export let drawing = false
 
 /* ---------- rendering ---------- */
-function outline(s: Stroke) {
-  const o = getStroke(s.p, { size: s.s, thinning: 0.5, smoothing: 0.5, streamline: 0.4, simulatePressure: s.sim })
-  return o.length ? 'M' + o.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L') + 'Z' : ''
-}
+const pathOf = (o: number[][]) => (o.length ? 'M' + o.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L') + 'Z' : '')
+const outline = (s: Stroke) => pathOf(getStroke(s.p, { size: s.s, thinning: 0.5, smoothing: 0.5, streamline: 0.4, simulatePressure: s.sim }))
+/** A shape's outline, drawn with the same pen (even weight, no pressure), so it sits with the freehand ink. */
+const shapeOutline = (s: Stroke) =>
+  pathOf(getStroke(outlinePoints(s.sh!, s.p[0], s.p[1], s.s * 1.5), { size: s.s, thinning: 0, smoothing: 0.3, streamline: 0.15, simulatePressure: false, last: true }))
 /** The layer a stroke draws into: the canvas-wide one, or an overlay inside its window (scrolls with its content). */
 function layer(host?: HTMLElement): SVGSVGElement {
   if (!host) return svg
@@ -90,13 +95,24 @@ function layer(host?: HTMLElement): SVGSVGElement {
   }
   return l
 }
-function paint(s: Stroke) {
+export function paint(s: Stroke) {
   s.bb = undefined // measured again when asked
   if (s.host && s.a != null) requestAnimationFrame(() => follow(s.host!))
-  if (s.t != null) return paintText(s)
-  s.el ??= layer(s.host).appendChild(document.createElementNS(NS, 'path'))
-  s.el.setAttribute('d', outline(s))
-  s.el.setAttribute('class', `ink-${s.c}`)
+  if (s.t != null) paintText(s)
+  else if (s.sh) paintShape(s)
+  else {
+    s.el ??= layer(s.host).appendChild(document.createElementNS(NS, 'path'))
+    s.el.setAttribute('d', outline(s))
+    s.el.setAttribute('class', `ink-${s.c}`)
+  }
+  if (s.sel) s.el?.classList.add('ink-sel') // painting resets the class: keep the selection's mark
+}
+function paintShape(s: Stroke) {
+  const g = (s.el ??= layer(s.host).appendChild(document.createElementNS(NS, 'g'))) as SVGGElement
+  g.setAttribute('class', `ink-${s.c} ink-shape`)
+  const part = (cls: string, d: string) => { const e = document.createElementNS(NS, 'path'); e.setAttribute('class', cls); e.setAttribute('d', d); return e }
+  const area = s.f ? fillPath(s.sh!, s.p[0], s.p[1]) : ''
+  g.replaceChildren(...(area ? [part('ink-fill', area)] : []), part('ink-line', shapeOutline(s)))
 }
 function paintText(s: Stroke) {
   const el = (s.el ??= layer(s.host).appendChild(document.createElementNS(NS, 'text'))) as SVGTextElement
@@ -111,9 +127,14 @@ function paintText(s: Stroke) {
     return span
   }))
 }
-function remove(s: Stroke) {
-  s.el?.remove()
-  strokes.splice(strokes.indexOf(s), 1)
+/** Take strokes off the drawing (any number at once: one pass over the list). */
+export function remove(...gone: Stroke[]) {
+  if (!gone.length) return
+  const out = new Set(gone)
+  for (const s of gone) s.el?.remove()
+  const keep = strokes.filter(s => !out.has(s))
+  strokes.length = 0
+  strokes.push(...keep)
   changed()
 }
 
@@ -126,22 +147,23 @@ export function setDrawing(on: boolean) {
   document.body.classList.toggle('drawing', on) // lifts the drawing surface over pinned windows (canvas.css)
   if (!on) { setTool('pen'); editor?.blur() }
 }
-/** Draw mode's tool: the pen, the Arrow tool (connect two items), the eraser, or Text (click to write). */
-export type Tool = 'pen' | 'arrow' | 'eraser' | 'text'
+/** Draw mode's tool: the pen, the Arrow tool (connect two items), the eraser, Text (click to write), or a shape. */
+export type Tool = 'pen' | 'arrow' | 'eraser' | 'text' | Shape
 let tool: Tool = 'pen'
-const BTN: Record<Tool, string> = { pen: '', arrow: 'arrow', eraser: 'erase', text: 'text' }
+const btnOf = (t: Tool) => (t === 'eraser' ? 'erase' : t === 'pen' ? '' : t)
+const isShape = (t: Tool): t is Shape => (SHAPES as string[]).includes(t)
 function setTool(t: Tool) {
   tool = t
   document.body.classList.toggle('erasing', t === 'eraser')
   document.body.classList.toggle('texting', t === 'text')
-  for (const b of bar.querySelectorAll('[data-ink=arrow], [data-ink=erase], [data-ink=text]')) b.classList.toggle('on', b.getAttribute('data-ink') === BTN[t])
+  for (const b of bar.querySelectorAll(['arrow', 'erase', 'text', ...SHAPES].map(k => `[data-ink=${k}]`).join()))
+    b.classList.toggle('on', b.getAttribute('data-ink') === btnOf(t))
 }
 const pick = (t: Tool) => setTool(tool === t ? 'pen' : t) // picking the tool that's on goes back to the pen
-/** Excalidraw's keys for the tools: P/7 pen, A/5 arrow, E/0 eraser, T/8 text. */
-export function toolKey(e: KeyboardEvent): Tool | null {
-  const k = e.key.toLowerCase(), c = e.code
-  return k === 'p' || c === 'Digit7' ? 'pen' : k === 'a' || c === 'Digit5' ? 'arrow' : k === 'e' || c === 'Digit0' ? 'eraser' : k === 't' || c === 'Digit8' ? 'text' : null
-}
+/** Excalidraw's keys for the tools: R/2 rectangle, 3 diamond (D toggles Draw here), O/4 ellipse, A/5 arrow, L/6 line,
+ *  P/7 pen, T/8 text, E/0 eraser. */
+const KEYS: Record<string, Tool> = { r: 'rect', Digit2: 'rect', Digit3: 'diamond', o: 'ellipse', Digit4: 'ellipse', a: 'arrow', Digit5: 'arrow', l: 'line', Digit6: 'line', p: 'pen', Digit7: 'pen', t: 'text', Digit8: 'text', e: 'eraser', Digit0: 'eraser' }
+export const toolKey = (e: KeyboardEvent): Tool | null => KEYS[e.key.toLowerCase()] ?? KEYS[e.code] ?? null
 
 /* ---------- input: left button draws (or erases); middle button and wheel still pan the canvas ---------- */
 capture.addEventListener('pointerdown', e => {
@@ -151,34 +173,47 @@ capture.addEventListener('pointerdown', e => {
   capture.setPointerCapture(e.pointerId)
   if (tool === 'arrow') return startLink(e, color, capture)
   if (tool === 'text') { e.preventDefault(); return writeAt(e) }
-  if (tool === 'eraser') {
-    eraseAt(e)
-    const mv = (ev: PointerEvent) => eraseAt(ev)
-    const up = () => { capture.removeEventListener('pointermove', mv); capture.removeEventListener('pointerup', up) }
-    capture.addEventListener('pointermove', mv)
-    capture.addEventListener('pointerup', up)
-    return
-  }
+  if (tool === 'eraser') { eraseAt(e); return listen(eraseAt, () => {}) }
   const { host, pt, scale } = placeAt(e)
+  if (isShape(tool)) return drawShape(e, tool, host, pt, scale)
   // size is in screen px at the moment of drawing, so a stroke looks the same weight at any zoom (or in full view)
   const s: Stroke = { c: color, s: size * scale, sim: e.pointerType !== 'pen', p: [pt(e)], host, h: host?.dataset.ink, ...rowAt(host, e) }
   strokes.push(s)
   paint(s)
   const repaint = perFrame(() => paint(s))
-  const mv = (ev: PointerEvent) => {
+  listen(ev => {
     for (const c of ev.getCoalescedEvents?.() ?? [ev]) s.p.push(pt(c))
     repaint()
-  }
-  const up = () => {
+  }, () => { thin(s); paint(s); changed() })
+})
+
+/** Follow a press on the capture layer until it ends, released or cancelled (a touch the browser takes over):
+ *  without the cancel, the next press would drive two strokes at once. */
+function listen(mv: (ev: PointerEvent) => void, up: () => void) {
+  const end = () => {
     capture.removeEventListener('pointermove', mv)
-    capture.removeEventListener('pointerup', up)
-    thin(s)
-    paint(s)
-    changed()
+    capture.removeEventListener('pointerup', end)
+    capture.removeEventListener('pointercancel', end)
+    up()
   }
   capture.addEventListener('pointermove', mv)
-  capture.addEventListener('pointerup', up)
-})
+  capture.addEventListener('pointerup', end)
+  capture.addEventListener('pointercancel', end)
+}
+
+/** Drag out a shape from the press; Shift makes it a square / circle, or snaps a line to 45°. Too small: dropped. */
+function drawShape(e: PointerEvent, sh: Shape, host: HTMLElement | undefined, pt: (ev: PointerEvent) => number[], scale: number) {
+  const a = pt(e).slice(0, 2)
+  const s: Stroke = { c: color, s: size * scale, sim: false, p: [a, a], sh, ...(fill && sh !== 'line' ? { f: true } : {}), host, h: host?.dataset.ink, ...rowAt(host, e) }
+  strokes.push(s)
+  const redraw = perFrame(() => paint(s))
+  listen(ev => { const b = pt(ev).slice(0, 2); s.p = [a, ev.shiftKey ? constrain(sh, a, b) : b]; redraw() }, () => {
+    const [[x0, y0], [x1, y1]] = s.p
+    if (Math.hypot(x1 - x0, y1 - y0) / scale < 4) return remove(s) // a click, not a drag
+    paint(s)
+    changed()
+  })
+}
 
 /** Drop points closer than a fraction of the pen's width to the last one kept: the outline looks the same, and
  *  saved layouts stay far smaller (a fast mouse sends hundreds of points per stroke). */
@@ -195,7 +230,7 @@ function placeAt(e: { clientX: number; clientY: number }) {
   const host = closestAt(e.clientX, e.clientY, '[data-ink]') ?? undefined
   const fit = fits(host), b = host?.getBoundingClientRect()
   const k = host && b ? b.width / host.offsetWidth : view.k // screen px per host px (or world px)
-  const u = fit ? FIT / host!.offsetWidth : 1 // stored units per host px
+  const u = unitsPerHostPx(host)
   const pt = (ev: { clientX: number; clientY: number; pressure?: number }) => {
     if (!host || !b) { const w = toWorld(ev.clientX, ev.clientY); return [w.x, w.y, ev.pressure || 0.5] }
     if (fit) return [(ev.clientX - b.left) / k * u, (ev.clientY - b.top) / k * u, ev.pressure || 0.5]
@@ -264,7 +299,7 @@ function writeAt(e: PointerEvent) {
 
 function eraseAt(e: PointerEvent) {
   for (const el of document.elementsFromPoint(e.clientX, e.clientY)) {
-    const s = strokes.find(s => s.el === el)
+    const s = strokes.find(s => s.el === el || s.el?.contains(el)) // a shape's parts are inside its group
     if (s) remove(s)
   }
 }
@@ -291,9 +326,11 @@ for (const b of bar.querySelectorAll<HTMLButtonElement>('[data-ink]')) {
     else if (kind === 'erase') return pick('eraser')
     else if (kind === 'arrow') return pick('arrow')
     else if (kind === 'text') return pick('text')
+    else if (isShape(kind as Tool)) return pick(kind as Shape)
+    else if (kind === 'fill') { fill = !fill; b.classList.toggle('on', fill); b.setAttribute('aria-pressed', String(fill)); return }
     else if (kind === 'undo') { const s = strokes.at(-1); if (s) remove(s); return }
     else if (kind === 'clear') {
-      if (strokes.length) confirmBox('Erase all drawing?', 'Every stroke on the canvas is removed. Undo can\'t bring them back.', 'Erase all').then(ok => { if (ok) [...strokes].forEach(remove) })
+      if (strokes.length) confirmBox('Erase all drawing?', 'Every stroke on the canvas is removed. Undo can\'t bring them back.', 'Erase all').then(ok => { if (ok) remove(...strokes) })
       return
     }
     else if (kind === 'done') return setDrawing(false)
@@ -308,7 +345,7 @@ export const hasInk = (el: HTMLElement) => strokes.some(s => s.host && el.contai
 /** Drop a window's own ink (e.g. a plan's marks when a new version replaces the text they were about, or a session
  *  being closed) and stop watching its rows. */
 export function clearInk(host: HTMLElement) {
-  for (const s of onHost(host)) remove(s)
+  remove(...onHost(host))
   unwatch(host)
 }
 
@@ -328,16 +365,33 @@ function bbox(s: Stroke) {
 const over = (s: Stroke, r: Box) => {
   const [x0, y0, x1, y1] = bbox(s)
   if (x1 < r.x || x0 > r.x + r.w || y1 < r.y || y0 > r.y + r.h) return false
-  return s.t != null || s.p.some(([x, y]) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h)
+  return s.t != null || !!s.sh || s.p.some(([x, y]) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h)
 }
 
 /** Canvas-level strokes overlapping a world-space rectangle, as SVG path data + color (for snapshots). */
 export function strokesIn(r: Box) {
-  return strokes.filter(s => !s.host && over(s, r))
-    .map(s => ({ d: s.el?.getAttribute('d') ?? '', color: s.el ? getComputedStyle(s.el).fill : '#000', text: s.t, at: s.p[0], size: s.s }))
+  return strokes.filter(s => !s.host && over(s, r)).map(s => {
+    const line = s.sh ? s.el?.querySelector('.ink-line') : s.el
+    return { d: line?.getAttribute('d') ?? '', area: s.el?.querySelector('.ink-fill')?.getAttribute('d') ?? '',
+      color: s.el ? getComputedStyle(s.el).fill : '#000', text: s.t, at: s.p[0], size: s.s }
+  })
 }
 /** Is anything drawn on or over this window (canvas_list's drawnOn)? Cheaper than strokesIn: stops at the first. */
 export const inkOn = (el: HTMLElement, r: Box) => strokes.some(s => (s.host ? el.contains(s.host) : over(s, r)))
+
+/** The shapes drawn on a window or over its area, for Claude to read as text: kind, and where. */
+export function shapesOn(el: HTMLElement, r: Box) {
+  return strokes.filter(s => s.sh && (s.host ? el.contains(s.host) : over(s, r))).map(s => {
+    const [x0, y0, x1, y1] = bbox(s), pct = (v: number, a: number, len: number) => Math.round(((v - a) / len) * 100)
+    const name = (s.sh === 'ellipse' ? 'an ' : 'a ') + SHAPE_NAME[s.sh!] + (s.f ? ' (filled)' : '')
+    if (s.k) return `${name} over the message "${s.k}"`
+    if (s.host) { // host units: FIT across for pictures and diagrams, pixels otherwise
+      const w = fits(s.host) ? FIT : s.host.offsetWidth, h = fits(s.host) ? (FIT * s.host.offsetHeight) / s.host.offsetWidth : s.host.offsetHeight
+      return `${name} at ${pct(x0, 0, w)}–${pct(x1, 0, w)}% across, ${pct(y0, 0, h)}–${pct(y1, 0, h)}% down`
+    }
+    return `${name} at ${pct(x0, r.x, r.w)}–${pct(x1, r.x, r.w)}% across, ${pct(y0, r.y, r.h)}–${pct(y1, r.y, r.h)}% down this window`
+  })
+}
 
 /** What the user wrote (Text tool) on a window or over its area, for Claude to read as text. */
 export function textsOn(el: HTMLElement, r: Box) {
@@ -348,7 +402,7 @@ export function textsOn(el: HTMLElement, r: Box) {
 type Saved = Omit<Stroke, 'el' | 'host' | 'row' | 'bb'>
 const ink = () => [
   ...strokes.filter(s => !s.host || s.host.isConnected) // a closed window's ink goes with it
-    .map(({ c, s, sim, p, h, t, a, o, k, rid }): Saved => ({ c, s: +s.toFixed(2), sim, h, p: p.map(q => q.map(n => +n.toFixed(1))), ...(t != null ? { t } : {}), ...(a != null ? { a, o: Math.round(o!), k, ...(rid ? { rid } : {}) } : {}) })),
+    .map(({ c, s, sim, p, h, t, sh, f, a, o, k, rid }): Saved => ({ c, s: +s.toFixed(2), sim, h, p: p.map(q => q.map(n => +n.toFixed(1))), ...(t != null ? { t } : {}), ...(sh ? { sh, ...(f ? { f } : {}) } : {}), ...(a != null ? { a, o: Math.round(o!), k, ...(rid ? { rid } : {}) } : {}) })),
   ...waiting,
 ]
 // strokes whose window isn't on the canvas (yet): kept and written back, so a window that loads late (or failed to
@@ -384,4 +438,39 @@ export function fitInk(box: HTMLElement, svg: SVGSVGElement) {
   inkBox(box.dataset.ink!, box, vb?.width || 1, vb?.height || 1)
   box.querySelector(':scope > svg:not(.ink-local)')?.remove()
   box.prepend(svg)
+}
+
+/* ---------- for moving drawn objects (canvas/shapes.ts) ---------- */
+/** The shape or Text-tool text this element belongs to (pen strokes aren't objects). */
+export const objectAt = (t: Element) => strokes.find(s => (s.sh || s.t != null) && s.el && (s.el === t || s.el.contains(t))) ?? null
+/** Stored units per screen pixel for this stroke's host (the canvas, a window, or a picture scaled to fit). */
+export function unitsPerPx(s: Stroke) {
+  if (!s.host) return 1 / view.k
+  const k = s.host.getBoundingClientRect().width / s.host.offsetWidth
+  return unitsPerHostPx(s.host) / k
+}
+
+/* ---------- for the canvas selection (canvas/select.ts): drawings on the canvas itself ---------- */
+/** Canvas-level strokes, shapes and text overlapping a world-space box (all of them without one); `from`: only
+ *  among these (a selection box takes the list once, then narrows it each frame). */
+export const canvasStrokes = (r?: Box, from = strokes) => from.filter(s => !s.host && s.el && (!r || over(s, r)))
+/** Its box in canvas units: x, y, w, h. */
+export const strokeRect = (s: Stroke): Box => { const [x0, y0, x1, y1] = bbox(s); return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } }
+export const markStroke = (s: Stroke, on: boolean) => { s.sel = on; s.el?.classList.toggle('ink-sel', on) }
+/** A mover for these strokes, given the total offset from where they are now in canvas units (a stroke on a window
+ *  converts it to its window's units). While moving it only shifts their elements (a transform: no re-tracing of
+ *  hundreds of pen outlines per frame); `end()` writes the new points and repaints once. */
+export function strokeMover(list: Stroke[]): Mover {
+  const f = list.map(s => view.k * unitsPerPx(s)), base = list.map(s => s.el?.getAttribute('transform') ?? '')
+  let dx = 0, dy = 0
+  const move = (x: number, y: number) => {
+    dx = x; dy = y
+    list.forEach((s, i) => s.el?.setAttribute('transform', `${base[i]} translate(${x * f[i]} ${y * f[i]})`.trim()))
+  }
+  return Object.assign(move, { end: () => list.forEach((s, i) => {
+    if (base[i]) s.el?.setAttribute('transform', base[i]); else s.el?.removeAttribute('transform')
+    if (!dx && !dy) return
+    s.p = s.p.map(([x, y, ...r]) => [x + dx * f[i], y + dy * f[i], ...r])
+    paint(s)
+  }) })
 }

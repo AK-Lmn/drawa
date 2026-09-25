@@ -8,9 +8,14 @@ import type { Session } from './session'
 export const MODES: [string, string, string][] = [
   ['default', 'Read only', 'Asks before editing files or running commands'],
   ['acceptEdits', 'Allow edits', 'Edits files without asking; still asks before other commands'],
+  ['auto', 'Auto', 'Claude Code approves safe actions itself and asks only before risky ones'],
   ['plan', 'Plan only', 'Explores and writes a plan for you to review; changes nothing'],
   ['bypassPermissions', 'Allow everything', 'Never asks. Only for work you trust'],
 ]
+
+const LAST = 'claude-ui:mode'
+/** The mode you picked last: new cards start in it (this browser). */
+export const lastMode = () => { try { const m = localStorage.getItem(LAST); return m && MODES.some(([v]) => v === m) ? m : 'default' } catch { return 'default' } }
 
 /** The mode picker for a card's message bar. */
 export function modePicker(S: Session) {
@@ -34,7 +39,8 @@ export function setMode(S: Session, mode: string, tell = true) {
     if (sel.value !== mode) sel.value = mode
   }
   // not running yet is fine (the next message starts it in this mode); a failed request means it didn't switch
-  if (tell) post('mode', { cid: S.cid, mode }).catch(() => modeRefused(S))
+  // remembered for new cards once the server takes it; never Allow everything (a new card shouldn't start unguarded)
+  if (tell) post('mode', { cid: S.cid, mode }).then(() => { if (mode !== 'bypassPermissions') try { localStorage.setItem(LAST, mode) } catch {} }, () => modeRefused(S))
   else S.confirmedMode = mode
   saveSoon()
 }

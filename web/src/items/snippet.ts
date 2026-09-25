@@ -3,7 +3,7 @@
 // Three types, each shown and sent to Claude as what it is: output, code (with language and file lines), text.
 // Listens at the page level: the canvas layer doesn't import items.
 import { tipText } from '../lib/tooltip'
-import { make, ICON, copyButton, ping, perFrame, EDITABLE, keepOnScreen } from '../lib/dom'
+import { make, ICON, copyButton, ping, perFrame, EDITABLE, keepOnScreen, clip } from '../lib/dom'
 import { persist } from '../lib/store'
 import { items, savedRect, dragOut, changed, nearestFree, onCanvas, rect, viewCenter, centerOn, type Rect } from '../canvas/canvas'
 import { makeWindow, winTitle, removeButton } from '../canvas/window'
@@ -22,7 +22,7 @@ const MAX = 10_000 // characters kept per snippet (the whole layout shares local
 
 /** The body's text: code goes in a <code>, highlighted in its language. */
 function fill(body: HTMLElement, text: string, type: SnipType, lang?: string) {
-  const t = text.length > MAX ? text.slice(0, MAX) + '\n… (truncated)' : text
+  const t = clip(text, MAX)
   if (type !== 'code') { body.textContent = t; return }
   const code = make('code', lang ? 'language-' + lang : '', t)
   body.replaceChildren(code)

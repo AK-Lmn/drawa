@@ -102,6 +102,11 @@ export const onDrop = (f: DropHandler) => { dropHandler = f }
 /** What moves when `el` is dragged: itself, or the whole selection it's part of (set by canvas/select.ts). */
 let groupOf = (el: HTMLElement) => [el]
 export const setGroup = (f: (el: HTMLElement) => HTMLElement[]) => { groupOf = f }
+/** Moves things by a total offset in canvas units while a drag runs; `end()` settles them when it's over. */
+export type Mover = ((dx: number, dy: number) => void) & { end: () => void }
+/** Anything else that moves with `el`'s group (selected drawings): called when a drag starts, returns a mover or null. */
+let moveAlong: (el: HTMLElement) => Mover | null = () => null
+export const setMoveAlong = (f: typeof moveAlong) => { moveAlong = f }
 
 /** Drag `el` by `handle` (with the rest of the selection, if it's selected). A press that doesn't move counts as a click. */
 export function draggable(el: HTMLElement, handle: HTMLElement, onMove: () => void, onClick?: () => void) {
@@ -110,7 +115,8 @@ export function draggable(el: HTMLElement, handle: HTMLElement, onMove: () => vo
     e.stopPropagation()
     front(el)
     const sx = e.clientX, sy = e.clientY, o = rect(el)
-    const group = groupOf(el).filter(g => g !== el && onCanvas(g)), starts = group.map(rect)
+    const group = groupOf(el).filter(g => g !== el && onCanvas(g)), starts = group.map(rect), along = moveAlong(el)
+    const alone = !group.length && !along // a group isn't dropped onto a card
     let moved = false, done = false
     // the pointer is captured only once it really drags: capturing on press would re-target a double-click to the
     // handle, and the tab's title couldn't be double-clicked to rename it. Until then the window follows the pointer.
@@ -118,25 +124,28 @@ export function draggable(el: HTMLElement, handle: HTMLElement, onMove: () => vo
       if (done) return
       const dx = ev.clientX - sx, dy = ev.clientY - sy
       if (!moved && Math.hypot(dx, dy) < 4) return
-      if (!moved) handle.setPointerCapture(ev.pointerId)
+      if (!moved) { handle.setPointerCapture(ev.pointerId); getSelection()?.removeAllRanges() } // a drag, not a text selection
       moved = true
       el.classList.add('dragging')
       place(el, o.x + dx / view.k, o.y + dy / view.k)
       group.forEach((g, i) => place(g, starts[i].x + dx / view.k, starts[i].y + dy / view.k))
-      if (!group.length) dropHandler?.(el, ev.clientX, ev.clientY, false) // a group isn't dropped onto a card
+      along?.(dx / view.k, dy / view.k)
+      if (alone) dropHandler?.(el, ev.clientX, ev.clientY, false)
       onMove()
-      if (group.length) changed() // other items' arrows follow too
+      if (!alone) changed() // other items' arrows follow too
     }
     const move = perFrame(step) // high-rate mice send several moves a frame: place and hit-test once
     const up = (ev: PointerEvent) => {
-      step(ev) // where the pointer really ended
+      if (ev.type === 'pointerup') step(ev) // where the pointer really ended (a pointercancel's coordinates are 0,0)
       done = true
       removeEventListener('pointermove', move)
       removeEventListener('pointerup', up)
       removeEventListener('pointercancel', up)
       el.classList.remove('dragging')
-      if (moved && !group.length && dropHandler?.(el, ev.clientX, ev.clientY, true)) { place(el, o.x, o.y); onMove() }
-      if (moved) changed(); else onClick?.()
+      if (moved && alone && dropHandler?.(el, ev.clientX, ev.clientY, true)) { place(el, o.x, o.y); onMove() }
+      along?.end()
+      if (moved) { changed(); el.dispatchEvent(new CustomEvent('moved', { bubbles: true })) } // e.g. taken out of a gathered pile
+      else if (ev.type === 'pointerup') onClick?.() // a cancelled touch isn't a click
     }
     addEventListener('pointermove', move)
     addEventListener('pointerup', up)
@@ -158,13 +167,18 @@ export function edgeGrip(panel: HTMLElement, minW: number, onMove?: () => void, 
   })
 }
 
-export function track(handle: HTMLElement, e: PointerEvent, move: (dx: number, dy: number) => void, end?: () => void) {
+export function track(handle: Element, e: PointerEvent, move: (dx: number, dy: number) => void, end?: () => void) {
   e.preventDefault()
   e.stopPropagation()
   const sx = e.clientX, sy = e.clientY
   handle.setPointerCapture(e.pointerId)
-  const mv = (ev: PointerEvent) => move(ev.clientX - sx, ev.clientY - sy)
-  const up = () => {
+  let done = false
+  // once a frame (high-rate mice send several moves per frame); nothing after the end, which applies the last one
+  const mv = perFrame((ev: PointerEvent) => { if (!done) move(ev.clientX - sx, ev.clientY - sy) }) as (ev: Event) => void
+  const up = (ev: Event) => {
+    if (done) return
+    if (ev.type === 'pointerup') move((ev as PointerEvent).clientX - sx, (ev as PointerEvent).clientY - sy) // where it really ended
+    done = true
     handle.removeEventListener('pointermove', mv)
     handle.removeEventListener('pointerup', up)
     handle.removeEventListener('pointercancel', up)
@@ -200,23 +214,37 @@ export function swallowNext(type: string, ms: number) {
   setTimeout(() => removeEventListener(type, eat, { capture: true }), ms)
 }
 
-/** Corner grip that resizes `el` in world units (so it tracks the pointer at any zoom).
- *  `widthOnly`: the height follows the content (text notes). */
+/** Resize grips on the left, right and bottom edges and both bottom corners (the top is the tab, which drags), in
+ *  world units so they track the pointer at any zoom. The left side moves the window too, so its right edge stays
+ *  put. `widthOnly`: the height follows the content (text notes): only the sides and a corner, for width. */
 export function resizable(el: HTMLElement, minW: number, minH: number, onResize: () => void, widthOnly = false) {
-  const grip = make('div', 'grip')
-  grip.title = 'Drag to resize'
-  el.append(grip)
-  grip.addEventListener('pointerdown', e => {
-    if (e.button !== 0) return
-    front(el)
-    const w = el.offsetWidth, h = el.offsetHeight, k = onCanvas(el) ? view.k : 1 // floating: not scaled
-    el.classList.add('resizing')
-    track(grip, e, (dx, dy) => {
-      el.style.width = `${Math.max(minW, Math.round(w + dx / k))}px`
-      if (!widthOnly) el.style.height = `${Math.max(minH, Math.round(h + dy / k))}px`
-      onResize()
-    }, () => { el.classList.remove('resizing'); changed() })
-  })
+  const edges = widthOnly ? ['e', 'w', 'se'] : ['e', 'w', 's', 'se', 'sw']
+  for (const edge of edges) {
+    const grip = el.appendChild(make('div', 'grip'))
+    grip.dataset.edge = edge
+    grip.title = 'Drag to resize'
+    grip.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return
+      e.stopPropagation()
+      front(el)
+      const w = el.offsetWidth, h = el.offsetHeight, k = onCanvas(el) ? view.k : 1 // floating: not scaled
+      const x = parseFloat(el.style.left) || 0, fx = parseFloat(el.style.getPropertyValue('--fx')) || 0
+      const left = edge.includes('w'), right = edge.includes('e'), down = edge.includes('s') && !widthOnly
+      el.style.setProperty('--resize-cursor', getComputedStyle(grip).cursor) // before .resizing overrides it: a side edge stays ew/ns
+      el.classList.add('resizing')
+      track(grip, e, (dx, dy) => {
+        if (right) el.style.width = `${Math.max(minW, Math.round(w + dx / k))}px`
+        if (left) {
+          const nw = Math.max(minW, Math.round(w - dx / k)), moved = w - nw // what the left edge actually moved, in window px
+          el.style.width = `${nw}px`
+          if (el.classList.contains('floating')) el.style.setProperty('--fx', `${Math.round(fx + moved)}px`)
+          else el.style.left = `${Math.round(x + moved)}px`
+        }
+        if (down) el.style.height = `${Math.max(minH, Math.round(h + dy / k))}px`
+        onResize()
+      }, () => { el.classList.remove('resizing'); el.style.removeProperty('--resize-cursor'); changed() })
+    })
+  }
 }
 
 export const hits = (a: Rect, b: Rect, pad = 16) => a.x < b.x + b.w + pad && b.x < a.x + a.w + pad && a.y < b.y + b.h + pad && b.y < a.y + a.h + pad

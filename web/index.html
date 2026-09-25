@@ -3,6 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Claude UI</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <script>/* theme before first paint, no flash of the wrong one (lib/theme.ts owns it after boot; same defaults) */
   (function(){var c={};try{c=JSON.parse(localStorage.getItem('claude-ui:theme')||'{}')||{}}catch(e){}
   var m=c.mode||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'),r=document.documentElement
@@ -40,7 +41,7 @@
     <button id="mode-hand" type="button" title="Hand: drag to pan (H, or hold Space)" aria-label="Hand"><svg viewBox="0 0 16 16"><path d="M5.5 8V3.8a1 1 0 0 1 2 0V7.5M7.5 7V2.8a1 1 0 0 1 2 0V7.5M9.5 7.2V3.8a1 1 0 0 1 2 0v5.4c0 2.8-1.8 4.3-4 4.3-1.8 0-2.7-.8-3.6-2.2L2.6 8.6a1 1 0 0 1 1.6-1.2l1.3 1.6"/></svg></button>
   </div>
   <button id="btn-draw" class="btn" title="Draw on the canvas (D)" aria-pressed="false" aria-label="Draw"><svg viewBox="0 0 16 16"><path d="M2.5 13.5c2-1 3-4.5 5.5-4.5s2 3 4 3 1.5-2.5 1.5-2.5"/></svg><span class="lbl">Draw</span></button>
-  <button id="btn-sketch" class="btn" title="New whiteboard: shapes, text and pictures in a window (S)" aria-label="Whiteboard"><svg viewBox="0 0 16 16"><path d="M2.5 3h11v7.5h-11zM8 10.5v3M5.5 13.5h5"/></svg><span class="lbl">Whiteboard</span></button>
+  <button id="btn-scratch" class="btn" title="New scratchpad: Markdown with code, diagrams and callouts (S)" aria-label="Scratchpad"><svg viewBox="0 0 16 16"><path d="M3.5 2.5h7l2 2v9h-9zM5.5 6h5M5.5 8.5h5M5.5 11h3"/></svg><span class="lbl">Scratchpad</span></button>
   <button id="btn-git" class="btn" title="Git: changes, commit, push (G)" aria-label="Git"><svg viewBox="0 0 16 16"><circle cx="4.5" cy="3.5" r="1.5"/><circle cx="4.5" cy="12.5" r="1.5"/><circle cx="11.5" cy="6" r="1.5"/><path d="M4.5 5v6M11.5 7.5c0 2.5-3 2.5-7 3.5"/></svg><span class="lbl">Git</span></button>
   <button id="btn-drawer" class="btn" title="History and files (Shift+H)" aria-expanded="false" aria-label="History and files"><svg viewBox="0 0 16 16"><path d="M2.5 4h11M2.5 8h11M2.5 12h7"/></svg><span class="lbl">History &amp; files</span></button>
   <button id="btn-theme" class="btn icon-btn"></button>
@@ -73,6 +74,12 @@
   <button data-ink="size:2" class="sz" aria-label="Thin pen"><i style="--d:3px"></i></button>
   <button data-ink="size:4" class="sz on" aria-label="Medium pen"><i style="--d:6px"></i></button>
   <button data-ink="size:9" class="sz" aria-label="Thick pen"><i style="--d:10px"></i></button>
+  <span class="sep"></span>
+  <button data-ink="rect" class="icon" title="Rectangle: drag to draw, Shift for a square (R or 2)" aria-label="Rectangle"><svg viewBox="0 0 16 16"><path d="M2.5 3.5h11v9h-11z"/></svg></button>
+  <button data-ink="diamond" class="icon" title="Diamond: drag to draw (3)" aria-label="Diamond"><svg viewBox="0 0 16 16"><path d="M8 2 14 8 8 14 2 8z"/></svg></button>
+  <button data-ink="ellipse" class="icon" title="Ellipse: drag to draw, Shift for a circle (O or 4)" aria-label="Ellipse"><svg viewBox="0 0 16 16"><ellipse cx="8" cy="8" rx="6" ry="4.8"/></svg></button>
+  <button data-ink="line" class="icon" title="Line: drag to draw, Shift snaps to 45° (L or 6)" aria-label="Line"><svg viewBox="0 0 16 16"><path d="M3 13 13 3"/></svg></button>
+  <button data-ink="fill" class="icon" title="Fill new shapes" aria-label="Fill new shapes" aria-pressed="false"><svg viewBox="0 0 16 16"><path d="M2.5 3.5h11v9h-11z" fill="currentColor" fill-opacity=".3"/></svg></button>
   <span class="sep"></span>
   <button data-ink="text" class="icon" title="Text: click anywhere and type; click your text to change it (T)" aria-label="Text"><svg viewBox="0 0 16 16"><path d="M3 3.5h10M8 3.5v10M6 13.5h4"/></svg></button>
   <button data-ink="arrow" class="icon" title="Arrow between two items: press on one, release on another (A)" aria-label="Arrow between items"><svg viewBox="0 0 16 16"><path d="M2.5 13.5 13 3M7.5 3H13v5.5"/></svg></button>
@@ -112,7 +119,7 @@
   </div>
 </div>
 <p id="conn" class="float" hidden role="status" aria-live="polite"><i></i><span></span></p>
-<p id="hint" class="float"><kbd>V</kbd> select &middot; <kbd>H</kbd> or <kbd>Space</kbd>+drag to pan &middot; <kbd>Ctrl</kbd>+scroll to zoom &middot; <kbd>N</kbd> new session &middot; double-click for text &middot; <kbd>D</kbd> draw &middot; <kbd>S</kbd> whiteboard &middot; <kbd>F</kbd> fit</p>
+<p id="hint" class="float"><kbd>V</kbd> select &middot; <kbd>H</kbd> or <kbd>Space</kbd>+drag to pan &middot; <kbd>Ctrl</kbd>+scroll to zoom &middot; <kbd>N</kbd> new session &middot; <kbd>C</kbd> next session &middot; double-click for text &middot; <kbd>D</kbd> draw &middot; <kbd>S</kbd> scratchpad &middot; <kbd>F</kbd> fit</p>
 
 <dialog id="zoom" aria-label="Diagram">
   <div class="bar">

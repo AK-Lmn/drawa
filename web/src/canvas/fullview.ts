@@ -29,6 +29,7 @@ export function toggleFull(el: HTMLElement) {
   el.classList.add('full')
   layer.append(el)
   layer.hidden = false
+  document.body.classList.add('has-full') // the minimap and hint step aside (panels.css)
   open = { el, spot }
   sync(el)
   focusInput(el)
@@ -40,6 +41,7 @@ export function exitFull() {
   const { el, spot } = open
   open = undefined
   layer.hidden = true
+  document.body.classList.remove('has-full')
   if (!el.isConnected) { spot.remove(); return } // closed while in full view: it stays closed
   el.classList.remove('full')
   spot.replaceWith(el)

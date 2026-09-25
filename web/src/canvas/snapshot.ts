@@ -22,6 +22,7 @@ export async function snapshot(el: HTMLElement, o: { always?: boolean; skip?: st
   ctx.translate(-r.x, -r.y) // canvas strokes are in world coordinates
   for (const s of strokes) {
     ctx.fillStyle = s.color
+    if (s.area) { ctx.globalAlpha = 0.16; ctx.fill(new Path2D(s.area)); ctx.globalAlpha = 1 } // a filled shape's inside
     if (s.text == null) { ctx.fill(new Path2D(s.d)); continue }
     ctx.font = `500 ${s.size}px ${getComputedStyle(document.body).fontFamily}` // text written with the Text tool
     s.text.split('\n').forEach((line, i) => ctx.fillText(line, s.at[0], s.at[1] + s.size * (0.95 + i * 1.25)))

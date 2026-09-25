@@ -5,9 +5,10 @@ import { api, post, q as enc } from '../lib/api'
 import { centerOn, onDrop } from '../canvas/canvas'
 import { link, unlink } from '../canvas/graph'
 import { canvasRefs, refOf, refIcon, type Ref } from '../canvas/refs'
-import { cards, focus, meta, type Session } from './session'
+import { cards, focus, meta, clearSession, type Session } from './session'
 import { send } from './live'
 import { readImages, thumb } from './images'
+import { textRefs } from './uploads'
 import { runShell } from './shell'
 import { modePicker } from './mode'
 import { enhance } from '../lib/select'
@@ -48,6 +49,7 @@ export function composer(S: Session, body: HTMLElement) {
       runShell(S, p.slice(1).trim())
       return
     }
+    if (/^\/clear\s*$/.test(p)) { ta.value = ''; ta.style.height = ''; clearSession(S); return } // handled here: see clearSession
     if (!p && !S.refs.length && !S.images.length) return
     ta.value = ''
     ta.style.height = ''
@@ -63,16 +65,22 @@ export function composer(S: Session, body: HTMLElement) {
     drawChips(S)
     ta.focus()
   }
+  // anything else: text files go along as their contents (session/uploads.ts)
+  const attachAny = async (files: File[]) => {
+    const images = files.filter(f => f.type.startsWith('image/'))
+    if (images.length) attach(images)
+    for (const r of await textRefs(files.filter(f => !f.type.startsWith('image/')))) addRef(S, r)
+  }
   ta.addEventListener('paste', e => {
-    const files = [...e.clipboardData?.files ?? []].filter(f => f.type.startsWith('image/'))
-    if (files.length) { e.preventDefault(); attach(files) }
+    const files = [...e.clipboardData?.files ?? []]
+    if (files.length) { e.preventDefault(); attachAny(files) }
   })
   dock.addEventListener('dragover', e => { if (e.dataTransfer?.types.includes('Files')) { e.preventDefault(); dock.classList.add('dropping') } })
   dock.addEventListener('dragleave', e => { if (!dock.contains(e.relatedTarget as Node)) dock.classList.remove('dropping') })
   dock.addEventListener('drop', e => {
     dock.classList.remove('dropping')
-    const files = [...e.dataTransfer?.files ?? []].filter(f => f.type.startsWith('image/'))
-    if (files.length) { e.preventDefault(); attach(files) }
+    const files = [...e.dataTransfer?.files ?? []]
+    if (files.length) { e.preventDefault(); attachAny(files) }
   })
   ta.oninput = () => {
     ta.style.height = 'auto'
@@ -128,7 +136,7 @@ function commandMenu(S: Session, form: HTMLFormElement) {
         // like the terminal: the path goes into the message as @path, and Claude reads it
         pick: () => { S.ta.setRangeText(`@${path} `, start, S.ta.selectionStart, 'end') },
       })))
-      if (!items.length) items = [{ title: at[2] ? 'No matches' : 'Type to search files', sub: 'Project files, and whiteboards, diagrams, plans and notes on the canvas', pick: () => {} }]
+      if (!items.length) items = [{ title: at[2] ? 'No matches' : 'Type to search files', sub: 'Project files, and scratchpads, diagrams, plans and notes on the canvas', pick: () => {} }]
     } else {
       const q = S.ta.value.slice(1).toLowerCase()
       items = !S.ta.value.startsWith('/') || S.ta.value.includes(' ') ? [] : meta.commands

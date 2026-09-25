@@ -46,9 +46,20 @@
 .win.dragging{--glow:var(--shadow-lift)}
 .win.dragging>.win-h{cursor:grabbing}
 .win.resizing{--glow:var(--shadow-lift);user-select:none}
-.win.resizing,.win.resizing *{cursor:nwse-resize!important}
+.win.resizing,.win.resizing *{cursor:var(--resize-cursor,nwse-resize)!important} /* the pulled grip's own cursor (set in resizable) */
 
 /* resize grip: an invisible corner hit area; hovering it draws the corner it resizes */
-.grip{position:absolute;right:0;bottom:0;z-index:4;width:18px;height:18px;cursor:nwse-resize;touch-action:none}
-.grip::after{content:"";position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border:solid var(--accent);border-width:0 2px 2px 0;border-bottom-right-radius:var(--r-box);opacity:0;transition:opacity .15s}
-.grip:hover::after,.resizing>.grip::after{opacity:.9}
+.grip{position:absolute;z-index:4;touch-action:none}
+/* the edges: a thin band just inside the body's sides (below the tab), the corners: a small square */
+.grip[data-edge=e],.grip[data-edge=w]{top:var(--tab-h);bottom:14px;width:7px;cursor:ew-resize}
+.grip[data-edge=e]{right:-3px}.grip[data-edge=w]{left:-3px}
+.grip[data-edge=s]{left:14px;right:14px;bottom:-3px;height:7px;cursor:ns-resize}
+.grip[data-edge=se],.grip[data-edge=sw]{bottom:0;width:18px;height:18px}
+.grip[data-edge=se]{right:0;cursor:nwse-resize}.grip[data-edge=sw]{left:0;cursor:nesw-resize}
+/* shown on hover: the edge (or corner) you're about to pull */
+.grip::after{content:"";position:absolute;opacity:0;transition:opacity .15s;border:solid var(--accent);border-width:0}
+.grip[data-edge=e]::after{inset:0 3px 0 auto;border-right-width:2px}.grip[data-edge=w]::after{inset:0 auto 0 3px;border-left-width:2px}
+.grip[data-edge=s]::after{inset:auto 0 3px;border-bottom-width:2px}
+.grip[data-edge=se]::after{right:-1px;bottom:-1px;width:12px;height:12px;border-width:0 2px 2px 0;border-bottom-right-radius:var(--r-box)}
+.grip[data-edge=sw]::after{left:-1px;bottom:-1px;width:12px;height:12px;border-width:0 0 2px 2px;border-bottom-left-radius:var(--r-box)}
+.grip:hover::after,.grip:active::after{opacity:.9}

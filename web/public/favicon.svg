@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- the toolbar's logo: a folder (the shape of every window) in the four action colors: edit, write, run, read -->
+  <clipPath id="f"><path d="M2 20h18l6-16h36v56H2z"/></clipPath>
+  <g clip-path="url(#f)">
+    <path fill="#1b7a86" d="M32 32 0 0h64z"/>
+    <path fill="#8e4fc0" d="M32 32 64 0v64z"/>
+    <path fill="#b0661f" d="M32 32 64 64H0z"/>
+    <path fill="#4f6d9a" d="M32 32 0 64V0z"/>
+  </g>
+</svg>

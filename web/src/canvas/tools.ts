@@ -8,7 +8,7 @@ import { items, rect, spotBeside, changed, shortId, type Rect } from './canvas'
 import { link } from './graph'
 import { readItem } from './refs'
 import { snapshot } from './snapshot'
-import { textsOn, inkOn } from './ink'
+import { textsOn, inkOn, shapesOn } from './ink'
 import { addLink, userLinks } from './links'
 import type { Session } from '../session/session'
 
@@ -62,8 +62,8 @@ async function run(S: Session, tool: string, a: Args): Promise<Block[]> {
     const drawn = await snapshot(el) // null unless there's ink on or over it
     const pic = drawn ?? c?.image ?? (a.image ? await snapshot(el, { always: true }) : null)
     const type = (!drawn && c?.image && c.imageType) || 'image/png'
-    const written = textsOn(el, rect(el))
-    const out: Block[] = [...text((c?.text ?? `${el.dataset.kind} "${titleOf(el)}"`) + (written.length ? `\n\nThe user wrote on it: ${written.map(t => JSON.stringify(t)).join(', ')}` : ''))]
+    const written = textsOn(el, rect(el)), shapes = shapesOn(el, rect(el))
+    const out: Block[] = [...text((c?.text ?? `${el.dataset.kind} "${titleOf(el)}"`) + (written.length ? `\n\nThe user wrote on it: ${written.map(t => JSON.stringify(t)).join(', ')}` : '') + (shapes.length ? `\n\nThe user drew on it: ${shapes.join('; ')}.` : ''))]
     if (pic) out.push({ type: 'text', text: drawn ? 'How it looks on the canvas, including what the user drew on it:' : 'How it looks:' },
       { type: 'image', data: pic, mimeType: type })
     return out

@@ -29,6 +29,9 @@ export const ICON = {
 }
 
 /** Elements you type into: keys there aren't shortcuts, and pasting there isn't the canvas's. */
+/** At most `max` characters, saying so at the end. The result stays within `max`, so clipping it again changes nothing. */
+export const clip = (text: string, max: number, note = '\n… (truncated)') => (text.length > max ? text.slice(0, max - note.length) + note : text)
+
 export const EDITABLE = 'input, textarea, select, [contenteditable="plaintext-only"], [contenteditable="true"]'
 /** Put a fixed-position element at (x, y), moved just enough to stay on screen (`top`: the lowest top allowed). */
 export function keepOnScreen(el: HTMLElement, x: number, y: number, top = 8) {

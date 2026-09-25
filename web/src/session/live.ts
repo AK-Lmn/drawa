@@ -11,9 +11,11 @@ import { thumb, imageBlock, type Pasted } from './images'
 import { askPermission } from './notify'
 import { canvasCall } from '../canvas/tools'
 import { takeShell } from './shell'
+import { agentsStopped } from '../items/agent'
 
-/** Send a message (text, or content blocks like images with a short label for the bubble). */
-export async function send(S: Session, prompt: string, content?: object[], refs: Ref[] = [], images: Pasted[] = []) {
+/** Send a message (text, or content blocks like images with a short label for the bubble). Resolves to whether
+ *  the server took it. */
+export async function send(S: Session, prompt: string, content?: object[], refs: Ref[] = [], images: Pasted[] = []): Promise<boolean> {
   askPermission() // first message: a good moment to ask (it's a user action) whether you want notifications
   S.log.querySelector('.empty')?.remove()
   const bubble = put(S, make('div', 'me queued', prompt))
@@ -34,14 +36,17 @@ export async function send(S: Session, prompt: string, content?: object[], refs:
     const shell = takeShell(S) // shell runs since the last message go first, like the terminal's bash mode
     if (shell) p = typeof p === 'string' ? shell + p : [{ type: 'text', text: shell }, ...p]
     if (images.length) p = [...(typeof p === 'string' ? [{ type: 'text', text: p }] : p), ...images.map(imageBlock)]
+    if (!bubble.isConnected) return false // the card was cleared (/clear) while this was being prepared
     await post('send', { cid: S.cid, sid: S.sid, p, mode: S.mode, model: ui.model.value })
     attach(S)
+    return true
   } catch (e) {
     S.queued.splice(S.queued.indexOf(bubble), 1)
     bubble.classList.replace('queued', 'failed')
     put(S, make('div', 'err', `Could not send: ${(e as Error).message}`))
     S.pending = Math.max(0, S.pending - 1)
     renderCard(S)
+    return false
   }
 }
 
@@ -101,19 +106,24 @@ async function read(ctrl: AbortController) {
 
 /** One line of a card's output. */
 function line(S: Session, m: Msg, raw: string) {
+  if (m.type === 'absent') { S.gone = true; agentsStopped(S); return } // no process: a restored agent can't be running
   if (m.type === 'attach') {
+    S.gone = false
     S.n = m.from
     S.gen = m.gen // the process these line numbers belong to
+    if (S.stale && m.gen !== S.stale) S.stale = undefined
     S.reader = m.reader
     // mid-turn when this page (re)attached, e.g. after a reload: show it working (and stoppable) until the result
     if (m.busy && !S.pending) { S.pending = 1; renderCard(S) }
     return
   }
   S.n++
+  if (S.stale) return // /clear: the old process's last lines (its new one attaches with another gen)
   if (m.type === 'exit') {
     // process ended (closed as idle, crashed, or server restarted): the next message starts a new one resuming this
     // session, and the same stream picks that one up from its first line
     S.queued.splice(0).forEach(b => b.classList.replace('queued', 'failed'))
+    agentsStopped(S) // its agents were part of it
     if (S.pending || S.bg) { S.pending = S.bg = 0; quiet(S); renderCard(S) }
     return
   }

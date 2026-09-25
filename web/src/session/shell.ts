@@ -1,7 +1,7 @@
 // Shell mode: a message starting with "!" runs as a shell command in the project folder, like the terminal's
 // bash mode. Output streams into the card; command and output go to Claude with your next message, in the CLI's own
 // <bash-input> / <bash-stdout> format, unless you take them out (×).
-import { make, ICON, iconButton } from '../lib/dom'
+import { make, ICON, iconButton, clip } from '../lib/dom'
 import { put, follow, type Session } from './session'
 
 interface Run { cmd: string; out: string; code: number | null; box: HTMLElement }
@@ -72,7 +72,7 @@ export function takeShell(S: Session): string {
     r.box.querySelector('.sh-note')!.textContent = `${r.code == null ? 'stopped' : `exit ${r.code}`} · sent to Claude`
   }
   return runs.map(r => {
-    const o = r.out.length > SHARE ? r.out.slice(0, SHARE) + '\n… (truncated)' : r.out
+    const o = clip(r.out, SHARE)
     return `<bash-input>${r.cmd}</bash-input>\n<bash-stdout>${o}</bash-stdout><bash-stderr></bash-stderr>\n\n`
   }).join('')
 }

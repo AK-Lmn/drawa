@@ -13,7 +13,7 @@ DIST = (Path(__file__).parent / "web" / "dist").resolve()
 ROOT = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
 # Claude Code stores transcripts per project dir, path mangled to dashes.
 SESSIONS = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude")) / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(ROOT))
-MODES = {"default", "acceptEdits", "plan", "bypassPermissions"}
+MODES = {"default", "acceptEdits", "auto", "plan", "bypassPermissions"}
 HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
 ORIGINS = HOSTS | {"127.0.0.1:5173", "localhost:5173"}  # + the Vite dev server, which proxies to us
 UUID = re.compile(r"^[0-9a-f-]{36}$")
@@ -82,17 +82,80 @@ def clip(content):
     return content
 
 
-def load_session(sid):
-    msgs = []
+def load_session(sid, agent=None):
+    """A session's transcript for the page: sub-agent ids first, then the conversation, then what still-running agents
+    did. With `agent` (an Agent call id): only that sub-agent, which a finished agent's window fetches when it's
+    first opened (finished agents' logs aren't sent up front: they can be long, and most are never opened)."""
+    if agent is not None:
+        return subagents(sid, only=agent)
+    msgs, done = [], set()
     with (SESSIONS / f"{sid}.jsonl").open() as fh:
         for line in fh:
-            d = json.loads(line)
+            try:
+                d = json.loads(line)
+            except ValueError:  # a line still being written
+                continue
+            msg = d.get("message") if isinstance(d.get("message"), dict) else {}
             if d.get("type") in ("user", "assistant") and not d.get("isSidechain") and not d.get("isMeta"):
-                m = {"role": d["type"], "content": clip(d["message"]["content"])}
-                if d["type"] == "assistant" and d["message"].get("usage"):
-                    m["usage"] = d["message"]["usage"]  # for the context meter
+                done |= finished_agents(msg.get("content"))
+                m = {"role": d["type"], "content": clip(msg.get("content"))}
+                if d["type"] == "assistant" and msg.get("usage"):
+                    m["usage"] = msg["usage"]  # for the context meter
                 msgs.append(m)
-    return msgs
+    sub = subagents(sid, skip=done)
+    return [m for m in sub if "aid" in m] + msgs + [m for m in sub if "aid" not in m]
+
+
+TASK_DONE = re.compile(r"<task-notification>[\s\S]*?<tool-use-id>([^<]+)</tool-use-id>")
+
+
+def finished_agents(content):
+    """Agent calls this message shows as finished: a result that isn't a background launch, or a background agent's
+    <task-notification>."""
+    out = set()
+    for b in content if isinstance(content, list) else [{"type": "text", "text": content}]:
+        if not isinstance(b, dict):
+            continue
+        if b.get("type") == "tool_result":
+            c = b.get("content")
+            text = c if isinstance(c, str) else "".join(p.get("text", "") for p in c or [] if isinstance(p, dict))
+            if not text.startswith("Async agent launched"):
+                out.add(b.get("tool_use_id"))
+        elif b.get("type") == "text" and isinstance(b.get("text"), str):
+            out.update(TASK_DONE.findall(b["text"]))
+    return out
+
+
+def subagents(sid, only=None, skip=()):
+    """Each sub-agent's own transcript (<sid>/subagents/agent-<id>.jsonl; its .meta.json names the Agent call that
+    started it), tagged with that call so the page puts it in the agent's window. Its id (what SendMessage addresses)
+    is always sent: a running agent has no result yet to read it from, and replayed SendMessage calls need it.
+    Agents in `skip` (finished) send only their id, marked lazy."""
+    out = []
+    for meta in sorted((SESSIONS / sid / "subagents").glob("*.meta.json")):
+        try:
+            parent = json.loads(meta.read_text()).get("toolUseId")
+        except (OSError, ValueError):
+            continue
+        f = meta.with_name(meta.name.removesuffix(".meta.json") + ".jsonl")
+        if not parent or not f.is_file() or (only is not None and parent != only):
+            continue
+        out.append({"role": "agent", "content": [], "parent": parent, "aid": f.stem.removeprefix("agent-"), **({"lazy": True} if parent in skip else {})})
+        if parent in skip:
+            continue
+        with f.open() as fh:
+            for line in fh:
+                try:
+                    d = json.loads(line)
+                except ValueError:  # the agent is still writing it
+                    continue
+                content = d["message"].get("content") if isinstance(d.get("message"), dict) else None
+                if d.get("type") in ("user", "assistant") and isinstance(content, list):  # skips its prompt
+                    for b in clip(content):
+                        if isinstance(b, dict) and b.get("type") == "text" and len(b.get("text", "")) > CLIP:
+                            b["text"] = b["text"][:CLIP] + "\n… (truncated)"
+                    out.append({"role": d["type"], "content": content, "parent": parent})
+    return out
 
 
 def get_tree(rel):
@@ -564,7 +627,7 @@ CLAUDE = ["claude", "-p", "--input-format", "stream-json", "--output-format", "s
 CANVAS_TOOLS = [
     {"name": "canvas_list", "description":
         "List what's on the user's canvas: the visual workspace this session lives on. Returns each item's id, kind "
-        "(session, note, diagram, sketch, plan, snippet, image, file, files, run, git, github), title, position and size in canvas "
+        "(session, note, doc, diagram, sketch, plan, snippet, image, file, files, run, git, github, agent), title, position and size in canvas "
         "pixels, and whether it's collapsed. Your own session card is marked \"you\": true; items the user drew on "
         "(with the pen) are marked \"drawnOn\": true. Also lists the arrows drawn between items (from, to, label).",
      "inputSchema": {"type": "object", "properties": {}}},
@@ -578,23 +641,25 @@ CANVAS_TOOLS = [
     {"name": "canvas_create", "description":
         "Put something on the user's canvas, beside your session card (or beside another item). Use it when the user "
         "asks to put, draw, pin or show something on the canvas, or when a diagram would genuinely help; not for normal "
-        "answers. Kinds: note (short text shown large on the canvas, like a sticky note), diagram (Mermaid source; "
+        "answers. Kinds: note (short text shown large on the canvas, like a sticky note), doc (a Markdown window: "
+        "headings, lists, tables, code blocks, ```mermaid diagrams and > [!NOTE] callouts render; for write-ups, plans, "
+        "summaries you want to leave on the canvas), diagram (Mermaid source; "
         "drawn, and the user can edit it), snippet (a small window of code, text or command output), image (a PNG, JPEG, "
         "GIF or WebP file you saved, e.g. a screenshot you took of the app with a headless browser: pass its path). "
         "The item gets an "
         "arrow from your session. Returns the new item's id.",
      "inputSchema": {"type": "object", "properties": {
-         "kind": {"type": "string", "enum": ["note", "diagram", "snippet", "image"]},
-         "text": {"type": "string", "description": "The note's text, the diagram's Mermaid source, or the snippet's content (not for image)"},
+         "kind": {"type": "string", "enum": ["note", "doc", "diagram", "snippet", "image"]},
+         "text": {"type": "string", "description": "The note's text, the doc's Markdown, the diagram's Mermaid source, or the snippet's content (not for image)"},
          "path": {"type": "string", "description": "Image only: the image file, absolute or relative to the project"},
-         "title": {"type": "string", "description": "Window title (diagram, snippet, image)"},
+         "title": {"type": "string", "description": "Window title (doc, diagram, snippet, image; a doc defaults to its first heading)"},
          "type": {"type": "string", "enum": ["code", "text", "output"], "description": "Snippet only (default code)"},
          "lang": {"type": "string", "description": "Snippet code language, e.g. ts, py"},
          "near": {"type": "string", "description": "Place it beside this item id instead of your card"},
      }, "required": ["kind"]}},
     {"name": "canvas_update", "description":
         "Change an existing item on the canvas in place: a diagram's Mermaid source (redrawn where it is), a note's "
-        "text, a snippet's text; and a diagram's or snippet's title. When the user asks you to change something on the "
+        "text, a doc's Markdown, a snippet's text; and a doc's, diagram's or snippet's title. When the user asks you to change something on the "
         "canvas, update it rather than creating a new item. Read it first (canvas_read) to see its current content and "
         "anything the user drew on it. Pass the whole new text, not a diff. Invalid Mermaid is refused and the diagram "
         "stays as it was.",
@@ -757,8 +822,11 @@ def session_route(q):
     sid = q.get("id", "")
     if not UUID.match(sid):
         return {"error": "bad session id"}, 404
+    agent = q.get("agent")
+    if agent is not None and not re.fullmatch(r"[\w-]{1,100}", agent):
+        return {"error": "bad agent id"}, 404
     if (SESSIONS / f"{sid}.jsonl").exists():
-        return load_session(sid)
+        return load_session(sid, agent)
     # the CLI writes it once the first message is queued; until then the page reads the live process instead
     return {"error": "This session's transcript isn't written yet.", "missing": True}, 404
 
@@ -892,8 +960,9 @@ class H(BaseHTTPRequestHandler):
                 seen, out = SEQ[0], []
                 for cid, (start, gen) in subs.items():
                     lv, st = LIVE.get(cid), held.get(cid)
-                    if not lv and not st:
+                    if not lv and not st and cid not in absent:
                         absent.add(cid)  # no process yet: when one starts, all of its output is new to this page
+                        out.append(tag(cid, '{"type": "absent"}\n'))  # (so nothing of it is running: its agents included)
                     if lv and (not st or st[0] is not lv):  # attach
                         if st or cid in absent or (gen and gen != lv.gen):
                             start = 0  # a process this page hasn't read yet: from its first line

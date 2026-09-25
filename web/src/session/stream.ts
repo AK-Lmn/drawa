@@ -1,7 +1,7 @@
 // Rendering Claude's stream-json output into a card: text, thinking, tool calls and their results, sub-agent
 // activity, background-agent notifications. Saved transcripts replay through the same path, so the graph rebuilds too.
 import type { ContentBlock, SavedMessage } from '../lib/api'
-import { make, rel } from '../lib/dom'
+import { make, rel, clip } from '../lib/dom'
 import { save } from '../lib/store'
 import { md, enhance } from '../lib/markdown'
 import { touch, run, settle, quiet, type Act } from '../canvas/graph'
@@ -9,6 +9,7 @@ import { change, settleChange, type Change } from '../panels/diff'
 import { tree, openInspector, inspecting } from '../panels/files'
 import { liveDiagrams } from '../items/diagram'
 import { showPlan, planResult, focusPlan } from '../items/plan'
+import { agentWindow, agentMsg, agentDone, showAgent, agentId, agentMessaged, relayed } from '../items/agent'
 import { put, follow, renderCard, type Session, type ToolRow, type Block } from './session'
 import { approval } from './asks'
 import { thumb } from './images'
@@ -17,9 +18,31 @@ import { replayShell } from './shell'
 import { setMode, modeRefused } from './mode'
 import { TASK_TOOLS, taskCall, taskResult } from './tasks'
 import { loadSessions } from './history'
+// what a refused tool call means in each mode, and what to do about it (shown under the turn)
+const REFUSED = 'It was refused. Switch this card to Allow edits, Auto or Allow everything and ask again to let it run.'
+const DENIED_HOW: Record<string, string> = {
+  auto: "Auto mode's safety check refused it without asking. Switch this card to Allow everything if you trust the task, or ask Claude to do it another way.",
+  plan: 'Plan only changes nothing. Approve the plan, or switch this card to another mode.',
+  default: REFUSED,
+  acceptEdits: REFUSED,
+  bypassPermissions: 'Refused even with Allow everything: a hook or a managed setting blocks it.',
+}
 
 // Claude's stream-json lines; loosely typed on purpose, the CLI owns the schema.
 export type Msg = Record<string, any>
+
+/** Text Claude Code added to the conversation itself, like a skill's instructions: folded, rendered as Markdown
+ *  only when opened (a skill can be pages long). */
+function meta(S: Session, text: string) {
+  const skill = /^Base directory for this skill: (\S+)/.exec(text)
+  const d = put(S, fold('meta', skill ? `Skill · ${skill[1].split('/').filter(Boolean).pop()}` : 'Added by Claude Code'))
+  d.addEventListener('toggle', () => {
+    if (!d.open || d.querySelector('.md')) return
+    const body = d.appendChild(make('div', 'md io'))
+    body.innerHTML = md(skill ? text.slice(skill[0].length).trim() : text)
+    enhance(body)
+  })
+}
 
 function fold(cls: string, title: string) {
   const d = make('details', cls) as ToolRow, s = make('summary')
@@ -28,7 +51,7 @@ function fold(cls: string, title: string) {
   return d
 }
 export const describe = (i: Record<string, unknown>) => String(i.command ?? i.file_path ?? i.pattern ?? i.url ?? i.query ?? i.description ?? i.prompt ?? '')
-const plain = (c: ContentBlock['content']) => (typeof c === 'string' ? c : (c ?? []).map(x => x.text ?? '').join('\n'))
+export const plain = (c: ContentBlock['content']) => (typeof c === 'string' ? c : (c ?? []).map(x => x.text ?? '').join('\n'))
 const ACTS: Record<string, Act> = { Read: 'read', Edit: 'edit', MultiEdit: 'edit', NotebookEdit: 'edit', Write: 'write', Bash: 'run' }
 /** Is this user message already on the card? */
 function shown(S: Session, text: string, uuid?: string) {
@@ -140,18 +163,13 @@ function stop(S: Session, i: number) {
       j.onclick = e => { e.preventDefault(); openInspector(c.file, 'changes', c) }
       d.querySelector('.st')!.before(j)
     } else if (d.classList.contains('agent')) {
-      // you can't type to an agent directly; the main session relays with SendMessage
-      const b = make('button', 'jump', 'Message agent')
-      b.title = 'Ask the main session to send this agent a message'
-      b.onclick = e => {
-        e.preventDefault()
-        S.ta.value = `Send the "${inp.description ?? 'agent'}" agent this message (use SendMessage): `
-        S.ta.focus()
-      }
-      d.querySelector('.st')!.before(b)
-      const pre = d.appendChild(make('div', 'io')).appendChild(make('pre', '', String(inp.prompt ?? '')))
-      pre.dataset.l = 'Task'
+      // its work shows in its own window; the row stays compact and opens it
+      agentWindow(S, k.id!, inp, !S.replaying)
+      const w = make('button', 'jump', 'Open window')
+      w.onclick = e => { e.preventDefault(); showAgent(k.id!) }
+      d.querySelector('.st')!.before(w) // (its window has a box for messaging the agent)
     } else {
+      if (k.name === 'SendMessage' && inp.to) agentMessaged(k.id!, String(inp.to)) // the agent's reply goes to its window
       // edits skip this: their diff is the input
       const pre = d.appendChild(make('div', 'io')).appendChild(make('pre', '', JSON.stringify(inp, null, 2)))
       pre.dataset.l = 'Input'
@@ -162,10 +180,13 @@ function stop(S: Session, i: number) {
 function result(S: Session, r: ContentBlock) {
   const d = S.tools[r.tool_use_id!]
   const t = plain(r.content)
+  const aid = d?.classList.contains('agent') ? /agentId: ([\w-]+)/.exec(t)?.[1] : undefined
+  if (aid) agentId(r.tool_use_id!, aid) // what SendMessage addresses (live, task_started already said)
   if (d?.classList.contains('agent') && /^Async agent launched/.test(t)) {
     // background agent: its row keeps running until a task-notification reports back
     d.classList.add('bg')
     d.querySelector('.st')!.textContent = 'background'
+    agentDone(r.tool_use_id!, '', false, true)
     S.bg++
     renderCard(S)
     return
@@ -175,10 +196,11 @@ function result(S: Session, r: ContentBlock) {
   if (d?.querySelector('summary b')?.textContent === 'ExitPlanMode') planResult(S, !r.is_error)
   if (!d) return
   d.classList.remove('run')
-  if (d.classList.contains('agent')) d.open = false
   if (r.is_error) { d.classList.add('bad'); d.querySelector('.st')!.textContent = 'failed' }
+  const out = d.classList.contains('agent') ? report(t) : t
+  if (d.classList.contains('agent')) agentDone(r.tool_use_id!, out, !!r.is_error) // its window shows it too, then leaves
   const io = d.querySelector('.io') ?? d.appendChild(make('div', 'io'))
-  const pre = io.appendChild(make('pre', '', t.length > 20000 ? t.slice(0, 20000) + '\n… (truncated)' : t || '(no output)'))
+  const pre = io.appendChild(make('pre', '', clip(out, 20_000) || '(no output)'))
   pre.dataset.l = r.is_error ? 'Error' : d.classList.contains('agent') ? 'Result' : 'Output'
   if (d.chg) {
     settleChange(d.chg, !r.is_error)
@@ -186,53 +208,40 @@ function result(S: Session, r: ContentBlock) {
   }
 }
 
-/** A background agent finished (Claude gets a <task-notification> message). */
-function notification(S: Session, xml: string) {
-  const d = S.tools[tag(xml, 'tool-use-id') ?? '']
-  const summary = tag(xml, 'summary') ?? 'Background agent finished'
-  if (d?.classList.contains('bg')) {
-    d.classList.remove('run', 'bg')
-    d.querySelector('.st')!.textContent = tag(xml, 'status') === 'completed' ? '' : tag(xml, 'status') ?? ''
-    const pre = (d.querySelector('.io') ?? d.appendChild(make('div', 'io'))).appendChild(make('pre', '', tag(xml, 'result') ?? summary))
-    pre.dataset.l = 'Result'
-    S.bg = Math.max(0, S.bg - 1)
-  }
-  put(S, make('p', 'note', summary))
-  renderCard(S)
+/** An agent's report without the harness's wrapping (the hand-back preface, its id line and usage). */
+const report = (t: string) => {
+  const body = t.replace(/^[\s\S]*?The report follows:\n/, '').replace(/\n?agentId: [\s\S]*$/, '')
+  // the harness indents every line by two: undo that only when it did (code and nested lists keep their own indent)
+  return (body.split('\n').every(l => !l.trim() || l.startsWith('  ')) ? body.replace(/^ {2}/gm, '') : body).trim()
 }
 
-/** Sub-agent activity (lines tagged with the Agent call that started it) goes inside that Agent row. */
-function subagent(S: Session, m: Msg) {
-  const d = S.tools[m.parent_tool_use_id]
-  if (!d || (m.type !== 'assistant' && m.type !== 'user')) return
-  let box = d.querySelector<HTMLElement>('.sublog')
-  if (!box) {
-    box = make('div', 'sublog')
-    d.querySelector('summary')!.after(box)
-    d.open = true
-  }
+/** A background agent finished: a <task-notification> message (transcripts), or a task_notification line (live). */
+function notification(S: Session, xml: string) {
+  const summary = tag(xml, 'summary') ?? 'Background task finished'
+  if (!finished(S, tag(xml, 'tool-use-id') ?? '', tag(xml, 'status') ?? '', tag(xml, 'result') ?? summary, summary)) { put(S, make('p', 'note', summary)); renderCard(S) }
+}
+/** Returns whether it was a background agent still waiting on this. */
+function finished(S: Session, call: string, status: string, text: string, summary: string) {
+  const d = S.tools[call]
+  if (!d?.classList.contains('bg')) return false // not ours, or already reported (live lines and the transcript both say so)
+  d.classList.remove('run', 'bg')
+  d.querySelector('.st')!.textContent = status === 'completed' ? '' : status
+  agentDone(call, text, status !== 'completed')
+  const pre = (d.querySelector('.io') ?? d.appendChild(make('div', 'io'))).appendChild(make('pre', '', text))
+  pre.dataset.l = 'Result'
+  S.bg = Math.max(0, S.bg - 1)
+  put(S, make('p', 'note', summary.split('\n')[0]))
+  renderCard(S)
+  return true
+}
+
+/** Sub-agent activity (lines tagged with the Agent call that started it) goes into that agent's window; its file
+ *  reads and commands still show in the session's Files and commands windows. */
+function subagent(S: Session, parent: string, m: Msg) {
+  if (m.type !== 'assistant' && m.type !== 'user') return
+  for (const c of agentMsg(parent, m)) wire(S, c.id, c.name, c.input)
   const content = m.message?.content
-  if (m.type === 'assistant') {
-    for (const b of content ?? []) {
-      if (b.type === 'text' && b.text.trim()) { const t = box.appendChild(make('div', 'md')); t.innerHTML = md(b.text); enhance(t) }
-      else if (b.type === 'tool_use') {
-        const act = ACTS[b.name]
-        const row = box.appendChild(make('div', `subtool run${act ? ' act-' + act : ''}`))
-        row.dataset.id = b.id
-        row.append(make('b', '', b.name), make('span', 'arg', rel(describe(b.input ?? {}))), make('span', 'st'))
-        wire(S, b.id, b.name, b.input ?? {})
-      }
-    }
-  } else if (Array.isArray(content)) {
-    for (const b of content) {
-      if (b.type !== 'tool_result') continue
-      settle(b.tool_use_id, !b.is_error, plain(b.content))
-      const row = box.querySelector<HTMLElement>(`[data-id="${CSS.escape(b.tool_use_id)}"]`)
-      if (row) { row.classList.remove('run'); if (b.is_error) { row.classList.add('bad'); row.querySelector('.st')!.textContent = 'failed' } }
-    }
-  }
-  box.scrollTop = box.scrollHeight
-  follow(S)
+  if (m.type === 'user' && Array.isArray(content)) for (const b of content) if (b.type === 'tool_result') settle(b.tool_use_id, !b.is_error, plain(b.content))
 }
 
 /** Context in use = everything sent to the model for this reply (fresh input + cache reads + cache writes). */
@@ -246,9 +255,13 @@ function usage(S: Session, u: Msg | undefined) {
 
 export function on(S: Session, m: Msg) {
   if (m.session_id && m.session_id !== S.sid && !m.parent_tool_use_id) { S.sid = m.session_id; save() }
-  if (m.parent_tool_use_id) return subagent(S, m)
+  if (m.parent_tool_use_id) return subagent(S, m.parent_tool_use_id, m)
   if (m.type === 'control_request' && m.request?.subtype === 'can_use_tool') return approval(S, m)
   if (m.type === 'system' && m.subtype === 'status' && m.permissionMode) setMode(S, m.permissionMode, false)
+  // an agent started (its id is what SendMessage addresses) or a background one finished
+  if (m.type === 'system' && m.subtype === 'task_started' && !m.owned_by_subagent && m.tool_use_id) agentId(m.tool_use_id, m.task_id)
+  if (m.type === 'system' && m.subtype === 'task_notification' && m.tool_use_id && S.tools[m.tool_use_id]?.classList.contains('agent'))
+    finished(S, m.tool_use_id, m.status ?? '', m.summary ?? '', `Agent "${S.tools[m.tool_use_id].querySelector('.arg')?.textContent ?? ''}" ${m.status ?? 'finished'}`)
   if (m.type === 'control_response' && m.response?.subtype === 'error') {
     put(S, make('div', 'err', `Claude refused: ${m.response.error}`))
     if (/permission mode/i.test(m.response.error ?? '')) modeRefused(S)
@@ -266,12 +279,13 @@ export function on(S: Session, m: Msg) {
     const c = m.message?.content
     const text = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((b: ContentBlock) => b.type === 'text').map((b: ContentBlock) => b.text).join('\n') : ''
     if (text.startsWith('<task-notification>')) notification(S, text)
+    else if (m.isMeta && text) meta(S, text) // text the CLI adds itself (a skill's instructions): not something you typed
     else if (text) { // Claude picked up a message: ours (queued here), or one this page didn't send (restored card, another tab)
       const q = S.queued.shift()
       if (q) q.classList.remove('queued')
       // (skipped when already shown: by its uuid when this page rendered it from the stream, else by text, since the
       // transcript writes it when queued but the stream echoes it only once Claude starts)
-      else if (!shown(S, text, m.uuid)) { S.log.querySelector('.empty')?.remove(); put(S, make('div', 'me', text)).dataset.uuid = m.uuid ?? '' }
+      else if (!shown(S, relayed(text) ?? text, m.uuid)) { S.log.querySelector('.empty')?.remove(); put(S, make('div', 'me', relayed(text) ?? text)).dataset.uuid = m.uuid ?? '' }
       S.picked = true
     }
     if (Array.isArray(c)) for (const b of c) if (b.type === 'tool_result') result(S, b)
@@ -284,8 +298,11 @@ export function on(S: Session, m: Msg) {
   } else if (m.type === 'result') {
     if (m.is_error && m.subtype !== 'error_during_execution') put(S, make('div', 'err', m.result || m.subtype))
     if (m.subtype === 'error_during_execution') put(S, make('p', 'note', 'Stopped.'))
-    const denied = [...new Set<string>((m.permission_denials ?? []).map((p: Msg) => p.tool_name))]
-    if (denied.length) put(S, make('div', 'err', `Blocked: ${denied.join(', ')}. Pick Allow edits (or Allow everything) in the toolbar and ask again.`))
+    const denied = [...new Set<string>((m.permission_denials ?? []).map((p: Msg) => {
+      const i = p.tool_input ?? {}, what = i.description ?? i.command ?? i.file_path ?? ''
+      return what ? `${p.tool_name} (${String(what).slice(0, 60)})` : p.tool_name
+    }))]
+    if (denied.length) put(S, make('div', 'err', `Not allowed: ${denied.join(', ')}. ${DENIED_HOW[S.mode] ?? DENIED_HOW.default}`))
     // the model's real context window, when the CLI reports it
     const windows = Object.values(m.modelUsage ?? {}).map((u: any) => u?.contextWindow).filter(Boolean) as number[]
     if (windows.length) { S.ctx.max = Math.max(...windows); S.ctx.real = true }
@@ -312,7 +329,9 @@ export function on(S: Session, m: Msg) {
 }
 
 /** Rebuild a saved transcript through the same start/delta/stop path the live stream uses (so the graph rebuilds too). */
-export function replay(S: Session, m: SavedMessage & { usage?: Msg }) {
+export function replay(S: Session, m: SavedMessage & { usage?: Msg; parent?: string; aid?: string; lazy?: boolean }) {
+  if (m.aid) return agentId(m.parent!, m.aid, m.lazy) // a sub-agent's id (the server sends these first): what SendMessage addresses; lazy: its log comes when its window opens
+  if (m.parent) return subagent(S, m.parent, { type: m.role, message: { content: m.content } }) // a sub-agent's own transcript
   if (m.usage) usage(S, m.usage) // the latest reply's token counts: the context meter works for reopened sessions too
   const blocks: ContentBlock[] = typeof m.content === 'string' ? [{ type: 'text', text: m.content }] : m.content ?? []
   if (m.role === 'user') {
@@ -321,7 +340,7 @@ export function replay(S: Session, m: SavedMessage & { usage?: Msg }) {
       if (b.type === 'tool_result') result(S, b)
       else if (b.type === 'text' && b.text!.startsWith('<task-notification>')) notification(S, b.text!)
       else if (b.type === 'text' && b.text!.startsWith('<bash-input>')) { const rest = replayShell(S, b.text!); if (rest) bubble = put(S, make('div', 'me', rest)) }
-      else if (b.type === 'text' && !b.text!.startsWith('<')) bubble = put(S, make('div', 'me', b.text))
+      else if (b.type === 'text' && !b.text!.startsWith('<')) bubble = put(S, make('div', 'me', relayed(b.text!) ?? b.text))
       else if (b.type === 'image' && ((b as any).source?.data || (b as any).source?.url)) { // images you sent: thumbnails
         bubble ??= put(S, make('div', 'me'))
         const row = bubble.querySelector('.refs.sent') ?? bubble.appendChild(make('div', 'refs sent'))

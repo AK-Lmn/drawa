@@ -38,3 +38,9 @@ pre code.hljs{background:none;padding:12px 14px}
 .hljs-meta{font-style:normal}
 .hljs-deletion{color:var(--del)}
 .hljs-emphasis{font-style:italic}.hljs-strong{font-weight:600}
+
+/* GitHub alerts ([!NOTE] … [!CAUTION]): a tinted box with its label, in the color of what it warns about */
+.md blockquote[data-callout]{--c:var(--accent);color:var(--ink);background:color-mix(in oklab,var(--c) 8%,var(--bg));border:1px solid color-mix(in oklab,var(--c) 35%,var(--line))}
+.md blockquote[data-callout=tip]{--c:var(--add)}.md blockquote[data-callout=important]{--c:var(--write)}
+.md blockquote[data-callout=warning]{--c:var(--run)}.md blockquote[data-callout=caution]{--c:var(--danger)}
+.md .callout-t{margin:.5em 0 .25em;font-weight:600;color:var(--c)}

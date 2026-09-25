@@ -119,10 +119,11 @@ function minimizable(el: HTMLElement, head: HTMLElement, onToggle: () => void, s
   }
   const toggle = () => {
     if (!el.classList.contains('min')) el.dataset.fullH = String(el.offsetHeight)
-    el.classList.toggle('min')
+    const min = el.classList.toggle('min')
     sync()
     onToggle()
     changed()
+    el.dispatchEvent(new CustomEvent('collapse', { detail: min, bubbles: true })) // e.g. a session takes its windows along
   }
   b.onclick = e => { e.stopPropagation(); toggle() }
   head.addEventListener('dblclick', e => { if (!(e.target as Element).closest('button, input, .t')) toggle() }) // the title renames instead

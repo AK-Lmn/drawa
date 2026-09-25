@@ -1,20 +1,21 @@
 // Session cards: each is a live Claude process on the server. You can type any time (messages queue while Claude
 // or its agents work, like the terminal); output streams in continuously (stream.ts). Every tool call also lands on
 // the graph. This module owns the card itself: creating, focusing, closing, and its header / status.
-import { make, ICON, iconButton, project } from '../lib/dom'
+import { make, ICON, iconButton, project, ping } from '../lib/dom'
 import { api, post } from '../lib/api'
 import { persist, save, saveSoon } from '../lib/store'
-import { front, savedRect, nextColumn, centerOn, fit, byIds, view as camera, type Rect } from '../canvas/canvas'
-import { makeWindow } from '../canvas/window'
+import { front, savedRect, nextColumn, centerOn, fit, byIds, view as camera, type Rect, onCanvas } from '../canvas/canvas'
+import { makeWindow, expand } from '../canvas/window'
 import { dropSession, redraw, link, itemLinks } from '../canvas/graph'
 import { clearInk } from '../canvas/ink'
 import { referable, type Ref } from '../canvas/refs'
 import type { Pasted } from './images'
 import type { Change } from '../panels/diff'
 import { dropPlans } from '../items/plan'
+import { runningAgents, showAgent, dropAgents } from '../items/agent'
 import { composer } from './composer'
 import { attach } from './live'
-import { setMode } from './mode'
+import { setMode, lastMode } from './mode'
 import { loadSessions, resume } from './history'
 
 export type ToolRow = HTMLDetailsElement & { chg?: Change }
@@ -51,6 +52,8 @@ export interface Session {
   chips: HTMLElement
   n: number // next output line to read (for re-attaching)
   gen?: string // which of the card's processes `n` counts lines of
+  gone?: boolean // the server has no process for it (so nothing of it runs, agents included)
+  stale?: string // /clear: the old process's gen, whose lines still in flight are dropped (see live.ts)
   ctx: { used: number; max: number; real?: boolean } // context window use, from the latest reply's token counts (real: size reported by the CLI)
 }
 
@@ -132,7 +135,7 @@ function emptyState(S: Session) {
   const tips: [string, string][] = [
     ['--edit', 'Files Claude reads or changes are listed in a Files window beside this card, changed files first.'],
     ['--run', 'Commands it runs collect in a commands window below the card (click its tab to see the output).'],
-    ['--write', 'Type / for skills and commands, @ to reference whiteboards, diagrams, plans, notes or files (or drop them on the message box).'],
+    ['--write', 'Type / for skills and commands, @ to reference scratchpads, diagrams, plans, notes or files (or drop them on the message box).'],
     ['--read', 'Read only by default. Change it per session in the message bar (Allow edits, Plan only, Allow everything).'],
   ]
   for (const [color, text] of tips) {
@@ -161,13 +164,19 @@ export function newSession(opts: { rect?: Rect; cid?: string } = {}) {
   ctx.setAttribute('role', 'button')
   ctx.onclick = e => { e.stopPropagation(); S.ta.value = '/compact '; S.ta.focus() } // a nudge, not an action: you still send it
   ctx.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ctx.click() } }
-  title.after(make('span', 'm'), ctx)
+  // running sub-agents: a badge that never shrinks away (the meta text does), visible when collapsed too; each click
+  // shows the next running agent's window
+  const agentsBtn = make('button', 'agents')
+  agentsBtn.hidden = true
+  let nextAgent = 0
+  agentsBtn.onclick = e => { e.stopPropagation(); const run = runningAgents(S); if (run.length) showAgent(run[nextAgent++ % run.length]) }
+  title.after(agentsBtn, make('span', 'm'), ctx)
   const log = make('div', 'log')
   body.append(log)
 
   const S: Session = {
     cid: opts.cid ?? crypto.randomUUID(), sid: null, title: 'New session', model: '', cost: 0, done: false,
-    card, log, ta: null!, stopBtn: null!, blocks: {}, tools: {}, pending: 0, bg: 0, queued: [], picked: false, mode: 'default', asks: new Set(), refs: [], images: [], sentRefs: new Set(), chips: null!, n: -1, ctx: { used: 0, max: 0 },
+    card, log, ta: null!, stopBtn: null!, blocks: {}, tools: {}, pending: 0, bg: 0, queued: [], picked: false, mode: lastMode(), asks: new Set(), refs: [], images: [], sentRefs: new Set(), chips: null!, n: -1, ctx: { used: 0, max: 0 },
   }
   composer(S, body) // message box, reference chips, / and @ menu
   card.dataset.id = S.cid // what canvas tools call this card
@@ -199,6 +208,17 @@ export function newSession(opts: { rect?: Rect; cid?: string } = {}) {
   return S
 }
 
+/** C / Shift+C: the next (or previous) session card: expanded, brought into view and focused. The message box
+ *  isn't focused, so C keeps stepping; Enter starts typing in it. */
+export function cycleCards(step: 1 | -1) {
+  if (!cards.length) return
+  const S = cards[(cards.indexOf(cur!) + step + cards.length) % cards.length] ?? cards[0]
+  expand(S.card)
+  focus(S)
+  if (onCanvas(S.card)) centerOn(S.card); else S.card.scrollIntoView({ block: 'nearest' }) // pinned to the sidebar
+  ping(S.card)
+}
+
 export function focus(S: Session) {
   if (cur === S) return
   cur?.card.classList.remove('focus')
@@ -212,12 +232,33 @@ function closeSession(S: Session) {
   post('close', { cid: S.cid }).catch(() => {})
   dropSession(S)
   dropPlans(S)
+  dropAgents(S)
   clearInk(S.log) // its ink goes with it, and its rows stop being watched
   S.card.remove()
   cards.splice(cards.indexOf(S), 1)
   attach() // the page's stream stops reading it
   if (cur === S) cur = undefined
   if (!cards.length) newSession()
+  save()
+  loadSessions()
+}
+
+/** /clear: a fresh conversation in this card. The CLI's own /clear does nothing in the mode the cards run it in,
+ *  so the card's process is closed and its next message starts a new one; the old conversation stays in History. */
+export async function clearSession(S: Session) {
+  S.stale = S.gen // lines the old process still sends (a busy turn's tail, its exit) mustn't land in the cleared card
+  S.log.replaceChildren(make('p', 'none', 'Clearing…')) // a send that's mid-way sees its bubble gone and stops (live.ts)
+  await post('close', { cid: S.cid }).catch(() => {})
+  dropSession(S) // its Files and commands windows belonged to that conversation
+  dropPlans(S)
+  dropAgents(S)
+  clearInk(S.log)
+  Object.assign(S, { sid: null, title: 'New session', cost: 0, done: false, pending: 0, bg: 0, blocks: {}, tools: {}, queued: [], picked: false, ctx: { used: 0, max: 0 } })
+  S.asks.clear()
+  S.sentRefs.clear()
+  S.log.replaceChildren(emptyState(S))
+  renderCard(S)
+  attach() // read its next process from the start
   save()
   loadSessions()
 }
@@ -229,7 +270,12 @@ export function renderCard(S: Session) {
   S.card.dataset.state = S.asks.size ? 'asking' : busy ? 'busy' : S.done ? 'done' : 'idle'
   S.card.querySelector('.t')!.textContent = S.title
   const m = S.card.querySelector<HTMLElement>('.win-h .m')!
-  m.textContent = [S.model.replace(/^claude-/, ''), S.bg ? `${S.bg} agent${S.bg === 1 ? '' : 's'} running` : ''].filter(Boolean).join(' · ')
+  m.textContent = S.model.replace(/^claude-/, '')
+  const run = runningAgents(S).length, badge = S.card.querySelector<HTMLElement>('.win-h .agents')!
+  badge.hidden = !run
+  badge.textContent = String(run)
+  badge.title = `${run} sub-agent${run === 1 ? '' : 's'} running. Click to show ${run === 1 ? 'its window' : 'the next one'}.`
+  badge.setAttribute('aria-label', badge.title)
   // The CLI reports an API-equivalent estimate even on a subscription, where it isn't billed: hover only.
   m.title = S.cost ? `Estimated API-equivalent cost: $${S.cost.toFixed(2)} (not billed on a Claude subscription)` : ''
   const ctx = S.card.querySelector<HTMLElement>('.win-h .ctx')!, pct = S.ctx.max ? Math.min(100, Math.round((S.ctx.used / S.ctx.max) * 100)) : 0
