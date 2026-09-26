@@ -2,18 +2,50 @@
 
 A browser front end for Claude Code, laid out as a canvas: each session is a card, the files Claude reads or edits are listed in a Files window wired to it (colored by action), and the commands it runs collect in a commands window. Click a file for its diffs from every session and the file itself (with markdown and Mermaid preview). Sessions stream in parallel, resume from history, and the whole layout survives a reload.
 
-## Use
+## Install
+
+Needs [Claude Code](https://claude.com/claude-code) (`claude`) on `PATH` — `drawa` refuses to start without it. `git` and `gh` (the [GitHub CLI](https://cli.github.com)) are optional: without them the Git and GitHub windows don't work, but everything else does.
+
+**Download a release binary** (no Go or Node needed) from the [Releases page](https://github.com/probablysamir/claude-ui/releases): pick the archive matching your machine —
+
+| OS | Architecture | Archive |
+|---|---|---|
+| macOS | Apple Silicon (M1/M2/M3/…) | `drawa-darwin-arm64.tar.gz` |
+| macOS | Intel | `drawa-darwin-amd64.tar.gz` |
+| Linux | x86_64 | `drawa-linux-amd64.tar.gz` |
+| Linux | arm64 | `drawa-linux-arm64.tar.gz` |
+
+(No Windows build: `internal/procx/procx.go` kills a subprocess's whole process group with POSIX-only syscalls.) Not sure which architecture: `uname -m` (`arm64`/`aarch64` -> arm64, `x86_64` -> amd64).
+
+```sh
+tar -xzf drawa-<os>-<arch>.tar.gz        # extracts a single `drawa` binary
+chmod +x drawa
+sudo mv drawa /usr/local/bin/            # anywhere on PATH works; this is one option
+```
+
+**Or build from source:**
 
 ```sh
 cd web && npm install && npm run build   # once, and after UI changes
-CLAUDE_CONFIG_DIR=$HOME/.claude-work go run ~/personalproj/claude-ui [project-folder]
+go build -o drawa .
 ```
 
-Or build a persistent binary: `go build -o drawa .` once, then run `./drawa [project-folder]` (default: the current folder, like `code .`).
+Or run straight off the source tree without a persistent binary: `go run . [project-folder]`. This is also the only way to get the self-rebuild-on-change behavior described below — a downloaded release binary skips it (its UI is embedded, and it has no source tree to rebuild from).
 
-Or download a release binary from the repo's Releases page (built by `.github/workflows/release.yml`, with the UI embedded — no Node needed) and run `drawa .` from anywhere, once it's on `PATH`.
+## Use
 
-Open http://127.0.0.1:8765 (`DRAWA_PORT` overrides the port). `drawa` checks for `claude` on `PATH` at startup (required) and warns if `git` or `gh` are missing (the Git/GitHub windows need them). Claude works in `project-folder`. When run from source, the server rebuilds and restarts itself when a `.go` file changes (needs the Go toolchain on `PATH`; a build that fails to compile keeps the old server running) — a downloaded release binary skips this (its UI is embedded, and it has no source tree to rebuild from).
+```sh
+drawa                  # opens the current folder, like `code .`
+drawa .                # the same, spelled out
+drawa ~/some/project   # or any other folder
+```
+
+Opens http://127.0.0.1:8765 in your browser. Claude works in whichever folder you passed (or the current one). Two env vars:
+
+- `DRAWA_PORT` — use a different port (default `8765`), e.g. to run two projects at once.
+- `CLAUDE_CONFIG_DIR` — point at a different Claude Code config/credentials/sessions directory than the default `~/.claude`, e.g. to keep a separate login or set of installed skills for this tool: `CLAUDE_CONFIG_DIR=$HOME/.claude-work drawa .`
+
+When run from source (`go run .` or a binary you built yourself, not a downloaded release), the server also rebuilds and restarts itself whenever a `.go` file changes (needs the Go toolchain on `PATH`; a build that fails to compile keeps the old server running).
 
 ## Develop the UI
 
