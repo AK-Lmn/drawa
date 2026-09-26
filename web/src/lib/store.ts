@@ -10,7 +10,7 @@ export function persist<T>(key: string, save: () => T, load?: (value: T, all: Re
   parts.set(key, { save, load, phase })
 }
 
-const KEY = () => 'claude-ui:canvas:' + project.root
+const KEY = () => 'drawa:canvas:' + project.root
 
 let warned = false
 const cache = new Map<string, string | undefined>() // each slice's JSON as last saved

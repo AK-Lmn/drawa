@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"claude-ui/internal/gitx"
-	"claude-ui/internal/procx"
+	"drawa/internal/gitx"
+	"drawa/internal/procx"
 )
 
 // branchRe matches a branch name, never something git or gh would read as an option (no leading -).

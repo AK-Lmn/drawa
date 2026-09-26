@@ -14,7 +14,7 @@ import (
 	"regexp"
 	"strings"
 
-	"claude-ui/internal/config"
+	"drawa/internal/config"
 )
 
 const Max = 15_000_000
@@ -49,7 +49,11 @@ func storeDir() string {
 		home, _ := os.UserHomeDir()
 		base = filepath.Join(home, ".local", "share")
 	}
-	return filepath.Join(base, "claude-ui", "images")
+	dir := filepath.Join(base, "drawa")
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		os.Rename(filepath.Join(base, "claude-ui"), dir) // the store's folder from before the rename; fails harmlessly if absent
+	}
+	return filepath.Join(dir, "images")
 }
 
 var HashRe = regexp.MustCompile(`^[0-9a-f]{64}$`)

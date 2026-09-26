@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"claude-ui/internal/config"
+	"drawa/internal/config"
 )
 
 var (

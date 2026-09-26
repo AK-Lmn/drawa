@@ -9,7 +9,7 @@ import (
 	"strings"
 	"syscall"
 
-	"claude-ui/internal/config"
+	"drawa/internal/config"
 )
 
 // runShell is shell mode (! in the message box): run the command in the project folder, streaming its output.

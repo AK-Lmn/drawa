@@ -17,14 +17,14 @@ import (
 	"regexp"
 	"strings"
 
-	"claude-ui/internal/config"
-	"claude-ui/internal/filesx"
-	"claude-ui/internal/github"
-	"claude-ui/internal/gitx"
-	"claude-ui/internal/images"
-	"claude-ui/internal/live"
-	"claude-ui/internal/sessions"
-	"claude-ui/internal/webassets"
+	"drawa/internal/config"
+	"drawa/internal/filesx"
+	"drawa/internal/github"
+	"drawa/internal/gitx"
+	"drawa/internal/images"
+	"drawa/internal/live"
+	"drawa/internal/sessions"
+	"drawa/internal/webassets"
 )
 
 type Q map[string]string

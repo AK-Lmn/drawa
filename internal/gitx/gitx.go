@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"claude-ui/internal/config"
-	"claude-ui/internal/procx"
+	"drawa/internal/config"
+	"drawa/internal/procx"
 )
 
 type Opts struct {

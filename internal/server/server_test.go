@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"claude-ui/internal/live"
+	"drawa/internal/live"
 )
 
 // mcpPost POSTs an MCP JSON-RPC body to a card, with the Host header the handler requires (config.Hosts is
@@ -63,7 +63,7 @@ func TestMcpRoundTrip(t *testing.T) {
 	var initResp map[string]any
 	json.Unmarshal(body, &initResp)
 	result := initResp["result"].(map[string]any)
-	if result["serverInfo"].(map[string]any)["name"] != "claude-ui-canvas" {
+	if result["serverInfo"].(map[string]any)["name"] != "drawa-canvas" {
 		t.Fatalf("unexpected initialize result: %s", body)
 	}
 

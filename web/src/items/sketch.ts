@@ -17,7 +17,7 @@ interface Scene { elements: readonly any[]; files: Record<string, any> }
 
 /* ---------- storage: one localStorage entry per sketch, this browser only ---------- */
 // ponytail: localStorage (~5 MB per origin); pasted images can fill it. Move to server-side files if that bites.
-const KEY = (id: string) => `claude-ui:sketch:${project.root}:${id}`
+const KEY = (id: string) => `drawa:sketch:${project.root}:${id}`
 const loadScene = (id: string): Scene => {
   try { return JSON.parse(localStorage.getItem(KEY(id)) ?? 'null') ?? { elements: [], files: {} } } catch { return { elements: [], files: {} } }
 }

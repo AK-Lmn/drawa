@@ -106,7 +106,7 @@ setTimeout(dismiss, 12000)
 /* ---------- boot ---------- */
 project.root = (await api<{ root: string }>('info')).root
 project.name = project.root.split('/').pop() || project.root
-document.title = `${project.name} · Claude UI`
+document.title = `${project.name} · Drawa`
 $('#pname').textContent = project.name
 $('#ppath').textContent = project.root
 

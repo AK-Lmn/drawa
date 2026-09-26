@@ -1,4 +1,4 @@
-# Claude UI
+# Drawa
 
 A browser front end for Claude Code, laid out as a canvas: each session is a card, the files Claude reads or edits are listed in a Files window wired to it (colored by action), and the commands it runs collect in a commands window. Click a file for its diffs from every session and the file itself (with markdown and Mermaid preview). Sessions stream in parallel, resume from history, and the whole layout survives a reload.
 
@@ -41,7 +41,7 @@ When run from source (`go run .` or a binary you built yourself, not a downloade
 ## Develop the UI
 
 ```sh
-cd web && CLAUDE_UI_ROOT=/path/to/project npm run dev
+cd web && DRAWA_ROOT=/path/to/project npm run dev
 ```
 
 Open http://localhost:5173 for hot reload. This also starts the Go server via `go run` (skipped if one is already running on port 8765). `npm run check` type-checks.

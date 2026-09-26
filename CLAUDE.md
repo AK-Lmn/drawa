@@ -1,6 +1,6 @@
-# Guidelines for agents working on claude-ui
+# Guidelines for agents working on Drawa
 
-claude-ui is a browser canvas around the Claude Code CLI. `main.go` + `internal/` run `claude` processes and serve a JSON API. `web/` is a Vite + TypeScript frontend with no framework: plain DOM modules. Read `README.md` for how to run it, and `PRODUCT.md` for the design brief. This file covers how to change the code without making it harder to change next time.
+Drawa is a browser canvas around the Claude Code CLI. `main.go` + `internal/` run `claude` processes and serve a JSON API. `web/` is a Vite + TypeScript frontend with no framework: plain DOM modules. Read `README.md` for how to run it, and `PRODUCT.md` for the design brief. This file covers how to change the code without making it harder to change next time.
 
 ## Before you finish any change
 
@@ -57,7 +57,7 @@ The app scales through these registration points. A new feature should plug into
 If you find yourself adding the new kind to a list in `canvas.ts`, the minimap, `main.ts` restore code or a CSS `:not(...)` selector, stop: that list should be a registry or a `data-kind` rule.
 
 Rules for these registries:
-- **Persistence keys are a public format.** Existing users have saved layouts in localStorage (`claude-ui:canvas:<root>`). Never rename or reshape a key without a loader that still reads the old shape.
+- **Persistence keys are a public format.** Existing users have saved layouts in localStorage (`drawa:canvas:<root>`). Never rename or reshape a key without a loader that still reads the old shape.
 - **Restore phases:** 0 is settings and positions, 1 is items, 2 is things that attach to items (ink). A loader may be async; the next one waits for it.
 - **Item state goes in `data-state`,** not in ad-hoc classes (`busy`, `edit`, `approved`...). The minimap and CSS both key off `data-kind` + `data-state`.
 

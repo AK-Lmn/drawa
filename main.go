@@ -19,10 +19,10 @@ import (
 	"syscall"
 	"time"
 
-	"claude-ui/internal/config"
-	"claude-ui/internal/live"
-	"claude-ui/internal/server"
-	"claude-ui/internal/webassets"
+	"drawa/internal/config"
+	"drawa/internal/live"
+	"drawa/internal/server"
+	"drawa/internal/webassets"
 )
 
 var binPath = filepath.Join(config.Repo, ".bin", "drawa-server")
@@ -163,7 +163,7 @@ func main() {
 	go restartOnChange()
 	go live.Reap()
 	url := fmt.Sprintf("http://127.0.0.1:%d", config.Port)
-	fmt.Printf("Claude UI for %s -> %s\n", config.Root, url)
+	fmt.Printf("Drawa for %s -> %s\n", config.Root, url)
 	if os.Getenv("DRAWA_OPENED") == "" { // set before exec, so self-restarts don't open another tab
 		os.Setenv("DRAWA_OPENED", "1")
 		openBrowser(url)

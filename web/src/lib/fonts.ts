@@ -22,7 +22,7 @@ const CODE: [string, string][] = [
   ['System mono', 'ui-monospace,SFMono-Regular,Menlo,Consolas,monospace'],
   ['Custom font…', 'custom'],
 ]
-const KEY = 'claude-ui:fonts'
+const KEY = 'drawa:fonts'
 interface Choice { ui: string; uiCustom: string; code: string; codeCustom: string }
 const load = (): Choice => {
   try { return { ui: UI[0][1], uiCustom: '', code: CODE[0][1], codeCustom: '', ...JSON.parse(localStorage.getItem(KEY) ?? '{}') } }

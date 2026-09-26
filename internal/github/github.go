@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"claude-ui/internal/gitx"
-	"claude-ui/internal/procx"
+	"drawa/internal/gitx"
+	"drawa/internal/procx"
 )
 
 type Error struct{ msg string }

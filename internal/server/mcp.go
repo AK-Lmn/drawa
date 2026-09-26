@@ -6,9 +6,9 @@ import (
 	"io"
 	"net/http"
 
-	"claude-ui/internal/canvastools"
-	"claude-ui/internal/images"
-	"claude-ui/internal/live"
+	"drawa/internal/canvastools"
+	"drawa/internal/images"
+	"drawa/internal/live"
 )
 
 func errText(err error, fallback string) string {
@@ -66,7 +66,7 @@ func handleMCP(w http.ResponseWriter, r *http.Request, cid, token string) {
 		result = map[string]any{
 			"protocolVersion": pv,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
-			"serverInfo":      map[string]any{"name": "claude-ui-canvas", "version": "1"},
+			"serverInfo":      map[string]any{"name": "drawa-canvas", "version": "1"},
 		}
 	case "ping":
 		result = map[string]any{}
