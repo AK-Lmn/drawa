@@ -11,6 +11,7 @@ import { readImages, thumb } from './images'
 import { textRefs } from './uploads'
 import { runShell } from './shell'
 import { modePicker } from './mode'
+import { recall } from './recall'
 import { enhance } from '../lib/select'
 
 /** Build the composer at the bottom of the card's body and hook it to the session. */
@@ -82,13 +83,17 @@ export function composer(S: Session, body: HTMLElement) {
     const files = [...e.dataTransfer?.files ?? []]
     if (files.length) { e.preventDefault(); attachAny(files) }
   })
-  ta.oninput = () => {
+  const fit = () => {
     ta.style.height = 'auto'
     ta.style.height = ta.scrollHeight + 'px'
     ta.style.overflowY = ta.scrollHeight > 180 ? 'auto' : 'hidden' // scroll only past the max height
     form.classList.toggle('shell', ta.value.startsWith('!')) // shell mode: amber field, $ prompt
   }
+  ta.oninput = fit
   commandMenu(S, form)
+  // after the menu's handler: when the "/" or "@" menu is open, it takes Up/Down (and prevents the default)
+  const step = recall(ta, S.log)
+  ta.addEventListener('keydown', e => { if (!e.defaultPrevented && step(e)) { e.preventDefault(); fit() } })
 }
 
 /* ---------- "/" menu: skills and slash commands; "@" menu: canvas items ---------- */
