@@ -10,34 +10,37 @@ import (
 )
 
 // handleCardOp is the per-card operations: send a message, answer an approval, change mode, answer a canvas
-// call, interrupt, or close. All guarded by one lock, matching the original's single LIVE_LOCK-guarded block, so
-// two concurrent /api/send calls for a new card can't both spawn a process for it.
+// call, interrupt, or close. live.Mu only guards the Registry map itself (so two concurrent /api/send calls for
+// a new card can't both spawn a process for it); once a *Live is in hand, every card's I/O runs unlocked from
+// every other card's, and Live.Write serializes writes to that one card's stdin internally.
 func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[string]any) {
 	live.Mu.Lock()
 	lv := live.Registry[cid]
-	var err error // stdin broke (the process died): answer 500, and the next send starts a new one
+	if r.URL.Path == "/api/send" && (lv == nil || !lv.Alive()) {
+		newLv, err := live.New(cid, str(body["sid"]), str(body["mode"]), str(body["model"]))
+		if err != nil {
+			live.Mu.Unlock()
+			http.Error(w, "", 500)
+			return
+		}
+		live.Registry[cid] = newLv
+		lv = newLv
+	} else if r.URL.Path == "/api/close" && lv != nil {
+		delete(live.Registry, cid)
+	}
+	live.Mu.Unlock()
 
+	var err error // stdin broke (the process died): answer 500, and the next send starts a new one
 	switch r.URL.Path {
 	case "/api/send":
 		mode, model := str(body["mode"]), str(body["model"])
-		if lv == nil || !lv.Alive() {
-			newLv, err := live.New(cid, str(body["sid"]), mode, model)
-			if err != nil {
-				live.Mu.Unlock()
-				http.Error(w, "", 500)
-				return
-			}
-			live.Registry[cid] = newLv
-			lv = newLv
-		} else {
-			if config.Modes[mode] && mode != lv.GetMode() {
-				lv.Control("set_permission_mode", map[string]any{"mode": mode})
-				lv.SetMode(mode)
-			}
-			if model != "" && model != lv.GetModel() {
-				lv.Control("set_model", map[string]any{"model": model})
-				lv.SetModel(model)
-			}
+		if config.Modes[mode] && mode != lv.GetMode() {
+			lv.Control("set_permission_mode", map[string]any{"mode": mode})
+			lv.SetMode(mode)
+		}
+		if model != "" && model != lv.GetModel() {
+			lv.Control("set_model", map[string]any{"model": model})
+			lv.SetModel(model)
 		}
 		p, isStr := body["p"].(string)
 		var content any
@@ -46,7 +49,6 @@ func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[s
 		} else if list, isList := body["p"].([]any); isList {
 			content = list
 		} else {
-			live.Mu.Unlock()
 			http.Error(w, "", 400)
 			return
 		}
@@ -60,7 +62,6 @@ func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[s
 	case "/api/mode":
 		m := str(body["mode"])
 		if !config.Modes[m] {
-			live.Mu.Unlock()
 			http.Error(w, "", 400)
 			return
 		}
@@ -84,14 +85,11 @@ func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[s
 
 	case "/api/close":
 		if lv != nil {
-			delete(live.Registry, cid)
-			live.Mu.Unlock()
-			lv.Close() // outside Mu: it can take 5s, and every page's stream takes Mu
+			lv.Close() // can take 5s; never held Mu (freed above) so other cards' streams aren't stalled by it
 			sendJSON(w, map[string]any{"ok": true, "live": lv.Alive()}, 200)
 			return
 		}
 	}
-	live.Mu.Unlock()
 	if err != nil {
 		http.Error(w, "", 500)
 		return
