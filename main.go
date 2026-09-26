@@ -31,6 +31,13 @@ var binPath = filepath.Join(config.Repo, ".bin", "drawa-server")
 // process); git and gh are optional (the Git/GitHub windows and their per-call code already degrade gracefully
 // without them), so those only warn.
 func preflight() {
+	if st, err := os.Stat(config.Root); err != nil || !st.IsDir() { // claude can't start in it: every send would fail
+		fmt.Printf("%s isn't a folder.\n", config.Root)
+		if len(os.Args) > 1 && strings.Contains(os.Args[1], "=") {
+			fmt.Printf("Environment variables go before the command: %s drawa\n", os.Args[1])
+		}
+		os.Exit(1)
+	}
 	if _, err := exec.LookPath("claude"); err != nil {
 		fmt.Println("claude (the Claude Code CLI) isn't on PATH. Install it: https://claude.com/claude-code")
 		os.Exit(1)
