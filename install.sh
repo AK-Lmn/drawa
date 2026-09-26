@@ -1,9 +1,9 @@
 #!/bin/sh
 # Installs the latest drawa release for this machine's OS/arch. See INSTALL.md for manual steps and troubleshooting.
-#   curl -fsSL https://raw.githubusercontent.com/probablysamir/claude-ui/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/probablysamir/drawa/main/install.sh | sh
 set -e
 
-repo="probablysamir/claude-ui"
+repo="probablysamir/drawa"
 bin="drawa"
 install_dir="${DRAWA_INSTALL_DIR:-$HOME/.local/bin}"
 
