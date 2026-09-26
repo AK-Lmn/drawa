@@ -289,8 +289,12 @@ export function spotBeside(el: HTMLElement | null | undefined, w: number, h: num
 export const toWorld = (cx: number, cy: number) => ({ x: (cx - view.x) / view.k, y: (cy - view.y) / view.k })
 export const viewCenter = () => ({ x: (innerWidth / 2 - view.x) / view.k, y: (innerHeight / 2 - view.y) / view.k })
 
+/** Bring `el` to the middle of the screen. The zoom stays, unless the window would be too small to read (under
+ *  50%) or wouldn't fit: then it zooms to fit the window, never past 100%. */
 export function centerOn(el: HTMLElement, glide = true) {
   const r = rect(el)
+  const fits = Math.min((innerWidth - 32) / r.w, (innerHeight - 96) / r.h)
+  if (view.k < 0.5 || view.k > fits) view.k = clamp(Math.min(1, fits))
   view.x = innerWidth / 2 - (r.x + r.w / 2) * view.k
   view.y = innerHeight / 2 - (r.y + r.h / 2) * view.k
   apply(glide)
@@ -321,10 +325,13 @@ stage.addEventListener('pointerdown', e => {
   stage.addEventListener('pointerup', up)
 })
 
+/** The wheel's deltas, with Shift+wheel turned sideways (some browsers leave it on deltaY). */
+const deltas = (e: WheelEvent) => (e.shiftKey && !e.deltaX ? { dx: e.deltaY, dy: 0 } : { dx: e.deltaX, dy: e.deltaY })
 /** Is the pointer over something that scrolls (a card's log, a list, a code block)? Then the wheel is its, even
  *  at the end of its content: reaching the bottom of a log shouldn't start panning the canvas. */
 const inScroller = (el: Element | null, e: WheelEvent): boolean => {
-  const vertical = Math.abs(e.deltaY) >= Math.abs(e.deltaX)
+  const { dx, dy } = deltas(e)
+  const vertical = Math.abs(dy) >= Math.abs(dx)
   for (; el && el !== stage; el = el.parentElement) {
     const s = el as HTMLElement, cs = getComputedStyle(s)
     if (vertical ? s.scrollHeight > s.clientHeight + 1 && /auto|scroll/.test(cs.overflowY) : s.scrollWidth > s.clientWidth + 1 && /auto|scroll/.test(cs.overflowX)) return true
@@ -340,8 +347,9 @@ stage.addEventListener('wheel', e => {
   }
   if (inScroller(e.target as Element, e)) return // let card logs, lists and code scroll natively
   e.preventDefault()
-  view.x -= e.deltaX
-  view.y -= e.deltaY
+  const { dx, dy } = deltas(e)
+  view.x -= dx
+  view.y -= dy
   apply()
 }, { passive: false })
 
