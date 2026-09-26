@@ -9,10 +9,23 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
-const Port = 8765
+const defaultPort = 8765
+
+// Port is 8765 unless DRAWA_PORT overrides it (e.g. two projects open at once, or 8765 is already taken).
+var Port = port()
+
+func port() int {
+	if v := os.Getenv("DRAWA_PORT"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil && p > 0 && p < 65536 {
+			return p
+		}
+	}
+	return defaultPort
+}
 
 // Repo is this module's root: where main.go and web/ live. runtime.Caller embeds the build-time source path,
 // so this resolves correctly whether launched via `go run` or a built binary, as long as the source tree hasn't

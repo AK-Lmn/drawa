@@ -1,9 +1,10 @@
 // Browser UI for Claude Code.
 //
-//	claude-ui [project-folder]   (default: current folder); opens http://127.0.0.1:8765
+//	drawa [project-folder]   (default: the current folder, like `code .`); opens http://127.0.0.1:8765
 //
 // Builds web/ on first run (needs npm); after UI changes run `npm run build` in web/, or use `npm run dev` for
-// UI work.
+// UI work. DRAWA_PORT overrides the port; CLAUDE_CONFIG_DIR overrides where Claude Code's own config/sessions
+// live (see internal/config).
 package main
 
 import (
@@ -21,9 +22,26 @@ import (
 	"claude-ui/internal/config"
 	"claude-ui/internal/live"
 	"claude-ui/internal/server"
+	"claude-ui/internal/webassets"
 )
 
-var binPath = filepath.Join(config.Repo, ".bin", "claude-ui-server")
+var binPath = filepath.Join(config.Repo, ".bin", "drawa-server")
+
+// preflight checks the external tools this app shells out to. claude is required (every card is a `claude`
+// process); git and gh are optional (the Git/GitHub windows and their per-call code already degrade gracefully
+// without them), so those only warn.
+func preflight() {
+	if _, err := exec.LookPath("claude"); err != nil {
+		fmt.Println("claude (the Claude Code CLI) isn't on PATH. Install it: https://claude.com/claude-code")
+		os.Exit(1)
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		fmt.Println("Note: git isn't on PATH — the Git window and file history won't work.")
+	}
+	if _, err := exec.LookPath("gh"); err != nil {
+		fmt.Println("Note: gh (the GitHub CLI) isn't on PATH — the GitHub window won't work. Get it: https://cli.github.com")
+	}
+}
 
 // watchedFiles is every non-test .go source file plus go.mod in the repo (skipping web/ and dot-directories: no reason to walk
 // node_modules or .git for a change that can never affect the server).
@@ -128,8 +146,11 @@ func openBrowser(url string) {
 }
 
 func main() {
-	if _, err := os.Stat(filepath.Join(config.Dist, "index.html")); err != nil {
-		// first run from a fresh clone: build the UI so there is one command to learn
+	preflight()
+	if _, err := os.Stat(filepath.Join(config.Dist, "index.html")); err != nil && !webassets.Available() {
+		// first run from a fresh clone: build the UI so there is one command to learn. A standalone release
+		// binary skips this: its UI is embedded, and config.Repo (baked in at its own build time) names a path
+		// that only existed on the machine that built it.
 		fmt.Println("Building the UI (first run only)...")
 		cmd := exec.Command("sh", "-c", "npm install && npm run build")
 		cmd.Dir = filepath.Join(config.Repo, "web")
@@ -143,8 +164,8 @@ func main() {
 	go live.Reap()
 	url := fmt.Sprintf("http://127.0.0.1:%d", config.Port)
 	fmt.Printf("Claude UI for %s -> %s\n", config.Root, url)
-	if os.Getenv("CLAUDE_UI_OPENED") == "" { // set before exec, so self-restarts don't open another tab
-		os.Setenv("CLAUDE_UI_OPENED", "1")
+	if os.Getenv("DRAWA_OPENED") == "" { // set before exec, so self-restarts don't open another tab
+		os.Setenv("DRAWA_OPENED", "1")
 		openBrowser(url)
 	}
 	// Localhost only: this endpoint runs Claude Code with your permissions.

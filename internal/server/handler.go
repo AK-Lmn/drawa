@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"claude-ui/internal/images"
 	"claude-ui/internal/live"
 	"claude-ui/internal/sessions"
+	"claude-ui/internal/webassets"
 )
 
 type Q map[string]string
@@ -209,6 +211,12 @@ func doGET(w http.ResponseWriter, r *http.Request) {
 func static(w http.ResponseWriter, reqPath string) {
 	info, err := os.Stat(config.Dist)
 	if err != nil || !info.IsDir() {
+		// no disk build (e.g. a standalone release binary run outside its source tree): fall back to the copy
+		// embedded at release-build time, if any
+		if webassets.Available() {
+			serveEmbedded(w, reqPath)
+			return
+		}
 		http.Error(w, "UI not built: run `npm install && npm run build` in web/", 503)
 		return
 	}
@@ -232,6 +240,25 @@ func static(w http.ResponseWriter, reqPath string) {
 		return
 	}
 	kind := mime.TypeByExtension(filepath.Ext(f))
+	if kind == "" {
+		kind = "application/octet-stream"
+	}
+	sendBytes(w, data, kind, "")
+}
+
+// serveEmbedded mirrors static()'s disk serving, from the copy embedded in the binary (embed.FS's own path
+// validation rejects traversal, so no manual containment check is needed here as there is for the disk path).
+func serveEmbedded(w http.ResponseWriter, reqPath string) {
+	rel := strings.TrimPrefix(reqPath, "/")
+	if rel == "" {
+		rel = "index.html"
+	}
+	data, err := webassets.Dist.ReadFile(path.Join("dist", rel))
+	if err != nil {
+		http.Error(w, "", 404)
+		return
+	}
+	kind := mime.TypeByExtension(filepath.Ext(rel))
 	if kind == "" {
 		kind = "application/octet-stream"
 	}
