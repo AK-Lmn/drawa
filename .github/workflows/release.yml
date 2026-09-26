@@ -87,4 +87,5 @@ jobs:
           extra=()
           case "${{ github.ref_name }}" in v*) ;; *) extra=(--prerelease) ;; esac
           gh release create "${{ github.ref_name }}" artifacts/*.tar.gz \
+            --repo "${{ github.repository }}" \
             --title "${{ github.ref_name }}" --generate-notes "${extra[@]}"
