@@ -2,6 +2,7 @@ package live
 
 import (
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -101,5 +102,136 @@ func TestExitedWithStdoutHeld(t *testing.T) {
 	}
 	if l.Write(map[string]any{"type": "user"}) == nil {
 		t.Fatal("write to an exited process should fail")
+	}
+}
+
+// The exit line arrives even while a grandchild still holds stdout (the read end closes pipeGrace after exit).
+func TestExitLineWithStdoutHeld(t *testing.T) {
+	l := startFake(t, `sleep 5 & exit 4`)
+	start := time.Now()
+	if code, _ := waitExit(t, l); code != 4 {
+		t.Fatalf("exit code %v, want 4", code)
+	}
+	if time.Since(start) > 4*time.Second {
+		t.Fatal("exit line waited for the grandchild")
+	}
+}
+
+// Every line pushed is a non-empty JSON object: noise, `{}` and broken JSON become error lines.
+func TestClassifyWrapsNonJSON(t *testing.T) {
+	l := NewForTest("", "g")
+	for _, in := range []string{"warning: x", "{}", "{ }", "{not json", `{"type":"x"}`} {
+		var d map[string]any
+		out := l.classify(in)
+		if json.Unmarshal([]byte(out), &d) != nil || d["type"] == nil {
+			t.Fatalf("%q -> %q: not a typed JSON object", in, out)
+		}
+	}
+}
+
+// After a turn's result, the next message drops what came before it, but never past the message being streamed;
+// halving for Keep keeps that start too.
+func TestTrimKeepsOpenMsg(t *testing.T) {
+	l := NewForTest("", "g")
+	l.stdin = nopWriter{}
+	push := func(s string) { l.Push(l.classify(s) + "\n") }
+	push(`{"type":"a"}`)
+	push(`{"type":"result"}`) // index 1
+	push(`{"type":"b"}`)
+	l.Write(map[string]any{"type": "user"})
+	if s := l.Snapshot(); s.Base != 1 || s.End != 3 {
+		t.Fatalf("after next message: base %d end %d, want 1 3", s.Base, s.End)
+	}
+	push(`{"type":"stream_event","event":{"type":"message_start"}}`) // index 3
+	push(`{"type":"result"}`)                                        // an open message outlives it here
+	l.Write(map[string]any{"type": "user"})
+	if s := l.Snapshot(); s.Base != 3 || *s.OpenMsg != 3 {
+		t.Fatalf("trim passed the open message: base %d", s.Base)
+	}
+	l.mu.Lock()
+	l.dropTo(l.base + len(l.lines))
+	base := l.base
+	l.mu.Unlock()
+	if base != 3 {
+		t.Fatalf("halving passed the open message: base %d", base)
+	}
+}
+
+type nopWriter struct{}
+
+func (nopWriter) Write(p []byte) (int, error) { return len(p), nil }
+func (nopWriter) Close() error                { return nil }
+
+// Over the cap, the least recently used idle card goes; working ones (a turn, an approval, a background agent)
+// and the new one stay. With no cap (the default) nothing goes.
+func TestEvictLRUIdle(t *testing.T) {
+	Mu.Lock()
+	saved, savedMax := Registry, config.MaxLive
+	Registry, config.MaxLive = map[string]*Live{}, 4
+	t.Cleanup(func() { Mu.Lock(); Registry, config.MaxLive = saved, savedMax; Mu.Unlock() })
+	old := time.Now().Add(-time.Hour)
+	for i := 0; i <= config.MaxLive; i++ {
+		l := NewForTest("", "g")
+		l.last = time.Now()
+		Registry[string(rune('a'+i))] = l
+	}
+	Registry["a"].last, Registry["a"].busy = old.Add(-time.Hour), true
+	Registry["b"].last, Registry["b"].asks = old.Add(-time.Hour), []ask{{"r", "{}"}}
+	Registry["e"].last, Registry["e"].tasks = old.Add(-time.Hour), map[string]bool{"agent1": true}
+	Registry["c"].last = old
+	Registry["d"].last = old.Add(-2 * time.Hour) // oldest idle, but it's the one being started
+	config.MaxLive = 0
+	none := evictLocked("d")
+	config.MaxLive = 4
+	victim := evictLocked("d")
+	_, stillC := Registry["c"]
+	Mu.Unlock()
+	if none != nil {
+		t.Fatal("evicted with no cap set")
+	}
+	if victim == nil || stillC {
+		t.Fatalf("expected c evicted, got %v (c still registered: %v)", victim, stillC)
+	}
+}
+
+// A background agent keeps its card working from its launch until a notification names it.
+func TestTrackTasks(t *testing.T) {
+	l := NewForTest("", "g")
+	launch := `{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"Async agent launched successfully.\nagentId: a1b2c3 (internal ID)"}]}]}}`
+	for _, line := range []string{launch, strings.Replace(launch, "a1b2c3", "d4e5f6", 1)} {
+		l.trackTasks(line)
+	}
+	if len(l.tasks) != 2 {
+		t.Fatalf("tasks %v, want 2", l.tasks)
+	}
+	l.trackTasks(`{"type":"system","subtype":"task_notification","task_id":"a1b2c3","status":"completed"}`)
+	if l.tasks["a1b2c3"] || !l.working() {
+		t.Fatalf("after one notification: %v, working %v", l.tasks, l.working())
+	}
+	l.trackTasks(`{"type":"user","message":{"content":"<task-notification>\n<task-id>d4e5f6</task-id>\n<status>stopped</status>"}}`)
+	if l.working() {
+		t.Fatalf("still working: %v", l.tasks)
+	}
+}
+
+// The canvas MCP config reaches claude as a 0600 file (not on the command line), removed when it exits.
+func TestMCPConfigFile(t *testing.T) {
+	saved, savedRoot := claudeArgv, config.Root
+	claudeArgv, config.Root = []string{"sh", "-c", `stat -c %a "$1"; cat "$1"; echo`}, t.TempDir()
+	t.Cleanup(func() { claudeArgv, config.Root = saved, savedRoot })
+	l, err := New("card", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(l.Close)
+	waitExit(t, l)
+	lines, _ := l.LinesFrom(0)
+	all := strings.Join(lines, "")
+	if !strings.Contains(all, "600") || !strings.Contains(all, "/mcp/card/"+l.Token) {
+		t.Fatalf("config file not passed as expected: %s", all)
+	}
+	<-l.done
+	if _, err := os.Stat(l.mcpCfg); !os.IsNotExist(err) {
+		t.Fatal("config file left behind")
 	}
 }

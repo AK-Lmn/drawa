@@ -11,8 +11,10 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"drawa/internal/canvastools"
@@ -21,7 +23,11 @@ import (
 )
 
 const Keep = 20_000          // ponytail: output lines kept for re-attaching; older ones dropped (the transcript has them)
-const KeepBytes = 40_000_000 // and at most this much text
+const KeepBytes = 16_000_000 // and at most this much text
+
+// pipeGrace is how long output may keep arriving after the process exited, before its read end is closed so the
+// exit line arrives even when a background grandchild still holds stdout.
+const pipeGrace = 2 * time.Second
 
 var claudeArgv = []string{
 	"claude", "-p",
@@ -50,29 +56,34 @@ type Live struct {
 	Mode    string
 	Model   string
 
-	cmd   *exec.Cmd
-	stdin io.WriteCloser
-	done  chan struct{} // closed once the process has exited (code is set by then)
-	code  int
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	mcpCfg string        // temp file with the canvas MCP config (its URL carries the token, so not on the command line)
+	done   chan struct{} // closed once the process has exited (code is set by then)
+	code   int
 
 	lines   []string
 	base    int
+	trimTo  int // after a turn's result: lines before this can go once the next turn starts (the transcript has them)
 	size    int
 	last    time.Time
 	asks    []ask    // open approval requests in arrival order (re-sent to pages that attach later)
 	readers []string // pages reading this stream (newest last): the newest carries out canvas tool calls
 	calls   map[string]*Call
-	busy    bool // mid-turn: told to pages that attach (a reloaded page can't know otherwise)
-	openMsg *int // line where the message being streamed began: a page attaching now reads from there
-	exited  bool // the process exited, or its stdin broke: the next send starts a new one (Python: p.poll())
+	busy    bool            // mid-turn: told to pages that attach (a reloaded page can't know otherwise)
+	tasks   map[string]bool // background agents still running: they outlive the turn, so the card isn't idle
+	openMsg *int            // line where the message being streamed began: a page attaching now reads from there
+	exited  bool            // the process exited, or its stdin broke: the next send starts a new one (Python: p.poll())
 }
 
 type ask struct{ rid, line string }
 
 var (
 	Mu       sync.Mutex
-	Registry = map[string]*Live{} // card id (from the page) -> Live
-	Changed  = NewBroadcaster()   // bumped whenever any card pushes a line: wakes /api/events and meta()
+	Registry = map[string]*Live{}         // card id (from the page) -> Live
+	starting = map[string]chan struct{}{} // cards whose process is being spawned (closed when done); under Mu
+	metaLive *Live                        // Meta()'s one-off process while it runs, so KillAll gets it too; under Mu
+	Changed  = NewBroadcaster()           // bumped whenever any card pushes a line: wakes /api/events and meta()
 )
 
 func randHex(n int) string {
@@ -83,15 +94,33 @@ func randHex(n int) string {
 	return hex.EncodeToString(b)
 }
 
-func buildArgv(cid, sid, mode, model, token string) []string {
+// writeMCPConfig writes the canvas MCP config to a 0600 temp file (CreateTemp's mode): the URL carries the card's
+// token, which `ps` would show if it were on the command line.
+func writeMCPConfig(cid, token string) (string, error) {
+	cfg, _ := json.Marshal(map[string]any{
+		"mcpServers": map[string]any{
+			"canvas": map[string]any{"type": "http", "url": fmt.Sprintf("http://127.0.0.1:%d/mcp/%s/%s", config.Port, cid, token)},
+		},
+	})
+	f, err := os.CreateTemp("", "drawa-mcp-*.json")
+	if err != nil {
+		return "", err
+	}
+	_, err = f.Write(cfg)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		os.Remove(f.Name())
+		return "", err
+	}
+	return f.Name(), nil
+}
+
+func buildArgv(sid, mode, model, mcpPath string) []string {
 	argv := append([]string{}, claudeArgv...)
-	if cid != "" {
-		mcpCfg, _ := json.Marshal(map[string]any{
-			"mcpServers": map[string]any{
-				"canvas": map[string]any{"type": "http", "url": fmt.Sprintf("http://127.0.0.1:%d/mcp/%s/%s", config.Port, cid, token)},
-			},
-		})
-		argv = append(argv, "--mcp-config", string(mcpCfg))
+	if mcpPath != "" {
+		argv = append(argv, "--mcp-config", mcpPath)
 	}
 	if sid != "" {
 		argv = append(argv, "--resume", sid)
@@ -115,11 +144,22 @@ func NewForTest(token, gen string) *Live {
 
 // New starts a `claude` process for a card. cid == "" is used for the one-off private instance meta() drives, and
 // skips the canvas MCP wiring (nothing to relay calls to).
-func New(cid, sid, mode, model string) (*Live, error) {
-	token := randHex(16)
-	argv := buildArgv(cid, sid, mode, model, token)
+func New(cid, sid, mode, model string) (l *Live, err error) {
+	token, mcpPath := randHex(16), ""
+	if cid != "" {
+		if mcpPath, err = writeMCPConfig(cid, token); err != nil {
+			return nil, err
+		}
+		defer func() {
+			if err != nil {
+				os.Remove(mcpPath)
+			}
+		}()
+	}
+	argv := buildArgv(sid, mode, model, mcpPath)
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = config.Root
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // its own group, so Kill takes its tools and agents too
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -129,15 +169,15 @@ func New(cid, sid, mode, model string) (*Live, error) {
 		return nil, err
 	}
 	cmd.Stdout, cmd.Stderr = pw, pw // merged, like Python's stderr=STDOUT
-	if err := cmd.Start(); err != nil {
+	if err = cmd.Start(); err != nil {
 		pr.Close()
 		pw.Close()
 		return nil, err
 	}
 	pw.Close() // our copy; the child (and its own children) keep theirs until they exit
 
-	l := &Live{
-		Token: token, Gen: randHex(3), Mode: mode, Model: model,
+	l = &Live{
+		Token: token, Gen: randHex(3), Mode: mode, Model: model, mcpCfg: mcpPath,
 		cmd: cmd, stdin: stdin, last: time.Now(), done: make(chan struct{}), calls: map[string]*Call{},
 	}
 	// The only Wait: it returns when the process exits, even if a background descendant still holds stdout open.
@@ -146,7 +186,11 @@ func New(cid, sid, mode, model string) (*Live, error) {
 		l.mu.Lock()
 		l.code, l.exited = l.cmd.ProcessState.ExitCode(), true
 		l.mu.Unlock()
+		if l.mcpCfg != "" {
+			os.Remove(l.mcpCfg)
+		}
 		close(l.done)
+		time.AfterFunc(pipeGrace, func() { pr.Close() }) // unblocks pump if a grandchild still holds stdout
 	}()
 	go l.pump(pr)
 	return l, nil
@@ -159,10 +203,7 @@ func (l *Live) pump(r io.Reader) {
 		if line := strings.TrimRight(string(raw), "\r\n"); strings.TrimSpace(line) != "" {
 			l.Push(l.classify(line) + "\n")
 		}
-		if err != nil {
-			if err != io.EOF {
-				io.Copy(io.Discard, br) // keep the pipe drained so the child can finish writing and exit
-			}
+		if err != nil { // EOF, or the read end closed pipeGrace after the process exited
 			break
 		}
 	}
@@ -178,10 +219,13 @@ func (l *Live) pump(r io.Reader) {
 }
 
 func (l *Live) classify(line string) string {
-	if !strings.HasPrefix(line, "{") { // stderr noise -> an error line the page can show
+	// stderr noise (anything but a non-empty JSON object) -> an error line the page can show: every line sent is
+	// then a JSON object the page counts, so its position stays in step with the buffer's
+	if !strings.HasPrefix(line, "{") || strings.HasPrefix(strings.TrimSpace(line[1:]), "}") || !json.Valid([]byte(line)) {
 		b, _ := json.Marshal(map[string]any{"type": "error", "text": strings.TrimSpace(line)})
 		return string(b)
 	}
+	l.trackTasks(line)
 	switch {
 	case strings.HasPrefix(line, `{"type":"system","subtype":"init"`):
 		l.mu.Lock()
@@ -200,6 +244,9 @@ func (l *Live) classify(line string) string {
 	case strings.Contains(line, `"type":"result"`) && isResult(line): // its keys come in any order
 		l.mu.Lock()
 		l.busy = false
+		if len(l.asks) == 0 {
+			l.trimTo = l.base + len(l.lines) // this result's index: what came before goes when the next turn starts
+		}
 		l.mu.Unlock()
 	case len(line) > 4000 && (strings.Contains(line, `"type":"user"`) || strings.Contains(line, `"type":"assistant"`)):
 		line = sessions.Trimmed(line)
@@ -237,23 +284,35 @@ func (l *Live) Push(line string) {
 	l.lines = append(l.lines, line)
 	l.size += len(line)
 	if len(l.lines) > Keep || l.size > KeepBytes {
-		drop := len(l.lines) / 2
-		for _, s := range l.lines[:drop] {
-			l.size -= len(s)
-		}
-		clear(l.lines[:drop]) // so the dropped strings can be freed (the array itself stays shared)
-		l.lines = l.lines[drop:]
-		l.base += drop
+		l.dropTo(l.base + len(l.lines)/2)
 	}
 	l.last = time.Now()
 	l.mu.Unlock()
 	Changed.Notify()
 }
 
-// Kill hard-kills the process without waiting (used when this whole server process is about to be replaced).
+// dropTo drops buffered lines before global index n, never past the start of the message being streamed (a page
+// attaching reads from there). Called with l.mu held.
+func (l *Live) dropTo(n int) {
+	if l.openMsg != nil && n > *l.openMsg {
+		n = *l.openMsg // ponytail: one message bigger than KeepBytes stays whole; it's freed once it completes
+	}
+	drop := min(n-l.base, len(l.lines))
+	if drop <= 0 {
+		return
+	}
+	for _, s := range l.lines[:drop] {
+		l.size -= len(s)
+	}
+	clear(l.lines[:drop]) // so the dropped strings can be freed (the array itself stays shared)
+	l.lines = l.lines[drop:]
+	l.base += drop
+}
+
+// Kill hard-kills the process group without waiting (the server is about to be replaced, or Close timed out).
 func (l *Live) Kill() {
-	if l.cmd.Process != nil {
-		l.cmd.Process.Kill()
+	if l.cmd != nil && l.cmd.Process != nil {
+		syscall.Kill(-l.cmd.Process.Pid, syscall.SIGKILL)
 	}
 }
 
@@ -269,6 +328,10 @@ func (l *Live) Write(obj map[string]any) error {
 	if obj["type"] == "user" {
 		l.mu.Lock()
 		l.busy = true
+		if len(l.asks) == 0 {
+			// ponytail: trimmed here, not at the result, so streams still reading that turn's tail aren't cut off
+			l.dropTo(l.trimTo)
+		}
 		l.mu.Unlock()
 	}
 	b, err := json.Marshal(obj)
@@ -300,6 +363,9 @@ func (l *Live) Control(subtype string, kw map[string]any) error {
 }
 
 func (l *Live) Close() {
+	if l.stdin == nil { // NewForTest
+		return
+	}
 	l.stdin.Close()
 	select {
 	case <-l.done:
@@ -449,3 +515,50 @@ func (l *Live) SetMode(mode string)   { l.mu.Lock(); l.Mode = mode; l.mu.Unlock(
 func (l *Live) SetModel(model string) { l.mu.Lock(); l.Model = model; l.mu.Unlock() }
 func (l *Live) GetMode() string       { l.mu.Lock(); defer l.mu.Unlock(); return l.Mode }
 func (l *Live) GetModel() string      { l.mu.Lock(); defer l.mu.Unlock(); return l.Model }
+
+var (
+	launchedRe = regexp.MustCompile(`Async agent launched[^"]*?agentId: ([\w-]+)`)
+	taskIDRe   = regexp.MustCompile(`<task-id>([\w-]+)</task-id>`)
+)
+
+// trackTasks keeps the set of background agents still running: added when an Agent call answers "Async agent
+// launched" (its id), removed by a task notification naming that id (a live task_notification line, or the
+// <task-notification> message, which may list several). ponytail: a notification the CLI never sends keeps the
+// card from counting as idle until ReapCap; tracking the CLI's own task list would need a protocol for it.
+func (l *Live) trackTasks(line string) {
+	if m := launchedRe.FindStringSubmatch(line); m != nil {
+		l.mu.Lock()
+		if l.tasks == nil {
+			l.tasks = map[string]bool{}
+		}
+		l.tasks[m[1]] = true
+		l.mu.Unlock()
+		return
+	}
+	var ids []string
+	if strings.Contains(line, `"subtype":"task_notification"`) {
+		var d struct {
+			TaskID string `json:"task_id"`
+		}
+		if json.Unmarshal([]byte(line), &d) == nil && d.TaskID != "" {
+			ids = append(ids, d.TaskID)
+		}
+	}
+	if strings.Contains(line, "<task-notification>") {
+		for _, m := range taskIDRe.FindAllStringSubmatch(line, -1) {
+			ids = append(ids, m[1])
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	l.mu.Lock()
+	for _, id := range ids {
+		delete(l.tasks, id)
+	}
+	l.mu.Unlock()
+}
+
+// working reports whether the card is doing something a close would cut off: a turn, an open approval, or a
+// background agent. Called with l.mu held.
+func (l *Live) working() bool { return l.busy || len(l.asks) > 0 || len(l.tasks) > 0 }
