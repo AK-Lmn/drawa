@@ -28,6 +28,16 @@ export const ICON = {
   grip: svg('<circle cx="6" cy="4" r=".9"/><circle cx="10" cy="4" r=".9"/><circle cx="6" cy="8" r=".9"/><circle cx="10" cy="8" r=".9"/><circle cx="6" cy="12" r=".9"/><circle cx="10" cy="12" r=".9"/>'),
 }
 
+/** A v4 UUID. `crypto.randomUUID()` only works in secure contexts (https, or localhost) — this app is also
+ *  opened over plain http from another device's browser on the network, where `getRandomValues` still works. */
+export function uuid() {
+  const b = crypto.getRandomValues(new Uint8Array(16))
+  b[6] = (b[6] & 0x0f) | 0x40
+  b[8] = (b[8] & 0x3f) | 0x80
+  const h = [...b].map(x => x.toString(16).padStart(2, '0'))
+  return `${h[0]}${h[1]}${h[2]}${h[3]}-${h[4]}${h[5]}-${h[6]}${h[7]}-${h[8]}${h[9]}-${h.slice(10).join('')}`
+}
+
 /** Elements you type into: keys there aren't shortcuts, and pasting there isn't the canvas's. */
 /** At most `max` characters, saying so at the end. The result stays within `max`, so clipping it again changes nothing. */
 export const clip = (text: string, max: number, note = '\n… (truncated)') => (text.length > max ? text.slice(0, max - note.length) + note : text)

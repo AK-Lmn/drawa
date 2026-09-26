@@ -1,6 +1,6 @@
 // The live connection to a card's Claude process: send messages, and read its output stream (re-attaching
 // after network drops or a reload) until the process exits.
-import { make, ui, button } from '../lib/dom'
+import { make, ui, uuid, button } from '../lib/dom'
 import { post } from '../lib/api'
 import { quiet } from '../canvas/graph'
 import { toContent, type Ref } from '../canvas/refs'
@@ -54,7 +54,7 @@ export async function send(S: Session, prompt: string, content?: object[], refs:
 // Browsers allow ~6 connections per host over HTTP/1.1: a stream per card would stall every other request once a few
 // cards are open. So the page reads every card's output over one /api/events stream (lines tagged with the card).
 // It's re-opened (from each card's next line) when cards come or go, and after a drop.
-const page = crypto.randomUUID().replace(/-/g, '').slice(0, 16) // names this page for canvas tool calls
+const page = uuid().replace(/-/g, '').slice(0, 16) // names this page for canvas tool calls
 let conn: AbortController | null = null, subscribed = '', soon = 0
 
 // One stream per server across tabs, too: every open tab's stream holds one of the browser's ~6 connections to this

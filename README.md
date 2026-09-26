@@ -80,9 +80,19 @@ Drawa opens http://127.0.0.1:8765 in your browser, and Claude works in that fold
 ```sh
 drawa                  # the current folder
 drawa ~/some/project   # any other folder
+drawa --net .          # also reachable from other devices on the network
 ```
 
 In the message box, `/` opens skills and slash commands and `@` references files or canvas items. The toolbar picks the model and permission mode.
+
+By default Drawa only answers on localhost. Pass `--net` (in any position) and, like a Vite or Next.js dev server, it also listens on the machine's network address and prints both:
+
+```
+  - Local:   http://127.0.0.1:8765
+  - Network: http://192.168.1.23:8765/?token=fpKZrzCN
+```
+
+The Network link lets another device on the same network — a laptop, a phone — open the same workspace. It only works with its `?token=` (a fresh one each run, checked once and then remembered via a cookie), and an address that guesses wrong 5 times locks out for a few minutes. See [Security](#security).
 
 ## Configuration
 
@@ -112,12 +122,13 @@ Shortcuts follow Excalidraw's where the tool exists, and don't fire while you're
 
 Drawa is built to run locally for one user:
 
-- The server listens on `127.0.0.1` only and checks the `Host` header on every request.
+- The server listens on `127.0.0.1` only, unless you pass `--net` (see [Quick start](#quick-start)), and checks the `Host` header on every request either way.
+- With `--net`, the network address additionally needs its one-time `?token=`; wrong guesses lock that address out after 5 tries. Still only pass `--net` on a network you trust, and treat the printed link like a password — don't post it anywhere public.
 - Changing requests must come from Drawa's own page (a matching `Origin`).
 - File access is confined to the project folder you opened.
 - Claude's canvas tools use a per-process token, so only that session's own `claude` process can call them.
 
-Don't expose the port to a network. To report a vulnerability, please open a [private security advisory](https://github.com/probablysamir/drawa/security/advisories/new) rather than a public issue.
+To report a vulnerability, please open a [private security advisory](https://github.com/probablysamir/drawa/security/advisories/new) rather than a public issue.
 
 ## Contributing
 

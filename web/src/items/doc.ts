@@ -2,7 +2,7 @@
 // Mermaid diagrams, GitHub callouts); the pencil or a double-click edits the source, Ctrl/Cmd+Enter or Esc shows
 // it again. S or the toolbar's Scratchpad makes one in view; Claude makes and edits them with canvas_create /
 // canvas_update (kind "doc").
-import { make, ICON, iconButton, clip } from '../lib/dom'
+import { make, ICON, iconButton, clip, uuid } from '../lib/dom'
 import { persist } from '../lib/store'
 import { md, enhance } from '../lib/markdown'
 import { onTheme } from '../lib/theme'
@@ -47,7 +47,7 @@ function checked(a: Record<string, any>) {
 }
 
 export function doc(o: { id?: string; title?: string; text?: string; rect?: Rect; edit?: boolean } = {}) {
-  const id = o.id ?? crypto.randomUUID(), c = viewCenter()
+  const id = o.id ?? uuid(), c = viewCenter()
   const view = make('div', 'mdoc-b'), out = make('div', 'md mdoc-md'), ta = make('textarea', 'mdoc-ed')
   const pencil = iconButton(ICON.pencil, 'Edit (double-click the text too)', () => toggle())
   const { el, body } = makeWindow({

@@ -1,5 +1,5 @@
 // Text on the canvas: double-click empty space (or press T) and type. Click a note to edit it; empty notes vanish.
-import { make } from '../lib/dom'
+import { make, uuid } from '../lib/dom'
 import { persist } from '../lib/store'
 import { addItem, items, place, rect, draggable, resizable, front, changed, toWorld, stage, viewCenter } from '../canvas/canvas'
 import { removeButton } from '../canvas/window'
@@ -11,7 +11,7 @@ interface Note { id?: string; text?: string; x: number; y: number; w?: number; e
 
 export function note(opts: Note) {
   const el = make('div', 'nnode'), text = make('div', 'ntext')
-  el.dataset.id = opts.id ?? crypto.randomUUID()
+  el.dataset.id = opts.id ?? uuid()
   text.textContent = opts.text ?? ''
   text.setAttribute('role', 'textbox')
   text.setAttribute('aria-label', 'Canvas note')

@@ -1,10 +1,11 @@
 // Browser UI for Claude Code.
 //
-//	drawa [project-folder]   (default: the current folder, like `code .`); opens http://127.0.0.1:8765
+//	drawa [--net] [project-folder]   (default: the current folder, like `code .`); opens http://127.0.0.1:8765
 //
-// Builds web/ on first run (needs npm); after UI changes run `npm run build` in web/, or use `npm run dev` for
-// UI work. DRAWA_PORT overrides the port; CLAUDE_CONFIG_DIR overrides where Claude Code's own config/sessions
-// live (see internal/config).
+// --net also listens on the machine's network address, so another device on the same network can open it;
+// without it the server only answers on localhost. Builds web/ on first run (needs npm); after UI changes run
+// `npm run build` in web/, or use `npm run dev` for UI work. DRAWA_PORT overrides the port; CLAUDE_CONFIG_DIR
+// overrides where Claude Code's own config/sessions live (see internal/config).
 package main
 
 import (
@@ -27,9 +28,58 @@ import (
 
 var binPath = filepath.Join(config.Repo, ".bin", "drawa-server")
 
-// preflight checks the external tools this app shells out to. claude is required (every card is a `claude`
-// process); git and gh are optional (the Git/GitHub windows and their per-call code already degrade gracefully
-// without them), so those only warn.
+const banner = `
+██████╗  ██████╗  █████╗ ██╗    ██╗ █████╗
+██╔══██╗██╔══██╗██╔══██╗██║    ██║██╔══██╗
+██║  ██║██████╔╝███████║██║ █╗ ██║███████║
+██║  ██║██╔══██╗██╔══██║██║███╗██║██╔══██║
+██████╔╝██║  ██║██║  ██║╚███╔███╔╝██║  ██║
+╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝
+`
+
+// lineDelay paces startup output so it reads as a sequence instead of dumping everything at once.
+const lineDelay = 500 * time.Millisecond
+
+// printLines prints each line on its own, pausing lineDelay between them.
+func printLines(lines ...string) {
+	for _, l := range lines {
+		fmt.Println(l)
+		time.Sleep(lineDelay)
+	}
+}
+
+const (
+	green  = "\033[32m"
+	yellow = "\033[33m"
+	red    = "\033[31m"
+	reset  = "\033[0m"
+)
+
+// spinFrames renders frame-by-frame in place (each call to render overwrites the last) for d.
+func spinFrames(d time.Duration, render func(frame rune)) {
+	frames := []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+	for deadline, i := time.Now().Add(d), 0; time.Now().Before(deadline); i++ {
+		render(frames[i%len(frames)])
+		time.Sleep(90 * time.Millisecond)
+	}
+}
+
+// spin shows a brief indeterminate loader (motion, not a percentage) for d, then clears the line.
+func spin(d time.Duration, label string) {
+	spinFrames(d, func(f rune) { fmt.Printf("\r%c %s", f, label) })
+	fmt.Print("\r" + strings.Repeat(" ", len(label)+2) + "\r")
+}
+
+// spinStatus spins for d, then resolves in place into a colored symbol: how a check "finishes" once its result
+// is already known (the checks themselves are near-instant; the spin is purely so it doesn't just flash).
+func spinStatus(d time.Duration, label, color, symbol string) {
+	spinFrames(d, func(f rune) { fmt.Printf("\r%c %s", f, label) })
+	fmt.Printf("\r%s%s%s %s\n", color, symbol, reset, label)
+}
+
+// preflight checks the external tools this app shells out to and prints a pass/fail line for each. claude is
+// required (every card is a `claude` process); git and gh are optional (the Git/GitHub windows and their
+// per-call code already degrade gracefully without them), so those only warn.
 func preflight() {
 	if st, err := os.Stat(config.Root); err != nil || !st.IsDir() { // claude can't start in it: every send would fail
 		fmt.Printf("%s isn't a folder.\n", config.Root)
@@ -38,15 +88,39 @@ func preflight() {
 		}
 		os.Exit(1)
 	}
-	if _, err := exec.LookPath("claude"); err != nil {
-		fmt.Println("claude (the Claude Code CLI) isn't on PATH. Install it: https://claude.com/claude-code")
+	checks := []struct {
+		cmd, label, help string
+		required         bool
+	}{
+		{"claude", "claude (Claude Code CLI)", "install it: https://claude.com/claude-code", true},
+		{"git", "git", "the Git window and file history won't work", false},
+		{"gh", "gh (GitHub CLI)", "the GitHub window won't work — get it: https://cli.github.com", false},
+	}
+	ok, missing := true, false
+	var lines []string
+	for _, c := range checks {
+		if _, err := exec.LookPath(c.cmd); err != nil {
+			lines = append(lines, fmt.Sprintf("  [x] %s — not found (%s)", c.label, c.help))
+			if c.required {
+				ok = false
+			} else {
+				missing = true
+			}
+		} else {
+			lines = append(lines, fmt.Sprintf("  [✓] %s", c.label))
+		}
+	}
+	color, symbol := green, "✓"
+	if !ok {
+		color, symbol = red, "✗" // claude missing (or everything missing): can't run at all
+	} else if missing {
+		color, symbol = yellow, "!" // git and/or gh missing: degraded, but drawa still runs
+	}
+	spinStatus(900*time.Millisecond, "Checking prerequisites...", color, symbol)
+	printLines(lines...)
+	fmt.Println()
+	if !ok {
 		os.Exit(1)
-	}
-	if _, err := exec.LookPath("git"); err != nil {
-		fmt.Println("Note: git isn't on PATH — the Git window and file history won't work.")
-	}
-	if _, err := exec.LookPath("gh"); err != nil {
-		fmt.Println("Note: gh (the GitHub CLI) isn't on PATH — the GitHub window won't work. Get it: https://cli.github.com")
 	}
 }
 
@@ -153,6 +227,7 @@ func openBrowser(url string) {
 }
 
 func main() {
+	fmt.Print(banner)
 	preflight()
 	if _, err := os.Stat(filepath.Join(config.Dist, "index.html")); err != nil && !webassets.Available() {
 		// first run from a fresh clone: build the UI so there is one command to learn. A standalone release
@@ -170,13 +245,23 @@ func main() {
 	go restartOnChange()
 	go live.Reap()
 	url := fmt.Sprintf("http://127.0.0.1:%d", config.Port)
-	fmt.Printf("Drawa for %s -> %s\n", config.Root, url)
+	fmt.Printf("Opening drawa UI for %s\n\n", config.Root)
+	fmt.Printf("  - Local:   %s\n", url)
+	addr := fmt.Sprintf("127.0.0.1:%d", config.Port) // localhost only unless --net: this endpoint runs Claude Code with your permissions
+	if config.Net {
+		for _, ip := range config.LocalIPs() {
+			fmt.Printf("  - Network: http://%s:%d/?token=%s\n", ip, config.Port, config.NetToken)
+		}
+		fmt.Println("\nThat Network link's token is only good for this run. Anyone who has it can run commands as you, so don't share it beyond people you trust on this network.")
+		addr = fmt.Sprintf(":%d", config.Port) // every interface, not just loopback; config.Hosts still keeps DNS rebinding and outside hosts out
+	} else {
+		fmt.Println()
+	}
+	spin(1400*time.Millisecond, "Starting drawa...")
 	if os.Getenv("DRAWA_OPENED") == "" { // set before exec, so self-restarts don't open another tab
 		os.Setenv("DRAWA_OPENED", "1")
 		openBrowser(url)
 	}
-	// Localhost only: this endpoint runs Claude Code with your permissions.
-	addr := fmt.Sprintf("127.0.0.1:%d", config.Port)
 	if err := http.ListenAndServe(addr, server.Handler()); err != nil {
 		fmt.Println(err)
 		os.Exit(1)

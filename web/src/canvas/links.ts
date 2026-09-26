@@ -1,7 +1,7 @@
 // Your arrows between canvas items (Draw mode's Arrow tool, like Excalidraw's): press on one item, drag, release on
 // another. They stay attached as the items move, pin or float. Click one to label it or delete it. Claude sees
 // them in canvas_list and can draw them too (canvas_link).
-import { make, ICON, iconButton, EDITABLE, closestAt } from '../lib/dom'
+import { make, ICON, iconButton, EDITABLE, closestAt, uuid } from '../lib/dom'
 import { persist } from '../lib/store'
 import { world, byIds, liveRect, onChange, onCanvas, changed, toWorld, shortId, type Rect } from './canvas'
 
@@ -64,7 +64,7 @@ function group(cls: string) {
   return g
 }
 
-export function addLink(from: HTMLElement, to: HTMLElement, label = '', color = 'ink', id: string = crypto.randomUUID()): Link {
+export function addLink(from: HTMLElement, to: HTMLElement, label = '', color = 'ink', id: string = uuid()): Link {
   const g = group(`ulink c-${color}`)
   const text = world.appendChild(make('div', 'ulabel'))
   const l: Link = { id, from, to, label, color, g, text }

@@ -3,8 +3,10 @@
 package config
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -43,13 +45,58 @@ func repoRoot() string {
 
 var Dist = filepath.Join(Repo, "web", "dist")
 
-// Root is the project folder Claude works in: argv[1], default the current folder.
+// Net is true when --net was passed: listen on every interface, not just loopback, so other devices on the
+// network can reach the server too. Off by default, since this endpoint runs Claude Code with your permissions.
+var Net = hasFlag("--net")
+
+func hasFlag(name string) bool {
+	for _, a := range os.Args[1:] {
+		if a == name {
+			return true
+		}
+	}
+	return false
+}
+
+const tokenChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+
+// NetToken guards the network address when --net is passed (127.0.0.1/localhost never need it: see
+// IsLocalHost). It's short (8 characters — a URL you can read out or type), so the request path that checks
+// it (internal/server's netAuthorized) also locks out an address after repeated wrong guesses; the length
+// alone isn't the defense. Empty, and unused, when --net wasn't passed.
+var NetToken = netToken()
+
+func netToken() string {
+	if !Net {
+		return ""
+	}
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		panic(err) // the OS RNG failing is not something we can recover from
+	}
+	out := make([]byte, len(b))
+	for i, c := range b {
+		out[i] = tokenChars[int(c)%len(tokenChars)]
+	}
+	return string(out)
+}
+
+// IsLocalHost is true for the loopback Host header: always trusted, so it never needs NetToken. Anything else
+// accepted by Hosts is one of this machine's LAN addresses (only present there when --net was passed).
+func IsLocalHost(host string) bool {
+	return host == fmt.Sprintf("127.0.0.1:%d", Port) || host == fmt.Sprintf("localhost:%d", Port)
+}
+
+// Root is the project folder Claude works in: the first non-flag argument, default the current folder.
 var Root = rootDir()
 
 func rootDir() string {
 	arg := "."
-	if len(os.Args) > 1 {
-		arg = os.Args[1]
+	for _, a := range os.Args[1:] {
+		if !strings.HasPrefix(a, "-") {
+			arg = a
+			break
+		}
 	}
 	abs, err := filepath.Abs(arg)
 	if err != nil {
@@ -79,9 +126,38 @@ var Modes = map[string]bool{
 	"default": true, "acceptEdits": true, "auto": true, "plan": true, "bypassPermissions": true,
 }
 
-var Hosts = map[string]bool{
-	fmt.Sprintf("127.0.0.1:%d", Port): true,
-	fmt.Sprintf("localhost:%d", Port): true,
+// With --net the server listens on every interface (see main.go), so its own LAN address(es) must pass the
+// same Host-header allowlist that 127.0.0.1/localhost do; LocalIPs() is what finds them.
+var Hosts = hosts()
+
+func hosts() map[string]bool {
+	m := map[string]bool{
+		fmt.Sprintf("127.0.0.1:%d", Port): true,
+		fmt.Sprintf("localhost:%d", Port): true,
+	}
+	if Net {
+		for _, ip := range LocalIPs() {
+			m[fmt.Sprintf("%s:%d", ip, Port)] = true
+		}
+	}
+	return m
+}
+
+// LocalIPs returns this machine's outward-facing IPv4 address (how another device on the same network would
+// reach it) — or none when there's no network route (e.g. fully offline). A UDP dial doesn't send any packets;
+// it just asks the OS which local address it would use to reach that destination, which is also the standard
+// trick for finding the real NIC's address instead of a VM/container bridge's.
+func LocalIPs() []string {
+	conn, err := net.Dial("udp4", "8.8.8.8:80")
+	if err != nil {
+		return nil
+	}
+	defer conn.Close()
+	addr, ok := conn.LocalAddr().(*net.UDPAddr)
+	if !ok || addr.IP.IsLoopback() || addr.IP.IsUnspecified() {
+		return nil
+	}
+	return []string{addr.IP.String()}
 }
 
 // + the Vite dev server, which proxies to us
