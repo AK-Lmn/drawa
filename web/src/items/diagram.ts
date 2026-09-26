@@ -1,7 +1,7 @@
 // Mermaid code blocks -> diagrams, plus a zoom/pan view for them.
 import Panzoom, { type PanzoomObject } from '@panzoom/panzoom'
 import type { Mermaid } from 'mermaid'
-import { $, make, ICON, iconButton } from '../lib/dom'
+import { $, make, ICON, iconButton, uuid } from '../lib/dom'
 import { persist } from '../lib/store'
 import { isDark, onTheme } from '../lib/theme'
 import { items, savedRect, dragOut, spotBeside, changed, type Rect } from '../canvas/canvas'
@@ -152,7 +152,7 @@ const draw = async (into: HTMLElement, src: string) => {
  *  Edit opens the source under the drawing; it redraws as you type and keeps the last good drawing on errors. */
 const setSource = new WeakMap<HTMLElement, (src: string) => Promise<void>>()
 
-export function pin(src: string, title: string, r: Rect, id: string = crypto.randomUUID()) {
+export function pin(src: string, title: string, r: Rect, id: string = uuid()) {
   const view = make('div', 'dnode-b'), ed = make('div', 'dnode-ed'), ta = make('textarea'), status = make('p', 'dnode-st')
   const edit = iconButton(ICON.pencil, 'Edit source', () => {
     ed.hidden = !ed.hidden

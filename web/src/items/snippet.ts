@@ -3,7 +3,7 @@
 // Three types, each shown and sent to Claude as what it is: output, code (with language and file lines), text.
 // Listens at the page level: the canvas layer doesn't import items.
 import { tipText } from '../lib/tooltip'
-import { make, ICON, copyButton, ping, perFrame, EDITABLE, keepOnScreen, clip } from '../lib/dom'
+import { make, ICON, copyButton, ping, perFrame, EDITABLE, keepOnScreen, clip, uuid } from '../lib/dom'
 import { persist } from '../lib/store'
 import { items, savedRect, dragOut, changed, nearestFree, onCanvas, rect, viewCenter, centerOn, type Rect } from '../canvas/canvas'
 import { makeWindow, winTitle, removeButton } from '../canvas/window'
@@ -30,7 +30,7 @@ function fill(body: HTMLElement, text: string, type: SnipType, lang?: string) {
 }
 
 export function snippet(o: Snippet) {
-  const id = o.id ?? crypto.randomUUID(), body = make('pre', 'xnode-b')
+  const id = o.id ?? uuid(), body = make('pre', 'xnode-b')
   const copy = copyButton(() => body.textContent ?? '', 'Copy text')
   const type = typeOf(o)
   fill(body, o.text, type, o.lang)

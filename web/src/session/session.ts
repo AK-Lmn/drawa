@@ -1,7 +1,7 @@
 // Session cards: each is a live Claude process on the server. You can type any time (messages queue while Claude
 // or its agents work, like the terminal); output streams in continuously (stream.ts). Every tool call also lands on
 // the graph. This module owns the card itself: creating, focusing, closing, and its header / status.
-import { make, ICON, iconButton, project, ping } from '../lib/dom'
+import { make, ICON, iconButton, project, ping, uuid } from '../lib/dom'
 import { api, post } from '../lib/api'
 import { persist, save, saveSoon } from '../lib/store'
 import { front, savedRect, nextColumn, centerOn, fit, byIds, view as camera, type Rect, onCanvas } from '../canvas/canvas'
@@ -175,7 +175,7 @@ export function newSession(opts: { rect?: Rect; cid?: string } = {}) {
   body.append(log)
 
   const S: Session = {
-    cid: opts.cid ?? crypto.randomUUID(), sid: null, title: 'New session', model: '', cost: 0, done: false,
+    cid: opts.cid ?? uuid(), sid: null, title: 'New session', model: '', cost: 0, done: false,
     card, log, ta: null!, stopBtn: null!, blocks: {}, tools: {}, pending: 0, bg: 0, queued: [], picked: false, mode: lastMode(), asks: new Set(), refs: [], images: [], sentRefs: new Set(), chips: null!, n: -1, ctx: { used: 0, max: 0 },
   }
   composer(S, body) // message box, reference chips, / and @ menu

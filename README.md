@@ -1,6 +1,6 @@
-# Claude UI
+# drawa
 
-A browser front end for Claude Code, laid out as a canvas: each session is a card, the files Claude reads or edits are listed in a Files window wired to it (colored by action), and the commands it runs collect in a commands window. Click a file for its diffs from every session and the file itself (with markdown and Mermaid preview). Sessions stream in parallel, resume from history, and the whole layout survives a reload.
+A local browser front end for [Claude Code](https://claude.com/claude-code), laid out as a canvas instead of a chat window. Point it at a project folder and it opens a workspace where each session is a card, the files Claude reads or edits are listed in a Files window wired to that card (colored by action), and the commands it runs collect in a commands window. Click a file for its diffs from every session and the file itself (with markdown and Mermaid preview). Sessions stream in parallel, resume from history, and the whole layout survives a reload — so you can watch, steer and review several Claude sessions at once without leaving the browser tab or losing your place.
 
 ## Install
 
@@ -29,14 +29,28 @@ Or run straight off the source tree without a persistent binary: `go run . [proj
 drawa                  # opens the current folder, like `code .`
 drawa .                # the same, spelled out
 drawa ~/some/project   # or any other folder
+drawa --net .          # also reachable from other devices on the network
 ```
 
-Opens http://127.0.0.1:8765 in your browser. Claude works in whichever folder you passed (or the current one). Two env vars:
+Prints a prerequisite check (`claude`/`git`/`gh`), then opens http://127.0.0.1:8765 in your browser. Claude works in whichever folder you passed (or the current one). See [Environment variables](#environment-variables) below to change the port, credentials directory or image cache location.
+
+By default the server only answers on localhost. Pass `--net` (in any position) and, like a Vite or Next.js dev server, it also listens on the machine's network address and prints both:
+
+```
+  - Local:   http://127.0.0.1:8765
+  - Network: http://192.168.1.23:8765/?token=fpKZrzCN
+```
+
+The Network link lets other devices on the same network open the same workspace — useful for pairing from a laptop or checking the canvas on a phone. It only works with its `?token=` (a fresh one each run): the server still checks the Host header against one of these addresses (config.Hosts, stopping DNS rebinding from a random website) *and*, for the network address specifically, that token — once as `?token=`, then remembered via a cookie so the rest of the page's own requests don't need to carry it. An address that guesses wrong 5 times locks out for a few minutes. None of that makes the link safe to post anywhere public — only pass `--net` on a network you trust, and treat the link like a password.
+
+When run from source (`go run .` or a binary you built yourself, not a downloaded release), the server also rebuilds and restarts itself whenever a `.go` file changes (needs the Go toolchain on `PATH`; a build that fails to compile keeps the old server running).
+
+## Environment variables
 
 - `DRAWA_PORT` — use a different port (default `8765`), e.g. to run two projects at once.
 - `CLAUDE_CONFIG_DIR` — point at a different Claude Code config/credentials/sessions directory than the default `~/.claude`, e.g. to keep a separate login or set of installed skills for this tool: `CLAUDE_CONFIG_DIR=$HOME/.claude-work drawa .`
-
-When run from source (`go run .` or a binary you built yourself, not a downloaded release), the server also rebuilds and restarts itself whenever a `.go` file changes (needs the Go toolchain on `PATH`; a build that fails to compile keeps the old server running).
+- `XDG_DATA_HOME` — where pasted/dropped canvas images are cached outside the project folder, so every address (`127.0.0.1:8765`, the Vite dev server) sees the same pictures. Default `~/.local/share`; drawa stores images under `<base>/claude-ui/images`.
+- `CLAUDE_UI_ROOT` — dev-server only (see [Develop the UI](#develop-the-ui)): which project folder `npm run dev` opens.
 
 ## Develop the UI
 
@@ -48,7 +62,7 @@ Open http://localhost:5173 for hot reload. This also starts the Go server via `g
 
 ## Layout
 
-- `main.go`: the entry point (arg parsing, the self-restart loop, `main()`). `internal/`, one file per responsibility (`go test ./...` covers GitHub check merging, session/transcript loading, the canvas MCP endpoint and the multiplexed event stream): `config.go` (paths, constants, `Inside()`), `procx.go` (running `git`/`gh`/`claude` subprocesses), `gitx.go`, `github.go` + `detail.go` + `ops.go` (state/lists, single PR/issue reads, write operations), `filesx.go` (the file tree and `@` search), `images.go`, `sessions.go` (transcript loading, `Clip`/`Trimmed`), `canvastools.go` (the `Tools` schema Claude sees), `live.go` + `meta.go` (the `Live` type: one long-running `claude` process per card), `webassets/` (the built UI embedded for standalone release binaries, empty in a normal checkout), and `server/` (`handler.go` routing, `events.go` the `/api/events` stream, `mcp.go` the canvas MCP server, `shell.go` the `!` shell command, `cardops.go` send/respond/mode/canvas/interrupt/close). Serves `web/dist` (falling back to `webassets` when it's absent) and the file/session/git/GitHub API.
+- `main.go`: the entry point (arg parsing, the self-restart loop, `main()`). `internal/`, one file per responsibility (`go test ./...` covers GitHub check merging, session/transcript loading, the canvas MCP endpoint and the multiplexed event stream): `config.go` (paths, constants, `Inside()`), `procx.go` (running `git`/`gh`/`claude` subprocesses), `gitx.go`, `github.go` + `detail.go` + `ops.go` (state/lists, single PR/issue reads, write operations), `filesx.go` (the file tree and `@` search), `images.go`, `sessions.go` (transcript loading, `Clip`/`Trimmed`), `canvastools.go` (the `Tools` schema Claude sees), `live.go` + `meta.go` (the `Live` type: one long-running `claude` process per card), `webassets/` (the built UI embedded for standalone release binaries, empty in a normal checkout), and `server/` (`handler.go` routing, `events.go` the `/api/events` stream, `mcp.go` the canvas MCP server, `shell.go` the `!` shell command, `cardops.go` send/respond/mode/canvas/interrupt/close, `netauth.go` the `--net` token check and lockout). Serves `web/dist` (falling back to `webassets` when it's absent) and the file/session/git/GitHub API.
 - `web/src/`, by feature:
   - `main.ts`: boot, toolbar, shortcuts.
   - `lib/`: `api.ts` (server calls), `store.ts` (saved layout: each feature `persist()`s its own slice), `dom.ts`, `markdown.ts`, `select.ts` (custom dropdowns), `fonts.ts`, `blobs.ts` (IndexedDB for binary data such as canvas images).
@@ -70,4 +84,4 @@ Shortcuts (Excalidraw's, where we have the tool; not while typing):
 
 Drag the background to select (Select mode) or pan (Hand mode); the middle button and the wheel always pan; Ctrl/Cmd+scroll or pinch zooms. Phones start in Hand mode.
 - `PRODUCT.md`: design direction.
-The server accepts requests only from its own page (and the Vite dev server) on localhost, and file access is limited to the project folder.
+The server accepts requests only from its own page (and the Vite dev server), on localhost or the machine's own network address, and file access is limited to the project folder.

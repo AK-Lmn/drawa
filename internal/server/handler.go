@@ -47,7 +47,8 @@ func defaultStr(v, def string) string {
 func truthy(v any) bool { b, _ := v.(bool); return b }
 func str(v any) string  { s, _ := v.(string); return s }
 
-// Handler is the whole HTTP surface: localhost only, this endpoint runs Claude Code with your permissions.
+// Handler is the whole HTTP surface: localhost only unless --net, since this endpoint runs Claude Code with
+// your permissions (with --net, netAuthorized gates the network address with config.NetToken instead).
 func Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -169,6 +170,10 @@ func doGET(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "", 403)
 		return
 	}
+	if !netAuthorized(w, r) {
+		http.Error(w, "", 403)
+		return
+	}
 	path := r.URL.Path
 	q := singleValues(r.URL.Query())
 	if path == "/api/events" {
@@ -280,6 +285,10 @@ func doPOST(w http.ResponseWriter, r *http.Request) {
 		origin = origin[i+3:]
 	}
 	if !config.Hosts[r.Host] || !config.Origins[origin] {
+		http.Error(w, "", 403)
+		return
+	}
+	if !netAuthorized(w, r) {
 		http.Error(w, "", 403)
 		return
 	}

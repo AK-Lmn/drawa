@@ -3,7 +3,7 @@
 // server (a file named by its hash, `src`), so every browser and address sees them; pictures from before that live
 // in this browser's IndexedDB (lib/blobs) and move to the server the first time they're shown. Draw on it to point at things, then @ it or drop it on a
 // card: Claude gets the picture, with your drawing when there is one.
-import { make, ping, toast, typing } from '../lib/dom'
+import { make, ping, toast, typing, uuid } from '../lib/dom'
 import { post } from '../lib/api'
 import { persist } from '../lib/store'
 import { getBlob, putBlob, dropBlob, base64 } from '../lib/blobs'
@@ -73,7 +73,7 @@ export async function addImage(blob: Blob, title: string, at?: { x: number; y: n
   const [img] = await readImages([new File([blob], title, { type: blob.type })]) // scaled to what Claude can use
   if (!img) throw new Error("That file couldn't be read as an image.")
   URL.revokeObjectURL(img.url) // shown from the server (or IndexedDB) instead
-  const size = fit(img.w!, img.h!), id = crypto.randomUUID()
+  const size = fit(img.w!, img.h!), id = uuid()
   const src = await upload(img.data) ?? undefined
   if (!src) await putBlob(id, img.blob!) // the server is unreachable: keep it in this browser for now
   const r = at ? freeSpot({ ...at, ...size }) : spotBeside(near, size.w, size.h, 80)

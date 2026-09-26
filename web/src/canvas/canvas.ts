@@ -2,7 +2,7 @@
 // Items are absolutely positioned in #world, in world coordinates; #world carries the view transform.
 // Every item carries class "item" and data-kind (session, file, run, diagram, sketch, plan, note, ...):
 // that's all the canvas, the minimap and the saved layout need to know about it.
-import { $, make, perFrame, EDITABLE } from '../lib/dom'
+import { $, make, perFrame, EDITABLE, uuid } from '../lib/dom'
 
 export const stage = $('#stage')
 export const world = $('#world')
@@ -49,7 +49,7 @@ export interface Rect { x: number; y: number; w: number; h: number; min?: boolea
 export function addItem<T extends HTMLElement>(el: T, kind: string): T {
   el.classList.add('item')
   el.dataset.kind = kind
-  el.dataset.id ||= crypto.randomUUID() // for canvas tools; kinds with their own ids overwrite it
+  el.dataset.id ||= uuid() // for canvas tools; kinds with their own ids overwrite it
   world.append(el)
   return el
 }

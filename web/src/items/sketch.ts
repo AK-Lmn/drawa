@@ -1,7 +1,7 @@
 // Excalidraw sketches. On the canvas a sketch is a node showing a preview; double-click (or Edit) opens the
 // full editor in a dialog. (Excalidraw miscomputes pointer positions inside a CSS-scaled parent, so it can't
 // be edited in place on the zoomable canvas.)
-import { $, make, ICON, iconButton, project, confirmBox } from '../lib/dom'
+import { $, make, ICON, iconButton, project, confirmBox, uuid } from '../lib/dom'
 import { persist } from '../lib/store'
 import { isDark, onTheme } from '../lib/theme'
 import { forget } from '../canvas/graph'
@@ -36,7 +36,7 @@ const dark = isDark
 /* ---------- the node on the canvas ---------- */
 let count = 0
 export function sketch(opts: { id?: string; title?: string; rect?: Rect; edit?: boolean } = {}) {
-  const id = opts.id ?? crypto.randomUUID()
+  const id = opts.id ?? uuid()
   const c = viewCenter()
   const { el: node, body } = makeWindow({
     kind: 'sketch', cls: 'snode', title: opts.title ?? `Whiteboard ${++count}`, minW: 220, minH: 160,
