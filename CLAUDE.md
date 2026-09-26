@@ -1,6 +1,6 @@
-# Guidelines for agents working on claude-ui
+# Guidelines for agents working on Drawa
 
-claude-ui is a browser canvas around the Claude Code CLI. `main.go` + `internal/` run `claude` processes and serve a JSON API. `web/` is a Vite + TypeScript frontend with no framework: plain DOM modules. Read `README.md` for how to run it, and `PRODUCT.md` for the design brief. This file covers how to change the code without making it harder to change next time.
+Drawa is a browser canvas around the Claude Code CLI. `main.go` + `internal/` run `claude` processes and serve a JSON API. `web/` is a Vite + TypeScript frontend with no framework: plain DOM modules. Read `README.md` for how to run it, `CONTRIBUTING.md` for the code layout, and `PRODUCT.md` for the design brief. This file covers how to change the code without making it harder to change next time.
 
 ## Before you finish any change
 
@@ -57,7 +57,7 @@ The app scales through these registration points. A new feature should plug into
 If you find yourself adding the new kind to a list in `canvas.ts`, the minimap, `main.ts` restore code or a CSS `:not(...)` selector, stop: that list should be a registry or a `data-kind` rule.
 
 Rules for these registries:
-- **Persistence keys are a public format.** Existing users have saved layouts in localStorage (`claude-ui:canvas:<root>`). Never rename or reshape a key without a loader that still reads the old shape.
+- **Persistence keys are a public format.** Existing users have saved layouts in localStorage (`drawa:canvas:<root>`). Never rename or reshape a key without a loader that still reads the old shape.
 - **Restore phases:** 0 is settings and positions, 1 is items, 2 is things that attach to items (ink). A loader may be async; the next one waits for it.
 - **Item state goes in `data-state`,** not in ad-hoc classes (`busy`, `edit`, `approved`...). The minimap and CSS both key off `data-kind` + `data-state`.
 
@@ -110,7 +110,7 @@ These are measured, not guessed. Reopening a 27MB transcript went from 7.6s to 0
 
 ## Server (`main.go`, `internal/`)
 
-`main.go` is the thin entry point (the self-restart loop and `main()`; the project folder argument is read in `internal/config`). Everything it does lives in `internal/`, one file (or small file group) per responsibility — see `README.md`'s Layout section for the full list. Add a new domain the same way: one new package in `internal/`, imported where its routes or callers need it. `go test ./...` covers the riskiest small pieces (GitHub check merging, session/transcript loading, the canvas MCP endpoint, the multiplexed event stream) the way `test_server.py` used to.
+`main.go` is the thin entry point (the self-restart loop and `main()`; the project folder argument is read in `internal/config`). Everything it does lives in `internal/`, one file (or small file group) per responsibility — see `CONTRIBUTING.md`'s Layout section for the full list. Add a new domain the same way: one new package in `internal/`, imported where its routes or callers need it. `go test ./...` covers the riskiest small pieces (GitHub check merging, session/transcript loading, the canvas MCP endpoint, the multiplexed event stream) the way `test_server.py` used to.
 
 - Stdlib only (`net/http`). No third-party Go modules — `go.mod` should stay dependency-free the same way the old `server.py` was.
 - **Security checks are not optional:**
@@ -126,4 +126,4 @@ These are measured, not guessed. Reopening a 27MB transcript went from 7.6s to 0
 ## When a request is vague
 
 - Prefer the smallest change that fits these rules. When a request needs a new abstraction, add it as a registry in the lower layer, and move the existing cases onto it in the same change, so the codebase never has two ways of doing one thing.
-- Update `README.md`'s layout section and this file whenever you add a folder, a registry, or a rule.
+- Update `CONTRIBUTING.md`'s layout section and this file whenever you add a folder, a registry, or a rule.

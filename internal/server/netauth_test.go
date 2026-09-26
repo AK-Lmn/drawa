@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"claude-ui/internal/config"
+	"drawa/internal/config"
 )
 
 func TestNetAuth(t *testing.T) {

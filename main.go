@@ -20,10 +20,10 @@ import (
 	"syscall"
 	"time"
 
-	"claude-ui/internal/config"
-	"claude-ui/internal/live"
-	"claude-ui/internal/server"
-	"claude-ui/internal/webassets"
+	"drawa/internal/config"
+	"drawa/internal/live"
+	"drawa/internal/server"
+	"drawa/internal/webassets"
 )
 
 var binPath = filepath.Join(config.Repo, ".bin", "drawa-server")
@@ -81,6 +81,13 @@ func spinStatus(d time.Duration, label, color, symbol string) {
 // required (every card is a `claude` process); git and gh are optional (the Git/GitHub windows and their
 // per-call code already degrade gracefully without them), so those only warn.
 func preflight() {
+	if st, err := os.Stat(config.Root); err != nil || !st.IsDir() { // claude can't start in it: every send would fail
+		fmt.Printf("%s isn't a folder.\n", config.Root)
+		if len(os.Args) > 1 && strings.Contains(os.Args[1], "=") {
+			fmt.Printf("Environment variables go before the command: %s drawa\n", os.Args[1])
+		}
+		os.Exit(1)
+	}
 	checks := []struct {
 		cmd, label, help string
 		required         bool

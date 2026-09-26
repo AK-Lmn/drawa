@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"claude-ui/internal/config"
+	"drawa/internal/config"
 )
 
 type Result struct {

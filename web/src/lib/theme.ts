@@ -7,13 +7,13 @@ import { enhance } from './select'
 type Mode = 'light' | 'dark'
 /** [id in schemes.css, label]. First of each list is the default. */
 export const SCHEMES: Record<Mode, [string, string][]> = {
-  light: [['claude-light', 'Claude UI'], ['rose-pine-dawn', 'Rosé Pine Dawn'], ['catppuccin-latte', 'Catppuccin Latte'], ['tokyo-night-day', 'Tokyo Night Day'],
+  light: [['claude-light', 'Drawa'], ['rose-pine-dawn', 'Rosé Pine Dawn'], ['catppuccin-latte', 'Catppuccin Latte'], ['tokyo-night-day', 'Tokyo Night Day'],
     ['gruvbox-light', 'Gruvbox Light'], ['solarized-light', 'Solarized Light'], ['github-light', 'GitHub Light']],
-  dark: [['claude-dark', 'Claude UI'], ['rose-pine', 'Rosé Pine'], ['rose-pine-moon', 'Rosé Pine Moon'], ['catppuccin-mocha', 'Catppuccin Mocha'],
+  dark: [['claude-dark', 'Drawa'], ['rose-pine', 'Rosé Pine'], ['rose-pine-moon', 'Rosé Pine Moon'], ['catppuccin-mocha', 'Catppuccin Mocha'],
     ['catppuccin-macchiato', 'Catppuccin Macchiato'], ['catppuccin-frappe', 'Catppuccin Frappé'], ['tokyo-night', 'Tokyo Night'], ['tokyo-night-storm', 'Tokyo Night Storm'],
     ['gruvbox-dark', 'Gruvbox Dark'], ['nord', 'Nord'], ['kanagawa', 'Kanagawa'], ['everforest', 'Everforest']],
 }
-const KEY = 'claude-ui:theme'
+const KEY = 'drawa:theme'
 interface Choice { mode: Mode; light: string; dark: string }
 const load = (): Choice => {
   const d: Choice = { mode: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light', light: SCHEMES.light[0][0], dark: SCHEMES.dark[0][0] }

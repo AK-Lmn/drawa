@@ -12,12 +12,12 @@ export default defineConfig({
     name: 'go-server',
     apply: 'serve',
     // `npm run dev` also starts the Go server (it rebuilds and restarts itself when a .go file changes).
-    // Project folder: CLAUDE_UI_ROOT, default the repo; resolved here because the server runs from the repo.
+    // Project folder: DRAWA_ROOT, default the repo; resolved here because the server runs from the repo.
     // Built and run directly rather than `go run`, which leaves its child server holding the port when killed.
     configureServer() {
-      const bin = resolve('../.bin/claude-ui-server')
+      const bin = resolve('../.bin/drawa-server')
       if (spawnSync('go', ['build', '-o', bin, '.'], { cwd: '..', stdio: 'inherit' }).status) throw new Error('go build failed')
-      const go = spawn(bin, [resolve(process.env.CLAUDE_UI_ROOT ?? '..')], { cwd: '..', stdio: 'inherit' })
+      const go = spawn(bin, [resolve(process.env.DRAWA_ROOT ?? '..')], { cwd: '..', stdio: 'inherit' })
       process.on('exit', () => go.kill())
     },
   }],

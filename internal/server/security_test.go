@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"claude-ui/internal/images"
-	"claude-ui/internal/live"
+	"drawa/internal/images"
+	"drawa/internal/live"
 )
 
 func TestRequestChecks(t *testing.T) {

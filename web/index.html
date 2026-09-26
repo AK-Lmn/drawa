@@ -2,10 +2,12 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Claude UI</title>
+<title>Drawa</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <script>/* theme before first paint, no flash of the wrong one (lib/theme.ts owns it after boot; same defaults) */
-  (function(){var c={};try{c=JSON.parse(localStorage.getItem('claude-ui:theme')||'{}')||{}}catch(e){}
+  (function(){try{for(var i=localStorage.length;i--;){var k=localStorage.key(i)  /* keys saved before the rename to Drawa */
+    if(k.indexOf('claude-ui:')===0){var n='drawa:'+k.slice(10);if(localStorage.getItem(n)===null)localStorage.setItem(n,localStorage.getItem(k));localStorage.removeItem(k)}}}catch(e){}
+  var c={};try{c=JSON.parse(localStorage.getItem('drawa:theme')||'{}')||{}}catch(e){}
   var m=c.mode||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'),r=document.documentElement
   r.dataset.theme=m;r.dataset.scheme=c[m]||(m==='dark'?'claude-dark':'claude-light')})()</script>
 <link rel="stylesheet" href="/src/styles/index.css"><!-- linked, not imported from JS: no unstyled flash while scripts load -->
@@ -30,8 +32,10 @@
 <header id="bar" class="float">
   <div class="brand">
     <span class="logo" aria-hidden="true"></span>
-    <b id="pname">Claude UI</b>
-    <span id="ppath"></span>
+    <div class="brand-text">
+      <b id="pname">Drawa</b>
+      <span id="ppath"></span>
+    </div>
   </div>
   <span class="sep"></span>
   <button id="btn-new" class="btn primary" title="New session (N)" aria-label="New session"><svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg><span class="lbl">New session</span></button>

@@ -13,7 +13,7 @@ import { openGitHub, GH_ICON } from './github'
 import { ghPost, tally, dot, stateOf, REVIEW, sendToClaude, type GhState } from './gh'
 
 interface GitFile { path: string; x: string; y: string; staged: [number, number]; unstaged: [number, number] }
-interface GitState { repo: boolean; error?: string; branch?: string; upstream?: boolean; ahead?: number; behind?: number; files?: GitFile[]; total?: number; log?: { hash: string; subject: string; when: string; author: string }[] }
+interface GitState { repo: boolean; missing?: boolean; error?: string; branch?: string; upstream?: boolean; ahead?: number; behind?: number; files?: GitFile[]; total?: number; log?: { hash: string; subject: string; when: string; author: string }[] }
 
 let win: { el: HTMLElement; meta: HTMLElement; body: HTMLElement; msg: HTMLTextAreaElement; out: HTMLElement; timers: number[]; open: Set<string>; last: string } | undefined
 
@@ -66,6 +66,15 @@ export async function refresh() {
 
 function draw(st: GitState) {
   const w = win!
+  strip.hidden = !st.repo // pull request status means nothing without a repository
+  if (st.missing) {
+    w.meta.textContent = 'not installed'
+    const box = make('div', 'gempty')
+    box.append(make('p', '', st.error!))
+    w.body.replaceChildren(box)
+    w.msg.parentElement!.hidden = true
+    return
+  }
   if (!st.repo) {
     w.meta.textContent = 'not a repository'
     const box = make('div', 'gempty')

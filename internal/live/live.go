@@ -15,9 +15,9 @@ import (
 	"sync"
 	"time"
 
-	"claude-ui/internal/canvastools"
-	"claude-ui/internal/config"
-	"claude-ui/internal/sessions"
+	"drawa/internal/canvastools"
+	"drawa/internal/config"
+	"drawa/internal/sessions"
 )
 
 const Keep = 20_000          // ponytail: output lines kept for re-attaching; older ones dropped (the transcript has them)

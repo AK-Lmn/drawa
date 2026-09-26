@@ -20,8 +20,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"claude-ui/internal/config"
-	"claude-ui/internal/images"
+	"drawa/internal/config"
+	"drawa/internal/images"
 )
 
 const ClipLen = 20_000 // the page shows at most this much of one tool output

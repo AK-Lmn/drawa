@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"claude-ui/internal/config"
-	"claude-ui/internal/live"
+	"drawa/internal/config"
+	"drawa/internal/live"
 )
 
 // handleCardOp is the per-card operations: send a message, answer an approval, change mode, answer a canvas

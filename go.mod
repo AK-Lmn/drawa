@@ -1,3 +1,3 @@
-module claude-ui
+module drawa
 
 go 1.22

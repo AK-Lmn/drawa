@@ -12,8 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"claude-ui/internal/config"
-	"claude-ui/internal/gitx"
+	"drawa/internal/config"
+	"drawa/internal/gitx"
 )
 
 type TreeItem struct {

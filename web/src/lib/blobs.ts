@@ -1,7 +1,7 @@
 // Binary things too big for localStorage (images on the canvas): IndexedDB, this browser only.
 let db: Promise<IDBDatabase> | undefined
 const open = () => (db ??= new Promise((res, rej) => {
-  const r = indexedDB.open('claude-ui', 1)
+  const r = indexedDB.open('claude-ui', 1) // the name from before the rename to Drawa: renaming would lose pictures kept here
   r.onupgradeneeded = () => r.result.createObjectStore('blobs')
   r.onsuccess = () => res(r.result)
   r.onerror = () => rej(r.error)

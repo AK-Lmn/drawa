@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"claude-ui/internal/config"
+	"drawa/internal/config"
 )
 
 func TestTrimLiveLine(t *testing.T) {

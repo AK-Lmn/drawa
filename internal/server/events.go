@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"claude-ui/internal/config"
-	"claude-ui/internal/live"
+	"drawa/internal/config"
+	"drawa/internal/live"
 )
 
 var pageRe = regexp.MustCompile(`^[0-9a-f]{8,32}$`)

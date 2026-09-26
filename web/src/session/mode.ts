@@ -13,7 +13,7 @@ export const MODES: [string, string, string][] = [
   ['bypassPermissions', 'Allow everything', 'Never asks. Only for work you trust'],
 ]
 
-const LAST = 'claude-ui:mode'
+const LAST = 'drawa:mode'
 /** The mode you picked last: new cards start in it (this browser). */
 export const lastMode = () => { try { const m = localStorage.getItem(LAST); return m && MODES.some(([v]) => v === m) ? m : 'default' } catch { return 'default' } }
 

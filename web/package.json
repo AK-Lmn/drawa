@@ -1,5 +1,6 @@
 {
-  "name": "claude-ui",
+  "name": "drawa",
+  "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
   "scripts": {
