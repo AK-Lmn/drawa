@@ -80,12 +80,15 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - name: Checksums
+        run: cd artifacts && sha256sum *.tar.gz > checksums.txt # install.sh verifies downloads against this
+
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           extra=()
           case "${{ github.ref_name }}" in v*) ;; *) extra=(--prerelease) ;; esac
-          gh release create "${{ github.ref_name }}" artifacts/*.tar.gz \
+          gh release create "${{ github.ref_name }}" artifacts/*.tar.gz artifacts/checksums.txt \
             --repo "${{ github.repository }}" \
             --title "${{ github.ref_name }}" --generate-notes "${extra[@]}"

@@ -8,7 +8,7 @@ Needs [Claude Code](https://claude.com/claude-code) (`claude`) on `PATH` — `dr
 curl -fsSL https://raw.githubusercontent.com/probablysamir/drawa/main/install.sh | sh
 ```
 
-Downloads the right release binary for your OS/architecture and installs it to `~/.local/bin/drawa`. Set `DRAWA_INSTALL_DIR` first to install somewhere else:
+Checks your platform, downloads the right release binary, verifies its SHA-256 checksum, and installs it to `~/.local/bin/drawa`. Set `DRAWA_INSTALL_DIR` first to install somewhere else:
 
 ```sh
 DRAWA_INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/probablysamir/drawa/main/install.sh | sh
