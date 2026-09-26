@@ -4,6 +4,7 @@ package gitx
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -68,6 +69,9 @@ var behindRe = regexp.MustCompile(`behind (\d+)`)
 // gitStatus reports branch, ahead/behind, changed files (staged / unstaged / untracked with line counts), and
 // recent commits.
 func gitStatus() map[string]any {
+	if _, err := exec.LookPath("git"); err != nil { // not "no repo": the Git window mustn't offer a git init that can't run
+		return map[string]any{"repo": false, "missing": true, "error": "git isn't installed. Get it from https://git-scm.com/downloads, then reopen this window."}
+	}
 	ok, out := Git("status", "--porcelain=v1", "-b", "-z", "--untracked-files=all")
 	if !ok {
 		return map[string]any{"repo": false, "error": out}
