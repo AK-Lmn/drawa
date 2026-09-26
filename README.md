@@ -6,22 +6,13 @@ A browser front end for Claude Code, laid out as a canvas: each session is a car
 
 Needs [Claude Code](https://claude.com/claude-code) (`claude`) on `PATH` — `drawa` refuses to start without it. `git` and `gh` (the [GitHub CLI](https://cli.github.com)) are optional: without them the Git and GitHub windows don't work, but everything else does.
 
-**Download a release binary** (no Go or Node needed) from the [Releases page](https://github.com/probablysamir/claude-ui/releases): pick the archive matching your machine —
-
-| OS | Architecture | Archive |
-|---|---|---|
-| macOS | Apple Silicon (M1/M2/M3/…) | `drawa-darwin-arm64.tar.gz` |
-| macOS | Intel | `drawa-darwin-amd64.tar.gz` |
-| Linux | x86_64 | `drawa-linux-amd64.tar.gz` |
-| Linux | arm64 | `drawa-linux-arm64.tar.gz` |
-
-(No Windows build: `internal/procx/procx.go` kills a subprocess's whole process group with POSIX-only syscalls.) Not sure which architecture: `uname -m` (`arm64`/`aarch64` -> arm64, `x86_64` -> amd64).
+**Quick install (macOS, Linux):**
 
 ```sh
-tar -xzf drawa-<os>-<arch>.tar.gz        # extracts a single `drawa` binary
-chmod +x drawa
-sudo mv drawa /usr/local/bin/            # anywhere on PATH works; this is one option
+curl -fsSL https://raw.githubusercontent.com/probablysamir/claude-ui/main/install.sh | sh
 ```
+
+Fetches the right [release binary](https://github.com/probablysamir/claude-ui/releases/latest) (no Go or Node needed) for your OS/architecture and puts it on `PATH`. See [INSTALL.md](INSTALL.md) for manual per-platform steps, updating, uninstalling, and troubleshooting (there's no Windows build — `internal/procx/procx.go` kills a subprocess's whole process group with POSIX-only syscalls).
 
 **Or build from source:**
 
