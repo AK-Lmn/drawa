@@ -105,6 +105,7 @@ Shortcuts follow Excalidraw's where the tool exists, and don't fire while you're
 | **Items** | `N` new session · `C`/`Shift+C` next/previous session (`Enter` to type) · `T` sticky note · `S` scratchpad · `9` insert picture · `G` Git · `Shift+G` GitHub · `Shift+H` history & files · `Ctrl+K` find a window |
 | **Draw** | `D` toggle Draw mode · `P`/`7` pen · `A`/`5` arrow between items · `E`/`0` eraser · `T`/`8` text · `R`/`2` rectangle · `3` diamond · `O`/`4` ellipse · `L`/`6` line (`Shift` for square, circle, 45°) · `Ctrl+Z` undo · `Esc` stop |
 | **Selection** | `Ctrl/Cmd+A` select all · arrows nudge (`Shift`: 10px) · `Delete` remove · `Esc` clear |
+| **Message box** | `Enter` send · `Shift+Enter` new line · `↑`/`↓` on the first/last line: previous/next message you sent in this session (past the newest: your draft) |
 
 **Mouse:** drag the background to select (Select mode) or pan (Hand mode). The middle button and the wheel always pan. `Ctrl/Cmd+scroll` or pinch zooms. Phones start in Hand mode.
 
