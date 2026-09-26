@@ -1,0 +1,90 @@
+name: Release
+
+# Builds the frontend, embeds it into the Go binary (internal/webassets), cross-compiles `drawa` for macOS and
+# Linux, and publishes the results as a GitHub Release. See internal/webassets/webassets.go for why the UI has
+# to be embedded rather than shipped alongside the binary: config.Repo is a build-time path that only exists on
+# the machine that ran `go build`, so a binary built here can't find a sibling web/dist on someone else's box.
+# No Windows build: internal/procx/procx.go kills a subprocess's whole process group via POSIX-only syscalls
+# (Setpgid, syscall.Kill), which has no Windows equivalent without a real platform-specific implementation.
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build the UI
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Embed the UI for the release binary
+        run: |
+          rm -rf internal/webassets/dist
+          mkdir -p internal/webassets/dist
+          cp -r web/dist/. internal/webassets/dist/
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build drawa
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p out
+          go build -trimpath -ldflags="-s -w" -o out/drawa .
+
+      - name: Package
+        run: tar -czf "drawa-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz" -C out drawa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: drawa-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: "*.tar.gz"
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          extra=()
+          case "${{ github.ref_name }}" in v*) ;; *) extra=(--prerelease) ;; esac
+          gh release create "${{ github.ref_name }}" artifacts/*.tar.gz \
+            --title "${{ github.ref_name }}" --generate-notes "${extra[@]}"

@@ -1,2 +1,6 @@
 web/public/excalidraw/
 .bin/
+# release builds copy web/dist here before embedding (internal/webassets); keep only the placeholder that lets
+# `go build` compile in a checkout that hasn't run that copy step
+internal/webassets/dist/*
+!internal/webassets/dist/.gitkeep

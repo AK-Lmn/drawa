@@ -9,9 +9,11 @@ cd web && npm install && npm run build   # once, and after UI changes
 CLAUDE_CONFIG_DIR=$HOME/.claude-work go run ~/personalproj/claude-ui [project-folder]
 ```
 
-Or build a persistent binary: `go build -o claude-ui .` once, then run `./claude-ui [project-folder]`.
+Or build a persistent binary: `go build -o drawa .` once, then run `./drawa [project-folder]` (default: the current folder, like `code .`).
 
-Open http://127.0.0.1:8765. Claude works in `project-folder` (default: the current folder). The server rebuilds and restarts itself when a `.go` file changes (needs the Go toolchain on `PATH`; a build that fails to compile keeps the old server running).
+Or download a release binary from the repo's Releases page (built by `.github/workflows/release.yml`, with the UI embedded — no Node needed) and run `drawa .` from anywhere, once it's on `PATH`.
+
+Open http://127.0.0.1:8765 (`DRAWA_PORT` overrides the port). `drawa` checks for `claude` on `PATH` at startup (required) and warns if `git` or `gh` are missing (the Git/GitHub windows need them). Claude works in `project-folder`. When run from source, the server rebuilds and restarts itself when a `.go` file changes (needs the Go toolchain on `PATH`; a build that fails to compile keeps the old server running) — a downloaded release binary skips this (its UI is embedded, and it has no source tree to rebuild from).
 
 ## Develop the UI
 
@@ -23,7 +25,7 @@ Open http://localhost:5173 for hot reload. This also starts the Go server via `g
 
 ## Layout
 
-- `main.go`: the entry point (arg parsing, the self-restart loop, `main()`). `internal/`, one file per responsibility (`go test ./...` covers GitHub check merging, session/transcript loading, the canvas MCP endpoint and the multiplexed event stream): `config.go` (paths, constants, `Inside()`), `procx.go` (running `git`/`gh`/`claude` subprocesses), `gitx.go`, `github.go` + `detail.go` + `ops.go` (state/lists, single PR/issue reads, write operations), `filesx.go` (the file tree and `@` search), `images.go`, `sessions.go` (transcript loading, `Clip`/`Trimmed`), `canvastools.go` (the `Tools` schema Claude sees), `live.go` + `meta.go` (the `Live` type: one long-running `claude` process per card), and `server/` (`handler.go` routing, `events.go` the `/api/events` stream, `mcp.go` the canvas MCP server, `shell.go` the `!` shell command, `cardops.go` send/respond/mode/canvas/interrupt/close). Serves `web/dist` and the file/session/git/GitHub API.
+- `main.go`: the entry point (arg parsing, the self-restart loop, `main()`). `internal/`, one file per responsibility (`go test ./...` covers GitHub check merging, session/transcript loading, the canvas MCP endpoint and the multiplexed event stream): `config.go` (paths, constants, `Inside()`), `procx.go` (running `git`/`gh`/`claude` subprocesses), `gitx.go`, `github.go` + `detail.go` + `ops.go` (state/lists, single PR/issue reads, write operations), `filesx.go` (the file tree and `@` search), `images.go`, `sessions.go` (transcript loading, `Clip`/`Trimmed`), `canvastools.go` (the `Tools` schema Claude sees), `live.go` + `meta.go` (the `Live` type: one long-running `claude` process per card), `webassets/` (the built UI embedded for standalone release binaries, empty in a normal checkout), and `server/` (`handler.go` routing, `events.go` the `/api/events` stream, `mcp.go` the canvas MCP server, `shell.go` the `!` shell command, `cardops.go` send/respond/mode/canvas/interrupt/close). Serves `web/dist` (falling back to `webassets` when it's absent) and the file/session/git/GitHub API.
 - `web/src/`, by feature:
   - `main.ts`: boot, toolbar, shortcuts.
   - `lib/`: `api.ts` (server calls), `store.ts` (saved layout: each feature `persist()`s its own slice), `dom.ts`, `markdown.ts`, `select.ts` (custom dropdowns), `fonts.ts`, `blobs.ts` (IndexedDB for binary data such as canvas images).
