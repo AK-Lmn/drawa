@@ -134,11 +134,23 @@
   </div>
   <div class="stage"><div class="content"></div></div>
 </dialog>
-<dialog id="confirm" aria-labelledby="confirm-t">
+<dialog id="confirm" class="prompt" aria-labelledby="confirm-t">
   <form method="dialog">
     <h2 id="confirm-t"></h2>
     <p></p>
     <div class="row"><button value="" class="btn" autofocus>Cancel</button><button value="ok" class="btn danger"></button></div>
+  </form>
+</dialog>
+<dialog id="update" class="prompt" aria-labelledby="update-t">
+  <form method="dialog">
+    <h2 id="update-t">Update available</h2>
+    <div class="ver"><i></i><span aria-label="to">→</span><b></b><a target="_blank" rel="noopener">What's new</a></div>
+    <p aria-live="polite" hidden></p>
+    <div class="row">
+      <button value="skip" class="skip">Skip this version</button>
+      <button value="" class="btn" autofocus>Not now</button>
+      <button value="ok" class="btn primary">Update</button>
+    </div>
   </form>
 </dialog>
 <dialog id="sketcher" aria-label="Whiteboard editor">

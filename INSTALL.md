@@ -70,7 +70,7 @@ drawa .   # opens the current folder; Ctrl+C to stop
 drawa --update
 ```
 
-This installs the latest release over the binary you ran, with the same checksum check as the install script (`drawa --version` shows which one you have). While drawa is open, a small notice at the bottom of the page also tells you when a new release is out: **Update** installs it and restarts drawa, and × hides it for a day. Updating from the page stops sessions that are still working, so it asks first when there are any.
+This installs the latest release over the binary you ran, with the same checksum check as the install script (`drawa --version` shows which one you have). While drawa is open, it also asks when a new release is out. **Update** installs it, then you choose **Restart now** or **Restart later** (the new version starts the next time you run drawa). Restarting stops sessions that are still working, so the dialog tells you first when there are any. **Not now** asks again in a day, and **Skip this version** waits for the next release.
 
 Re-running the install script or repeating the manual steps works too. Either one overwrites the old binary. A build from source doesn't update itself: `git pull` and rebuild.
 

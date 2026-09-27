@@ -84,7 +84,8 @@ func ok(body any, err error) (any, int, error) {
 var getRoutes = map[string]routeFunc{
 	"/api/info": func(q url.Values) (any, int, error) { return map[string]any{"root": config.Root}, 200, nil },
 	"/api/version": func(q url.Values) (any, int, error) {
-		return map[string]any{"current": config.Version, "latest": update.Latest()}, 200, nil
+		info, _ := update.Check() // offline: no newer release to offer, which is the right answer
+		return info, 200, nil
 	},
 	"/api/tree": func(q url.Values) (any, int, error) { return ok(filesx.Tree(q.Get("path"))) },
 	"/api/file": func(q url.Values) (any, int, error) {
@@ -309,7 +310,14 @@ func doPOST(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, github.Op(body), 200)
 		return
 	case "/api/update":
-		updateNow(w, truthy(body["force"]))
+		if err := update.Install(); err != nil {
+			sendJSON(w, map[string]any{"error": err.Error()}, 502)
+			return
+		}
+		sendJSON(w, map[string]any{"ok": true, "working": live.Working()}, 200) // what "Restart now" would stop
+		return
+	case "/api/update/restart":
+		restartNow(w)
 		return
 	case "/api/git":
 		out, err := gitx.GitOp(body)
@@ -329,15 +337,11 @@ func doPOST(w http.ResponseWriter, r *http.Request) {
 	handleCardOp(w, r, cid, body)
 }
 
-// updateNow installs the latest release, answers, then restarts on it. Unless forced, it first says how many cards
-// are working, since the restart stops them.
-func updateNow(w http.ResponseWriter, force bool) {
-	if n := live.Working(); n > 0 && !force {
-		sendJSON(w, map[string]any{"working": n}, 200)
-		return
-	}
-	if err := update.Run(); err != nil {
-		sendJSON(w, map[string]any{"error": err.Error()}, 500)
+// restartNow answers, then execs the update Install put on disk. The page asked after being told what a restart
+// stops, so there's no second check here.
+func restartNow(w http.ResponseWriter) {
+	if !update.Pending() {
+		sendJSON(w, map[string]any{"error": "no update is installed"}, 409)
 		return
 	}
 	sendJSON(w, map[string]any{"ok": true}, 200)

@@ -1,17 +1,22 @@
-// Package update checks GitHub for a newer release and installs it over the running binary: `drawa --update` in
-// a terminal, or the page's update notice (POST /api/update, which then restarts the server on the new binary).
-// Only release binaries update themselves; a source build reports config.Version "dev" and is updated with git.
+// Package update checks GitHub Releases for a newer drawa and installs it in place: `drawa --update` in a
+// terminal, or the page's update dialog (POST /api/update, which then restarts the server on the new binary). It
+// mirrors install.sh's recipe (same repo, asset names and checksum file) so the two paths never disagree. Only
+// release binaries update themselves: a source build reports config.Version "dev" and is updated with git.
 package update
 
 import (
+	"archive/tar"
+	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
-	"path"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -21,13 +26,13 @@ import (
 	"drawa/internal/live"
 )
 
-const repo = "probablysamir/drawa"
+const repo = "probablysamir/drawa" // matches install.sh's $repo
+const ttl = 6 * time.Hour
 
-// no redirects followed: /releases/latest answers with a redirect to /releases/tag/<version>, which is all we need
-var client = &http.Client{
-	Timeout:       15 * time.Second,
-	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-}
+var (
+	checkClient    = &http.Client{Timeout: 5 * time.Second}
+	downloadClient = &http.Client{Timeout: 5 * time.Minute} // a release archive is ~10MB; never hang forever
+)
 
 // exe is this binary's path, read before an update replaces the file.
 var exe = executable()
@@ -43,77 +48,270 @@ func executable() string {
 	return p
 }
 
-var (
-	mu      sync.Mutex
-	latest  string
-	checked time.Time
-)
-
-// Latest is the newest release's tag (e.g. v0.1.7), asked of GitHub at most every 6 hours; "" for a source build
-// or when GitHub hasn't answered yet. Reads the redirect like install.sh does: no API call, so no rate limit.
-func Latest() string {
-	if config.Version == "dev" {
-		return ""
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if time.Since(checked) < 6*time.Hour {
-		return latest
-	}
-	checked = time.Now() // ponytail: a failed check waits the full 6h too; retry sooner if offline starts matter
-	resp, err := client.Head("https://github.com/" + repo + "/releases/latest")
-	if err != nil {
-		return latest
-	}
-	resp.Body.Close()
-	if tag := path.Base(resp.Header.Get("Location")); strings.HasPrefix(tag, "v") {
-		latest = tag
-	}
-	return latest
+type Info struct {
+	Current   string `json:"current"`
+	Latest    string `json:"latest"`
+	URL       string `json:"url"`
+	Available bool   `json:"available"`
+	Installed string `json:"installed,omitempty"` // on disk, waiting for a restart ("Restart later")
 }
 
-// Run installs the latest release over this binary with the project's own install.sh (so an update checks the
-// same SHA-256 sums as a fresh install). Its progress goes to the server's terminal.
-func Run() error {
-	if config.Version == "dev" {
-		return errors.New("this drawa was built from source: update it with git pull and a rebuild")
+var cache struct {
+	sync.Mutex
+	latest, url string
+	checked     time.Time
+	installed   string
+}
+
+// Check is what the page and `drawa --update` ask: GitHub is asked at most every 6 hours; a failed check is
+// retried on the next call (they're rare: the page asks every few hours and when you come back to the tab).
+func Check() (Info, error) {
+	if config.Version == "dev" { // no meaningful "current version" to compare, so never nag a source checkout
+		return Info{Current: config.Version}, nil
 	}
-	if exe == "" {
-		return errors.New("can't tell where this drawa is installed")
+	cache.Lock()
+	defer cache.Unlock()
+	if time.Since(cache.checked) >= ttl {
+		latest, url, err := resolveTag("https://github.com/" + repo + "/releases/latest")
+		if err != nil {
+			return Info{Current: config.Version, Installed: cache.installed}, err
+		}
+		cache.latest, cache.url, cache.checked = latest, url, time.Now()
 	}
-	resp, err := client.Get("https://raw.githubusercontent.com/" + repo + "/main/install.sh")
+	// once installed, only a still newer release is worth offering again
+	avail := newer(cache.latest, config.Version) && cache.latest != cache.installed
+	return Info{Current: config.Version, Latest: cache.latest, URL: cache.url, Available: avail, Installed: cache.installed}, nil
+}
+
+// Pending reports whether an installed update is waiting for a restart.
+func Pending() bool {
+	cache.Lock()
+	defer cache.Unlock()
+	return cache.installed != ""
+}
+
+// resolveTag reads releases/latest's redirect target (install.sh's trick): no API call, so no rate limit or auth.
+func resolveTag(latestURL string) (tag, url string, err error) {
+	resp, err := checkClient.Head(latestURL)
 	if err != nil {
-		return fmt.Errorf("couldn't reach GitHub: %w", err)
+		return "", "", err
 	}
-	defer resp.Body.Close()
-	script, err := io.ReadAll(resp.Body)
-	if err != nil || resp.StatusCode != 200 {
-		return fmt.Errorf("couldn't download install.sh (%s)", resp.Status)
+	resp.Body.Close()
+	loc := resp.Request.URL.String()
+	tag = loc[strings.LastIndexByte(loc, '/')+1:]
+	if !strings.HasPrefix(tag, "v") {
+		return "", "", errors.New("no release found")
 	}
-	cmd := exec.Command("sh", "-s")
-	cmd.Stdin = strings.NewReader(string(script))
-	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-	cmd.Env = append(os.Environ(), "DRAWA_INSTALL_DIR="+filepath.Dir(exe))
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("install.sh failed (%v): see the terminal drawa runs in", err)
+	return tag, loc, nil
+}
+
+// newer reports whether a > b, comparing "vX.Y.Z" tags component-wise (not lexicographically: v0.10.0 > v0.9.0).
+func newer(a, b string) bool {
+	pa, pb := parts(a), parts(b)
+	for i := range 3 {
+		if pa[i] != pb[i] {
+			return pa[i] > pb[i]
+		}
 	}
-	return nil
+	return false
+}
+
+func parts(v string) [3]int {
+	var out [3]int
+	for i, s := range strings.SplitN(strings.TrimPrefix(v, "v"), ".", 3) {
+		out[i], _ = strconv.Atoi(s)
+	}
+	return out
 }
 
 // CLI is `drawa --update`.
 func CLI() error {
-	l := Latest()
-	switch {
-	case config.Version == "dev":
-		return Run() // says why not
-	case l == "":
-		return errors.New("couldn't reach GitHub to check for a newer release")
-	case l == config.Version:
-		fmt.Printf("drawa %s is up to date.\n", l)
+	if config.Version == "dev" {
+		return errors.New("this drawa was built from source: update it with git pull and a rebuild")
+	}
+	info, err := Check()
+	if err != nil {
+		return fmt.Errorf("couldn't check GitHub for a newer release: %w", err)
+	}
+	if !info.Available {
+		fmt.Printf("drawa %s is up to date.\n", config.Version)
 		return nil
 	}
-	fmt.Printf("Updating drawa %s → %s\n", config.Version, l)
-	return Run()
+	fmt.Printf("Updating drawa %s → %s\n", config.Version, info.Latest)
+	if err := Install(); err != nil {
+		return err
+	}
+	fmt.Printf("Installed %s at %s\n", info.Latest, exe)
+	return nil
+}
+
+// Install downloads the release matching this machine, verifies its checksum and replaces the running binary
+// on disk. It never kills a session or restarts the process: call Restart for that, after answering whoever
+// asked for the install.
+func Install() error {
+	info, err := Check()
+	if err != nil {
+		return err
+	}
+	if !info.Available {
+		return errors.New("no update available")
+	}
+	if exe == "" {
+		return errors.New("can't tell where this drawa is installed")
+	}
+	asset := fmt.Sprintf("drawa-%s-%s.tar.gz", runtime.GOOS, runtime.GOARCH)
+	base := "https://github.com/" + repo + "/releases/download/" + info.Latest
+
+	tmp, err := os.MkdirTemp("", "drawa-update-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+
+	archivePath := filepath.Join(tmp, asset)
+	if err := download(base+"/"+asset, archivePath); err != nil {
+		return fmt.Errorf("downloading %s: %w", asset, err)
+	}
+	sumsPath := filepath.Join(tmp, "checksums.txt")
+	if err := download(base+"/checksums.txt", sumsPath); err != nil {
+		return fmt.Errorf("downloading checksums.txt: %w", err)
+	}
+	if err := verify(archivePath, asset, sumsPath); err != nil {
+		return err
+	}
+	bin, err := extractBinary(archivePath, tmp)
+	if err != nil {
+		return err
+	}
+	if err := replaceSelf(bin); err != nil {
+		return err
+	}
+	cache.Lock()
+	cache.installed = info.Latest
+	cache.Unlock()
+	return nil
+}
+
+func download(url, dest string) error {
+	resp, err := downloadClient.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("%s: %s", url, resp.Status)
+	}
+	f, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = io.Copy(f, resp.Body)
+	return err
+}
+
+func verify(archivePath, asset, sumsPath string) error {
+	sums, err := os.ReadFile(sumsPath)
+	if err != nil {
+		return err
+	}
+	var want string
+	for _, line := range strings.Split(string(sums), "\n") {
+		if sum, name, ok := strings.Cut(line, "  "); ok && name == asset {
+			want = sum
+			break
+		}
+	}
+	if want == "" {
+		return fmt.Errorf("checksums.txt has no entry for %s", asset)
+	}
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return err
+	}
+	if got := hex.EncodeToString(h.Sum(nil)); got != want {
+		return fmt.Errorf("checksum mismatch for %s: the download is corrupt or was tampered with", asset)
+	}
+	return nil
+}
+
+// extractBinary pulls the single `drawa` file out of the tar.gz, into the same temp dir as the archive.
+func extractBinary(archivePath, dir string) (string, error) {
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return "", err
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			return "", errors.New("archive has no drawa binary")
+		}
+		if err != nil {
+			return "", err
+		}
+		if filepath.Base(hdr.Name) != "drawa" {
+			continue
+		}
+		out := filepath.Join(dir, "drawa")
+		w, err := os.OpenFile(out, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+		if err != nil {
+			return "", err
+		}
+		_, err = io.Copy(w, tr)
+		w.Close()
+		if err != nil {
+			return "", err
+		}
+		return out, nil
+	}
+}
+
+// replaceSelf swaps the new binary over the running one: a temp file in the same directory (same filesystem,
+// so the rename is atomic), then os.Rename, which replaces the name without writing into the running file.
+func replaceSelf(newBinary string) error {
+	staged := exe + ".new"
+	if err := copyFile(newBinary, staged); err != nil {
+		os.Remove(staged)
+		return fmt.Errorf("can't write to %s: %w", filepath.Dir(exe), err)
+	}
+	if err := os.Chmod(staged, 0o755); err != nil {
+		os.Remove(staged)
+		return err
+	}
+	if err := os.Rename(staged, exe); err != nil {
+		os.Remove(staged)
+		return err
+	}
+	return nil
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 // Restart replaces this server with the freshly installed binary, the same way main.go's rebuild-on-change does.
