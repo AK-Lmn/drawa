@@ -6,8 +6,8 @@ import { centerOn, onDrop, onCanvas } from '../canvas/canvas'
 import { link, unlink } from '../canvas/graph'
 import { canvasRefs, refOf, refIcon, type Ref } from '../canvas/refs'
 import { cards, focus, meta, clearSession, type Session } from './session'
-import { send } from './live'
-import { readImages, thumb } from './images'
+import { send, editLast } from './live'
+import { readImages, thumb, type Pasted } from './images'
 import { textRefs } from './uploads'
 import { runShell } from './shell'
 import { modePicker } from './mode'
@@ -63,10 +63,7 @@ export function composer(S: Session, body: HTMLElement) {
     drawChips(S)
     send(S, p || (images.length && !refs.length ? 'Take a look at this.' : 'Take a look at these.'), undefined, refs, images).then(ok => {
       if (ok || ta.value || S.refs.length || S.images.length) return // sent, or you've started the next one: keep that
-      ta.value = p // not sent: put it back to try again
-      S.refs.push(...refs)
-      S.images.push(...images)
-      drawChips(S)
+      putBack(S, p, refs, images) // not sent: put it back to try again
     })
   }
   // images: paste them (Ctrl+V) or drop image files on the message box. Each gets a "[ImageN]" marker inserted at
@@ -109,7 +106,12 @@ export function composer(S: Session, body: HTMLElement) {
   commandMenu(S, form)
   // after the menu's handler: when the "/" or "@" menu is open, it takes Up/Down (and prevents the default)
   const step = recall(ta, S.log)
-  ta.addEventListener('keydown', e => { if (!e.defaultPrevented && step(e)) { e.preventDefault(); fit() } })
+  ta.addEventListener('keydown', e => {
+    if (e.defaultPrevented) return
+    const plainUp = e.key === 'ArrowUp' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !e.isComposing
+    if (plainUp && !ta.value && editLast(S)) e.preventDefault() // the last message is still queued: take it back to edit
+    else if (step(e)) { e.preventDefault(); fit() }
+  })
 }
 
 /* ---------- "/" menu: skills and slash commands; "@" menu: canvas items ---------- */
@@ -223,6 +225,16 @@ export function chip(r: Ref, remove?: () => void) {
     c.append(x)
   }
   return c
+}
+
+/** Puts a message back in the box (not sent, or taken back to edit), after whatever you've typed since. */
+export function putBack(S: Session, p: string, refs: Ref[], images: Pasted[]) {
+  S.ta.value = S.ta.value ? S.ta.value + '\n' + p : p
+  S.refs.push(...refs.filter(r => !S.refs.some(x => x.el === r.el)))
+  S.images.push(...images)
+  drawChips(S)
+  S.ta.dispatchEvent(new Event('input')) // fit its height
+  S.ta.focus()
 }
 
 function drawChips(S: Session) {
