@@ -219,6 +219,8 @@ export function newSession(opts: { rect?: Rect; cid?: string; backend?: string }
   agentsBtn.onclick = e => { e.stopPropagation(); const run = runningAgents(S); if (run.length) showAgent(run[nextAgent++ % run.length]) }
   title.after(agentsBtn, make('span', 'm'), ctx)
   const log = make('div', 'log')
+  log.setAttribute('role', 'log') // a screen reader reads out what's added; aria-busy (renderCard) holds a streaming reply until it's whole
+  log.setAttribute('aria-label', 'Conversation')
   // scrolled up to read: a way back to the latest message (appends while you're up there don't scroll, so it stays shown)
   const down = iconButton(ICON.open, 'Scroll to the latest message', () => { log.scrollTop = log.scrollHeight }, 'tobottom')
   down.hidden = true
@@ -345,6 +347,7 @@ export function renderCard(S: Session) {
   ctx.title = `Context: ${S.ctx.used.toLocaleString()} of ${S.ctx.max.toLocaleString()} tokens used. Click to write /compact (summarizes the conversation to free space).`
   renderInfo(S)
   S.log.classList.toggle('busy', S.pending > 0)
+  S.log.setAttribute('aria-busy', String(S.pending > 0))
   S.stopBtn.hidden = S.pending === 0
   S.ta.placeholder = busy ? `${who(S.backend)} is working. Type to queue a message.` : `Message ${who(S.backend)}: / commands, @ files, ! shell · ${sendCombo()} sends`
 }
