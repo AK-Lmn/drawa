@@ -5,7 +5,20 @@
 #bar .newagent .xsel{background:var(--accent);border-color:var(--accent);color:var(--on-accent);border-left-color:color-mix(in oklab,var(--on-accent) 35%,var(--accent))}
 #bar .newagent .xsel:hover,#bar .newagent .xsel[aria-expanded=true]{background:color-mix(in oklab,var(--accent) 88%,var(--ink))}
 .brand{display:flex;align-items:center;gap:8px;flex:0 1 auto;min-width:40px;overflow:hidden;padding:0 6px}
-#bar>:not(.brand){flex:none} /* buttons keep their size; the project name is what gives way */
+#bar>:not(.brand),#bar-more>*{flex:none} /* buttons keep their size; the project name is what gives way */
+/* the toolbar's tail (main.ts): in the bar, or on phones a menu under the ⋯ button (fixed: the bar clips overflow) */
+#bar-more{display:contents}
+#btn-more{display:none;width:32px;padding:0;justify-content:center}
+#btn-more[aria-expanded=true]{background:var(--sel);border-color:var(--accent)}
+@media (max-width:560px){
+  #btn-more{display:inline-flex}
+  #bar-more{position:fixed;top:64px;right:12px;display:none;flex-direction:column;gap:2px;min-width:200px;padding:6px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow-lift)}
+  #bar-more.open{display:flex;animation:enter .15s var(--ease)}
+  #bar #bar-more .btn{justify-content:flex-start;width:auto;padding:0 10px;border-color:transparent}
+  #bar-more .btn .lbl{display:inline}
+  #btn-theme::after{content:attr(aria-label)} /* an icon alone doesn't say what it does in a list */
+  #btn-fonts::after{content:"Appearance";font-weight:500}
+}
 .brand-text{display:flex;flex-direction:column;justify-content:center;min-width:0;line-height:1.25}
 #pname{overflow:hidden;text-overflow:ellipsis}
 .logo{align-self:center;width:18px;height:18px;flex:none;background:conic-gradient(from 200deg,var(--edit-hue),var(--write-hue),var(--run-hue),var(--read-hue),var(--edit-hue));
