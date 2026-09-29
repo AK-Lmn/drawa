@@ -65,8 +65,8 @@ export function setToggle(el: HTMLElement, cls: string, on: boolean, onTitle: st
 }
 /** The pin buttons' look follows the window's state. */
 export function syncPin(el: HTMLElement) {
-  setToggle(el, 'pinbtn', docked(el), 'Unpin: back to its place on the canvas', 'Pin to sidebar: stays on screen while you move around')
-  setToggle(el, 'floatbtn', floating(el), 'Unstick: back to its place on the canvas', 'Stick to screen: floats where it is while you move around')
+  setToggle(el, 'pinbtn', docked(el), 'Unpin: back to its place on the canvas (Shift+P)', 'Pin to sidebar: stays on screen while you move around (Shift+P)')
+  setToggle(el, 'floatbtn', floating(el), 'Unstick: back to its place on the canvas (Shift+S)', 'Stick to screen: floats where it is while you move around (Shift+S)')
 }
 const sync = syncPin
 

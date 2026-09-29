@@ -3,6 +3,7 @@
 // bar by the selection) removes them, each through its own remove path. Only items laid out on the canvas take part:
 // pinned, floating and full-view windows don't.
 import { make, ICON, button, iconButton, confirmBox, shortcutOk, EDITABLE, keepOnScreen } from '../lib/dom'
+import { command } from '../lib/keys'
 import { stage, placed, onCanvas, hidden, rect, place, toWorld, view, onChange, moveWith, movesWith, setMoveAlong, changed, swallowNext, hits, track, type Rect, type Mover } from './canvas'
 import { redraw } from './graph'
 import { drawing, remove, type Stroke } from './ink'
@@ -61,6 +62,8 @@ function set(el: HTMLElement, on: boolean) {
   el.classList.toggle('selected', on)
 }
 export function clearSelection() { for (const el of [...sel]) set(el, false); for (const s of [...inkSel]) setInk(s, false); sync() }
+/** Make `el` the whole selection (W steps through windows, so Delete, the arrows and Ctrl+G act on the one it lands on). */
+export function selectOnly(el: HTMLElement) { clearSelection(); set(el, true); sync() }
 
 moveWith(el => (sel.has(el) ? [...sel] : []))
 setMoveAlong(el => (sel.has(el) && inkSel.size ? strokeMover([...inkSel]) : null))
@@ -198,6 +201,10 @@ stage.addEventListener('pointerdown', e => {
   })
 }, true)
 
+command({ label: 'Select all', group: 'Selection', keys: ['Ctrl+A'] })
+command({ label: 'Nudge the selection (Shift: 10px)', group: 'Selection', keys: ['←→↑↓'] })
+command({ label: 'Delete the selection', group: 'Selection', keys: ['Delete'] })
+command({ label: 'Clear the selection', group: 'Selection', keys: ['Esc'] })
 const NUDGE: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
 addEventListener('keydown', e => {
   if (e.defaultPrevented || e.altKey || drawing) return

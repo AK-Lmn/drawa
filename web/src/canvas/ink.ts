@@ -7,6 +7,7 @@ import { getStroke } from 'perfect-freehand'
 import { $, confirmBox, shortcutOk, closestAt, perFrame } from '../lib/dom'
 import { toWorld, view, changed, onChange, track } from './canvas'
 import { persist } from '../lib/store'
+import { command } from '../lib/keys'
 import { follow, watchRows, unwatch, rowAt, adopt, onHost } from './inkrows'
 import { startLink } from './links'
 import { SHAPES, outlinePoints, fillPath, constrain, type Shape } from './shapegeom'
@@ -121,6 +122,9 @@ const pick = (t: Tool) => setTool(tool === t ? 'pen' : t) // picking the tool th
  *  P/7 pen, T/8 text, E/0 eraser. */
 const KEYS: Record<string, Tool> = { r: 'rect', Digit2: 'rect', Digit3: 'diamond', o: 'ellipse', Digit4: 'ellipse', a: 'arrow', Digit5: 'arrow', l: 'line', Digit6: 'line', p: 'pen', Digit7: 'pen', t: 'text', Digit8: 'text', e: 'eraser', Digit0: 'eraser' }
 export const toolKey = (e: KeyboardEvent): Tool | null => KEYS[e.key.toLowerCase()] ?? KEYS[e.code] ?? null
+for (const [label, keys] of [['Pen', 'P 7'], ['Arrow between items', 'A 5'], ['Eraser', 'E 0'], ['Text', 'T 8'], ['Rectangle', 'R 2'],
+  ['Diamond', '3'], ['Ellipse', 'O 4'], ['Line', 'L 6'], ['Undo', 'Ctrl+Z'], ['Stop drawing', 'Esc']])
+  command({ label, group: 'Draw', keys: keys.split(' ') })
 
 /* ---------- input: left button draws (or erases); middle button and wheel still pan the canvas ---------- */
 capture.addEventListener('pointerdown', e => {

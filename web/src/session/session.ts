@@ -21,6 +21,7 @@ import { setMode, lastMode } from './mode'
 import { setModel, setEffort, renderInfo, seedInfo } from './gen'
 import { loadSessions, resume, sessionPath } from './history'
 import { lastAgent, modesOf, installed, title, who } from '../lib/agents'
+import { sendCombo, onSendKey } from '../lib/sendkey'
 
 export type ToolRow = HTMLDetailsElement & { chg?: Change }
 export interface Block {
@@ -339,8 +340,10 @@ export function renderCard(S: Session) {
   renderInfo(S)
   S.log.classList.toggle('busy', S.pending > 0)
   S.stopBtn.hidden = S.pending === 0
-  S.ta.placeholder = busy ? `${who(S.backend)} is working. Type to queue a message.` : `Message ${who(S.backend)}: / commands, @ files, ! shell`
+  S.ta.placeholder = busy ? `${who(S.backend)} is working. Type to queue a message.` : `Message ${who(S.backend)}: / commands, @ files, ! shell · ${sendCombo()} sends`
 }
+
+onSendKey(() => cards.forEach(renderCard)) // the placeholder names the send key
 
 /* ---------- appending to the log ---------- */
 const nearBottom = (S: Session, px: number) => S.log.scrollHeight - S.log.scrollTop - S.log.clientHeight < px

@@ -52,7 +52,7 @@ export function exitFull() {
   changed()
 }
 
-export const syncFull = (el: HTMLElement) => setToggle(el, 'fullbtn', isFull(el), 'Back to its place (Esc)', 'Full view')
+export const syncFull = (el: HTMLElement) => setToggle(el, 'fullbtn', isFull(el), 'Back to its place (Esc)', 'Full view (Shift+F)')
 const sync = syncFull
 
 // Esc leaves full view, unless it's closing something inside first (a menu, a prompt) or you're typing

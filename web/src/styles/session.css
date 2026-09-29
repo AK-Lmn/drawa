@@ -53,6 +53,7 @@
 .card .compose .xsel[data-mode=plan]{color:var(--accent)}.card .compose .xsel[data-mode=acceptEdits]{color:var(--edit)}.card .compose .xsel[data-mode=auto]{color:var(--write)}.card .compose .xsel[data-mode=bypassPermissions]{color:var(--danger)}
 .card .compose .xsel[data-mode=acceptEdits],.card .compose .xsel[data-mode=auto],.card .compose .xsel[data-mode=bypassPermissions],.card .compose .xsel[data-mode=plan]{border-color:color-mix(in oklab,currentColor 40%,var(--line))}
 .card .compose.shell{border-color:var(--run)}
+/* how to send (the key is a setting): only while typing in the box, so an idle card stays compact */
 .card .compose.shell::before{content:"$";color:var(--run)}
 .card.droptarget .compose{border-color:var(--accent);background:var(--sel)}
 .card textarea{flex:1;min-height:24px;max-height:180px;overflow-y:hidden;padding:4px 0;border:0;background:none;font-size:14px;line-height:1.5;resize:none;outline:none;cursor:text}

@@ -15,6 +15,16 @@ import { modelPicker, effortPicker, infoBadge } from './gen'
 import { recall } from './recall'
 import { who, metaNow } from '../lib/agents'
 import { enhance } from '../lib/select'
+import { isSend, sendCombo, onSendKey } from '../lib/sendkey'
+import { command } from '../lib/keys'
+
+command({ label: 'Send (set in Appearance)', group: 'Message box', keys: ['Enter', 'Ctrl+Enter'], tip: 'Choose Enter or Ctrl+Enter to send in Appearance (Aa)' })
+command({ label: 'New line', group: 'Message box', keys: ['Shift+Enter'] })
+command({ label: 'Earlier messages', group: 'Message box', keys: ['↑↓'] })
+command({ label: 'Leave the box', group: 'Message box', keys: ['Esc'] })
+command({ label: 'Skills and commands', group: 'Message box', keys: ['/'] })
+command({ label: 'Mention a canvas item or file', group: 'Message box', keys: ['@'] })
+command({ label: 'Run a shell command', group: 'Message box', keys: ['!'] })
 
 /** Build the composer at the bottom of the card's body and hook it to the session. */
 export function composer(S: Session, body: HTMLElement) {
@@ -28,7 +38,6 @@ export function composer(S: Session, body: HTMLElement) {
   stopBtn.setAttribute('aria-label', 'Stop')
   sendBtn.type = 'submit'
   sendBtn.innerHTML = ICON.up
-  sendBtn.title = 'Send (Ctrl+Enter)'
   sendBtn.setAttribute('aria-label', 'Send')
   // effort is Claude Code's (--effort); other agents get only a model picker
   const modelSel = modelPicker(S), effortSel = S.backend === 'claude' ? effortPicker(S) : null, pick = modePicker(S)
@@ -37,6 +46,9 @@ export function composer(S: Session, body: HTMLElement) {
   form.append(ta, pick, stopBtn, sendBtn)
   chips.hidden = true
   const dock = make('div', 'dock') // the card's footer: attached references above a clearly bordered message field
+  const label = () => { sendBtn.title = `Send (${sendCombo()})` } // the placeholder says it too (renderCard)
+  label()
+  onSendKey(label) // ponytail: never unregistered; a closed card's closure is tiny, add an off() if cards churn by thousands
   dock.append(chips, gen, form)
   body.append(dock)
   for (const sel of [modelSel, effortSel, pick]) if (sel) enhance(sel) // the custom dropdowns, once they're in the page
@@ -192,8 +204,9 @@ function commandMenu(S: Session, form: HTMLFormElement) {
       if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) { e.preventDefault(); pick(sel); return }
       if (e.key === 'Escape') { menu.hidden = true; return }
     }
-    // Enter is a plain new line; Ctrl/Cmd+Enter sends; Esc leaves the box so single-key shortcuts work again
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing) { e.preventDefault(); form.requestSubmit() }
+    // the send key is a setting (lib/sendkey.ts); anything else on Enter is a new line. Esc leaves the box so
+    // single-key shortcuts work again
+    if (isSend(e)) { e.preventDefault(); form.requestSubmit() }
     else if (e.key === 'Escape') S.ta.blur()
   })
 }

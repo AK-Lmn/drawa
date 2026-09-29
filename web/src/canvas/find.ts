@@ -1,10 +1,11 @@
 // Find a window: Ctrl/Cmd+K (or the toolbar's search button) lists everything on the canvas; type to filter by
 // title and content, Enter flies to it, brings it to the front and expands it if it was collapsed. Project files
 // matching the query are listed below the windows, the highlighted one previewed beside the list; picking one opens
-// it in a window (see fileOpener).
+// it in a window (see fileOpener). Commands (lib/keys.ts entries with `run`) matching the query are listed above.
 import { api, q as enc } from '../lib/api'
 import { enhanceMarked } from '../lib/markdown'
 import { $, make, ping, reducedMotion } from '../lib/dom'
+import { command, commands, MOD } from '../lib/keys'
 import { items, centerOn, front, onCanvas, hidden } from './canvas'
 import { refIcon, kindName } from './refs'
 import { titleOf, expand, focusInput } from './window'
@@ -12,10 +13,10 @@ import { titleOf, expand, focusInput } from './window'
 const box = document.body.appendChild(make('div', 'finder'))
 box.hidden = true
 box.setAttribute('role', 'dialog')
-box.setAttribute('aria-label', 'Find a window or file')
+box.setAttribute('aria-label', 'Find a window, file or command')
 const input = box.appendChild(make('input'))
-input.placeholder = 'Find a window or a file'
-input.setAttribute('aria-label', 'Find a window or file')
+input.placeholder = 'Find a window, file or command'
+input.setAttribute('aria-label', 'Find a window, file or command')
 const body = box.appendChild(make('div', 'finder-b'))
 const list = body.appendChild(make('div', 'finder-list'))
 list.setAttribute('role', 'listbox')
@@ -34,7 +35,7 @@ function textOf(el: HTMLElement) {
   return parts.reverse().join('\n').slice(-TEXT)
 }
 
-interface Hit { el?: HTMLElement; path?: string; title: string; kind: string; excerpt: string; score: number }
+interface Hit { el?: HTMLElement; path?: string; run?: () => void; key?: string; title: string; kind: string; excerpt: string; score: number }
 interface Entry { el: HTMLElement; title: string; t: string; kind: string; body: string; b: string }
 let hits: Hit[] = [], sel = 0, index: Entry[] = []
 /** Read every window's title and text once, when the finder opens: typing then only filters this. */
@@ -81,6 +82,15 @@ const fileHit = (path: string): Hit => {
   return { path, title: path.slice(cut + 1), kind: 'preview', excerpt: path.slice(0, cut + 1), score: 0 }
 }
 
+/** Commands whose label has every word of the query; none while the query is empty (that lists the windows). */
+function findCommands(q: string): Hit[] {
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean)
+  if (!words.length) return []
+  return commands().filter(c => c.run && words.every(w => c.label.toLowerCase().includes(w)))
+    .map(c => ({ run: c.run, key: c.keys?.[0]?.replace(/Ctrl/g, MOD), title: c.label, kind: '', excerpt: '', score: 0 }))
+}
+const section = (h?: Hit) => !h ? '' : h.run ? 'Commands' : h.path ? 'Files' : 'Windows'
+
 function search(q: string): Hit[] {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean)
   const out: Hit[] = []
@@ -104,7 +114,7 @@ function search(q: string): Hit[] {
 }
 
 function draw() {
-  hits = [...search(input.value).slice(0, 50), ...found.map(fileHit)]
+  hits = [...findCommands(input.value), ...search(input.value).slice(0, 50), ...found.map(fileHit)]
   sel = Math.min(sel, Math.max(0, hits.length - 1))
   list.replaceChildren(...(hits.length ? hits.flatMap((h, i) => {
     const row = make('button', 'finder-row' + (i === sel ? ' on' : ''))
@@ -112,12 +122,14 @@ function draw() {
     row.dataset.kind = h.kind
     const main = make('span', 'fr-main')
     main.append(make('b', '', h.title || '(untitled)'), ...(h.excerpt ? [make('small', '', h.excerpt)] : []))
-    row.append(make('i', 'fr-g', refIcon(h.kind)), main, make('span', 'fr-k', kindName(h.kind)))
+    row.append(make('i', 'fr-g', h.run ? '›' : refIcon(h.kind)), main, make('span', 'fr-k', h.run ? h.key ?? '' : kindName(h.kind)))
     row.onmousedown = e => { e.preventDefault(); pick(h) }
     // mousemove, not mouseenter: a redraw puts a new row under a resting pointer, which would take the highlight back from the arrow keys
     row.onmousemove = () => { if (sel === i) return; list.querySelector('.on')?.classList.remove('on'); row.classList.add('on'); sel = i; peek() }
-    if (!h.path || hits[i - 1]?.path) return [row]
-    const head = make('p', 'finder-sec', 'Files') // the files start: their own section, below the windows
+    // a header where a section starts: commands, then windows (unnamed when first), then files
+    const sec = section(h)
+    if (sec === section(hits[i - 1]) || (sec === 'Windows' && !i)) return [row]
+    const head = make('p', 'finder-sec', sec)
     head.setAttribute('role', 'presentation')
     return [head, row]
   }) : [make('p', 'none', 'Nothing matches.')]))
@@ -125,7 +137,11 @@ function draw() {
   peek()
 }
 
-const pick = (h: Hit) => { const el = h.el ?? openFile?.(h.path!); if (el) go(el) }
+const pick = (h: Hit) => {
+  if (h.run) { close(); h.run(); return }
+  const el = h.el ?? openFile?.(h.path!)
+  if (el) go(el)
+}
 
 /** Fly to a window: expand it if collapsed, bring it forward, and put the cursor in it when it takes typing. */
 function go(el: HTMLElement) {
@@ -160,3 +176,4 @@ addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') { e.preventDefault(); box.hidden ? openFinder() : close() }
 }, true)
 $('#btn-find').onclick = () => openFinder()
+command({ label: 'Find a window, file or command', group: 'Items', keys: ['Ctrl+K'], tip: '`Ctrl+K` finds windows and files, and runs commands by name' })
