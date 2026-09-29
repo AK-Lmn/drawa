@@ -19,6 +19,7 @@
   #btn-theme::after{content:attr(aria-label)} /* an icon alone doesn't say what it does in a list */
   #btn-fonts::after{content:"Appearance";font-weight:500}
 }
+@media (max-width:340px){#bar{gap:4px}} /* the smallest phones: tighter, rather than scrolling */
 .brand-text{display:flex;flex-direction:column;justify-content:center;min-width:0;line-height:1.25}
 #pname{overflow:hidden;text-overflow:ellipsis}
 .logo{align-self:center;width:18px;height:18px;flex:none;background:conic-gradient(from 200deg,var(--edit-hue),var(--write-hue),var(--run-hue),var(--read-hue),var(--edit-hue));
