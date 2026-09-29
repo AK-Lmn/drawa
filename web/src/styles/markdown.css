@@ -27,6 +27,7 @@ pre code.hljs{background:none;padding:12px 14px}
 .dtools{position:absolute;top:6px;right:6px;display:flex;gap:2px;padding:2px;border-radius:var(--r-ctl);background:var(--bg);border:1px solid var(--line);opacity:0;transition:opacity .15s}
 .dtools .icon{width:26px;height:26px}
 .mermaid:hover .dtools,.dtools:focus-within{opacity:1}
+@media (hover:none){.cbtools,.dtools{opacity:1}} /* touch: no hover to reveal them, and a see-through button still takes taps */
 
 /* code highlighting (highlight.js classes) from theme tokens, so it follows the toolbar's theme choice */
 .hljs{color:var(--ink)}

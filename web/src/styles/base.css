@@ -1,5 +1,6 @@
 /* Page reset and the shared controls (buttons, segmented tabs, counts). */
-*{box-sizing:border-box;touch-action:pan-x pan-y} /* no page pinch-zoom (it strands the fixed chrome off-screen): two fingers zoom the canvas instead; rules that need none still win */
+*{box-sizing:border-box}
+:where(#stage *){touch-action:pan-x pan-y} /* two fingers on the canvas zoom the canvas, not the page; pinching the toolbar and panels still zooms the page. Rules that need none still win */
 html,body{height:100%;margin:0;overflow:hidden}
 body{background:var(--canvas);color:var(--ink);font:14px/1.5 var(--sans);font-feature-settings:"cv11","ss01";-webkit-font-smoothing:antialiased}
 button,select,textarea{font:inherit;color:inherit}
@@ -13,6 +14,8 @@ button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6
 kbd{font:11px var(--mono);padding:0 4px;border:1px solid var(--line-2);border-radius:var(--r-ctl)}
 ::selection{background:color-mix(in oklab,var(--accent) 28%,transparent)}
 textarea::placeholder,input::placeholder{color:var(--muted)}
+/* iOS zooms the page into a focused field under 16px */
+@media (pointer:coarse){input,textarea,[contenteditable=true],[contenteditable=plaintext-only]{font-size:16px!important}}
 
 .icon{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:var(--r-ctl);color:var(--muted);transition:background .15s,color .15s}
 .icon:hover{background:var(--hover);color:var(--ink)}
