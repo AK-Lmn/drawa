@@ -18,7 +18,7 @@ import { enhance } from '../lib/select'
 import { isSend, sendCombo, onSendKey } from '../lib/sendkey'
 import { command } from '../lib/keys'
 
-command({ label: 'Send (set in Appearance)', group: 'Message box', keys: ['Enter', 'Ctrl+Enter'], tip: 'Choose Enter or Ctrl+Enter to send in Appearance (Aa)' })
+command({ label: 'Send (set in Appearance)', group: 'Message box', keys: ['Enter', 'Ctrl+Enter'], tip: '`Enter` or `Ctrl+Enter` sends a message: pick which in Appearance (Aa)' })
 command({ label: 'New line', group: 'Message box', keys: ['Shift+Enter'] })
 command({ label: 'Earlier messages', group: 'Message box', keys: ['↑↓'] })
 command({ label: 'Leave the box', group: 'Message box', keys: ['Esc'] })
