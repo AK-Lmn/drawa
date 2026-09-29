@@ -12,6 +12,7 @@
 #btn-more[aria-expanded=true]{background:var(--sel);border-color:var(--accent)}
 @media (max-width:560px){
   #btn-more{display:inline-flex}
+  #btn-help{display:none} /* keyboard shortcuts: no use on a phone, and the bar has no room for it */
   #bar-more{position:fixed;top:64px;right:12px;display:none;flex-direction:column;gap:2px;min-width:200px;padding:6px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow-lift)}
   #bar-more.open{display:flex;animation:enter .15s var(--ease)}
   #bar #bar-more .btn{justify-content:flex-start;width:auto;padding:0 10px;border-color:transparent}
