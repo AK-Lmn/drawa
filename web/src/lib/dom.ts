@@ -63,6 +63,9 @@ export const typing = (t: EventTarget | null) => t instanceof Element && !!t.clo
 export const shortcutOk = (e: KeyboardEvent) => !typing(e.target) && !document.querySelector('dialog[open]')
 
 /** A square icon button; the click doesn't reach the window under it (no drag, no focus steal). */
+/** A toggle or segmented-tab button's state: .on for the eye, aria-pressed for a screen reader. */
+export const pressed = (b: Element, on: boolean) => { b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)) }
+
 export function iconButton(icon: string, label: string, onClick: () => void, cls = '') {
   const b = make('button', 'icon' + (cls ? ' ' + cls : ''))
   b.innerHTML = icon

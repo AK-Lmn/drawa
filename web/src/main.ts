@@ -5,7 +5,7 @@ import './lib/theme'
 import './lib/tooltip' // the app's own tooltips for every title="…"
 import './lib/update' // checks GitHub for a newer release and offers to install it
 import { api } from './lib/api'
-import { $, make, ICON, project, shortcutOk } from './lib/dom'
+import { $, make, ICON, project, shortcutOk, pressed } from './lib/dom'
 import { command } from './lib/keys'
 import { showHelp, showTip } from './lib/help'
 import { persist, restore, saveSoon } from './lib/store'
@@ -80,9 +80,10 @@ drawerBtn.onclick = () => toggleDrawer()
 $('#dclose').onclick = () => toggleDrawer(false)
 $('#iclose').onclick = closeInspector
 $('#refresh').onclick = () => { tree(); loadSessions() }
-for (const b of document.querySelectorAll<HTMLElement>('[data-l]')) {
+for (const b of document.querySelectorAll('.seg [data-l], .seg [data-r]')) pressed(b, b.classList.contains('on'))
+for (const b of document.querySelectorAll<HTMLElement>('.seg [data-l]')) {
   b.onclick = () => {
-    for (const o of document.querySelectorAll('[data-l]')) o.classList.toggle('on', o === b)
+    for (const o of document.querySelectorAll('.seg [data-l]')) pressed(o, o === b)
     $('#tree').hidden = b.dataset.l !== 'tree'
     $('#sessions').hidden = b.dataset.l !== 'sessions'
   }
