@@ -15,6 +15,7 @@ import { renderCard, type Session } from '../session/session'
 import { send } from '../session/live'
 import { describe, plain, replay, rowStopped } from '../session/stream'
 import { who } from '../lib/agents'
+import { isSend } from '../lib/sendkey'
 
 interface Agent {
   call: string; S: Session; el: HTMLElement; log: HTMLElement; state: HTMLElement; ta: HTMLTextAreaElement; res?: HTMLElement
@@ -79,7 +80,7 @@ export function agentWindow(S: Session, call: string, inp: Record<string, any>, 
   const a: Agent = { call, S, el, log, state, ta, type, prompt, result: '', done: false, bg: false, rows: new Map() }
   ta.onkeydown = async e => {
     e.stopPropagation() // typing isn't a canvas shortcut
-    if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return
+    if (!isSend(e)) return
     e.preventDefault()
     const text = ta.value.trim(), id = ids.get(call)
     if (!text || !id) return

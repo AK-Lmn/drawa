@@ -3,11 +3,13 @@
 // bar by the selection) removes them, each through its own remove path. Only items laid out on the canvas take part:
 // pinned, floating and full-view windows don't.
 import { make, ICON, button, iconButton, confirmBox, shortcutOk, EDITABLE, keepOnScreen } from '../lib/dom'
+import { command } from '../lib/keys'
 import { stage, placed, onCanvas, hidden, rect, place, toWorld, view, onChange, moveWith, movesWith, setMoveAlong, changed, swallowNext, hits, track, type Rect, type Mover } from './canvas'
 import { redraw } from './graph'
 import { drawing, remove, type Stroke } from './ink'
 import { canvasStrokes, strokeRect, markStroke, strokeMover } from './inksel'
 import { handDrag } from './mode'
+import { anyFull } from './fullview'
 
 const sel = new Set<HTMLElement>()
 const removers = new Map<string, (el: HTMLElement) => void>(), notes = new Map<string, string>()
@@ -61,6 +63,8 @@ function set(el: HTMLElement, on: boolean) {
   el.classList.toggle('selected', on)
 }
 export function clearSelection() { for (const el of [...sel]) set(el, false); for (const s of [...inkSel]) setInk(s, false); sync() }
+/** Make `el` the whole selection (W steps through windows, so Delete, the arrows and Ctrl+G act on the one it lands on). */
+export function selectOnly(el: HTMLElement) { clearSelection(); set(el, true); sync() }
 
 moveWith(el => (sel.has(el) ? [...sel] : []))
 setMoveAlong(el => (sel.has(el) && inkSel.size ? strokeMover([...inkSel]) : null))
@@ -167,6 +171,8 @@ stage.addEventListener('pointerdown', e => {
   }
   e.stopImmediatePropagation() // not a pan
   e.preventDefault() // and not a text selection: selected note text would turn the next drag into the browser's own
+  // which also cancels the browser's own blur, so a message box would keep focus and take the next shortcut key
+  if (document.activeElement instanceof HTMLElement && document.activeElement.matches(EDITABLE)) document.activeElement.blur()
   getSelection()?.removeAllRanges()
   const start = toWorld(e.clientX, e.clientY), before = e.shiftKey ? new Set(sel) : new Set<HTMLElement>()
   const inkBefore = e.shiftKey ? new Set(inkSel) : new Set<Stroke>()
@@ -198,13 +204,17 @@ stage.addEventListener('pointerdown', e => {
   })
 }, true)
 
+command({ label: 'Select all', group: 'Selection', keys: ['Ctrl+A'] })
+command({ label: 'Nudge the selection (Shift: 10px)', group: 'Selection', keys: ['←→↑↓'] })
+command({ label: 'Delete the selection', group: 'Selection', keys: ['Delete'] })
+command({ label: 'Clear the selection', group: 'Selection', keys: ['Esc'] })
 const NUDGE: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
 addEventListener('keydown', e => {
   if (e.defaultPrevented || e.altKey || drawing) return
   if (!shortcutOk(e)) return
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); selectAll(); return }
   if ((!sel.size && !inkSel.size) || e.ctrlKey || e.metaKey) return
-  if (e.key === 'Escape') clearSelection()
+  if (e.key === 'Escape') { if (anyFull()) return; e.preventDefault(); clearSelection() } // full view backs out first
   else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeSelected() }
   else if (NUDGE[e.key]) { // arrow keys nudge the selection (Shift: 10px), like Excalidraw
     e.preventDefault()

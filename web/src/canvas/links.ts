@@ -118,7 +118,7 @@ addEventListener('keydown', e => {
   if (!typing && e.target instanceof Element && e.target.closest(EDITABLE)) return // typing elsewhere: not the arrow's key
   if (typing) { e.stopPropagation(); if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); select(null) } return }
   if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeLink(selected) }
-  else if (e.key === 'Escape') select(null)
+  else if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); select(null) }
 })
 
 /* ---------- drawing one: press on an item, release on another (the Arrow tool in Draw mode) ---------- */

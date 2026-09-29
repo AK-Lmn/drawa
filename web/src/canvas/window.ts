@@ -80,30 +80,33 @@ export function makeWindow(o: WindowOpts): Win {
 /** Double-click the title to rename the window (Enter saves, Esc cancels). The new name goes out as a `rename`
  *  event, for kinds that keep their title elsewhere (a session's title, a plan's name across versions). */
 function renamable(el: HTMLElement, t: HTMLElement) {
-  t.title = 'Double-click to rename'
-  t.addEventListener('dblclick', e => {
-    e.stopPropagation()
-    const before = t.textContent ?? ''
-    t.contentEditable = 'plaintext-only'
-    t.classList.add('renaming')
-    t.focus()
-    getSelection()?.selectAllChildren(t)
-    const done = (keep: boolean) => {
-      t.removeEventListener('keydown', key)
-      t.contentEditable = 'false'
-      t.classList.remove('renaming')
-      const name = (t.textContent ?? '').replace(/\s+/g, ' ').trim()
-      t.textContent = before
-      if (keep && name) setTitle(el, name)
-    }
-    const key = (k: KeyboardEvent) => {
-      k.stopPropagation() // typing isn't a canvas shortcut
-      if (k.key === 'Enter') { k.preventDefault(); t.blur() }
-      else if (k.key === 'Escape') { k.preventDefault(); done(false) }
-    }
-    t.addEventListener('keydown', key)
-    t.addEventListener('blur', () => { if (t.isContentEditable) done(true) }, { once: true })
-  })
+  t.title = 'Double-click or F2 to rename'
+  t.addEventListener('dblclick', e => { e.stopPropagation(); rename(el) })
+}
+/** Edit a window's title in place (its tab's double-click, or F2). */
+export function rename(el: HTMLElement) {
+  const t = el.querySelector<HTMLElement>(':scope > .win-h .t')
+  if (!t || t.isContentEditable) return
+  const before = t.textContent ?? ''
+  t.contentEditable = 'plaintext-only'
+  t.classList.add('renaming')
+  t.focus()
+  getSelection()?.selectAllChildren(t)
+  const done = (keep: boolean) => {
+    t.removeEventListener('keydown', key)
+    t.contentEditable = 'false'
+    t.classList.remove('renaming')
+    const name = (t.textContent ?? '').replace(/\s+/g, ' ').trim()
+    t.textContent = before
+    if (keep && name) setTitle(el, name)
+  }
+  const key = (k: KeyboardEvent) => {
+    k.stopPropagation() // typing isn't a canvas shortcut
+    if (k.key === 'Enter') { k.preventDefault(); t.blur() }
+    else if (k.key === 'Escape') { k.preventDefault(); done(false) }
+  }
+  t.addEventListener('keydown', key)
+  t.addEventListener('blur', () => { if (t.isContentEditable) done(true) }, { once: true })
 }
 
 /** Collapse a window to its tab. `start` restores a saved collapse. */
@@ -112,7 +115,7 @@ function minimizable(el: HTMLElement, head: HTMLElement, onToggle: () => void, s
   const sync = () => {
     const min = el.classList.contains('min')
     b.innerHTML = min ? ICON.open : ICON.collapse
-    b.title = min ? 'Expand' : 'Collapse'
+    b.title = min ? 'Expand (M)' : 'Collapse (M)'
     b.setAttribute('aria-label', b.title)
     b.setAttribute('aria-expanded', String(!min))
   }

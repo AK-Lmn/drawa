@@ -3,6 +3,7 @@
 // The inline script in index.html applies the saved choice before first paint; keep its defaults in sync.
 import { $, ICON } from './dom'
 import { enhance } from './select'
+import { command } from './keys'
 
 type Mode = 'light' | 'dark'
 /** [id in schemes.css, label]. First of each list is the default. */
@@ -39,6 +40,7 @@ function apply(notify = true) {
   if (notify) listeners.forEach(f => f())
 }
 btn.onclick = () => { choice.mode = isDark() ? 'light' : 'dark'; apply() }
+command({ label: 'Switch light / dark mode', group: 'Canvas', run: () => btn.click() })
 
 // one scheme picker per mode; picking one also switches to that mode so you see it
 for (const mode of ['light', 'dark'] as Mode[]) {

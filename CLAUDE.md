@@ -14,7 +14,7 @@ Drawa is a browser canvas around coding agents: the Claude Code CLI, OpenCode fo
 ```
 web/src/
   main.ts      boot, toolbar, keyboard shortcuts; imports features (importing a feature registers it)
-  lib/         no knowledge of the app: api, store (persistence), blobs (IndexedDB), dom helpers, markdown, select, fonts, zoom (the figure zoom/pan dialog), connection (server reachability), update (the update-available dialog), theme, tooltip
+  lib/         no knowledge of the app: api, store (persistence), blobs (IndexedDB), dom helpers, markdown, select, fonts, zoom (the figure zoom/pan dialog), connection (server reachability), update (the update-available dialog), theme, tooltip, keys (the shortcut registry), help (the ? sheet and launch tips), sendkey (which key sends a message)
   canvas/      the canvas engine: view, items, window shape, graph edges, ink, references registry
   session/     session cards: card, composer, stream rendering, asks, live connection, history
   items/       one file per kind of canvas item: notes, sketch, diagram, plan, snippet, git, image, github (+ gh.ts, its data and Send to Claude), agent (a sub-agent's window), doc (a Markdown window), preview (a project file opened from Ctrl+K), group (a frame holding windows; + groupgeom.ts, its geometry)
@@ -44,6 +44,7 @@ The app scales through these registration points. A new feature should plug into
 | Removed as part of a deleted selection, without its own confirm | `removable(kind, fn, note?)` (`fn` only if its × button asks first or it has none; `null` means its × is clicked; `note` words the selection's delete confirm) | `canvas/select.ts` |
 | Moves along when another item is dragged (a selection, a group's windows) | `moveWith(fn)` (`fn(el)` returns what comes with `el`; `movesWith(el)` follows every answer through; items with `data-locked` stay put) | `canvas/canvas.ts` |
 | Ctrl+K lists project files, previews the highlighted one and opens a picked one | `fileOpener(open, peek)` (`open(path)` returns the file's window, open or new; `peek(path)` draws its preview) | `canvas/find.ts` |
+| A keyboard shortcut or action users can find (the `?` sheet, Ctrl+K commands, launch tips) | `command({ label, group, keys?, run?, tip? })`, registered beside the handler (`run`: runnable from Ctrl+K; `tip`: a launch tip, backticked keys become key caps) | `lib/keys.ts` |
 | A button on the bar by a selection | `selectionAction(label, tip, fn, when?)` (`when(els)`: shown only for selections it applies to) | `canvas/select.ts` |
 
 **Adding a new kind of canvas item** should mean one new file in `items/`, an import in `main.ts`, and CSS in `styles/items.css`. The item file should:

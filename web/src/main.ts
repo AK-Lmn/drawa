@@ -6,6 +6,8 @@ import './lib/tooltip' // the app's own tooltips for every title="…"
 import './lib/update' // checks GitHub for a newer release and offers to install it
 import { api } from './lib/api'
 import { $, project, shortcutOk } from './lib/dom'
+import { command } from './lib/keys'
+import { showHelp, showTip } from './lib/help'
 import { persist, restore, saveSoon } from './lib/store'
 import { onReconnect } from './lib/connection'
 import { apply, fit, zoomAt, onChange, stage, edgeGrip, rect, view as camera } from './canvas/canvas'
@@ -28,6 +30,7 @@ import './items/agent'
 import './items/group' // Ctrl+G groups the selected windows into a frame
 import './items/preview' // Ctrl+K opens project files in windows
 import './canvas/find'
+import './canvas/winkeys' // W steps through windows, M collapses, Shift+F full view...
 import { openGit } from './items/git'
 import { openGitHub } from './items/github'
 import { tree, closeInspector, showTab } from './panels/files'
@@ -77,15 +80,42 @@ edgeGrip(inspector, 360)
 const PAN: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
 const ZOOM: Record<string, number> = { '+': 1.25, '=': 1.25, '-': 1 / 1.25 }
 let lastDown: EventTarget | null = null
+// what the handler below answers to, for the ? sheet, Ctrl+K and the launch tips (lib/keys.ts)
+const fitSelection = () => { const s = selected(); fit(true, s.length ? s.map(rect) : undefined) }
+for (const c of [
+  { label: 'Pan (Shift: farther)', keys: ['←→↑↓'], tip: 'Arrow keys pan the canvas; hold `Shift` to go farther' },
+  { label: 'Zoom in / out', keys: ['+', '-'] },
+  { label: 'Fit everything', keys: ['F', 'Shift+1'], run: () => fit(), tip: '`F` fits everything on screen; `Shift+2` zooms to the selection' },
+  { label: 'Zoom to selection', keys: ['Shift+2'], run: fitSelection },
+  { label: 'Zoom to 100%', keys: ['Shift+0'], run: () => zoomAt(1, undefined, undefined, true) },
+  { label: 'Select mode', keys: ['V', '1'], run: () => setMode('select') },
+  { label: 'Hand mode (or hold Space)', keys: ['H'], run: () => setMode('hand'), tip: 'Hold `Space` and drag to pan from any mode' },
+]) command({ ...c, group: 'Canvas' })
+for (const c of [
+  { label: 'New session', keys: ['N'], run: () => newSession() },
+  { label: 'Next / previous session', keys: ['C', 'Shift+C'], tip: '`C` steps through your sessions; `Enter` starts typing in one' },
+  { label: 'Type in the focused session', keys: ['Enter'] },
+  { label: 'Sticky note', keys: ['T'], run: noteHere, tip: '`T` drops a sticky note in the middle of the view' },
+  { label: 'Scratchpad', keys: ['S'], run: () => doc({ edit: true }), tip: '`S` opens a scratchpad for Markdown, code and diagrams' },
+  { label: 'Insert picture', keys: ['9'], run: () => pickImage.click() },
+  { label: 'Git', keys: ['G'], run: () => openGit(), tip: '`G` opens Git: changes, commit and push' },
+  { label: 'GitHub', keys: ['Shift+G'], run: () => openGitHub() },
+  { label: 'History & files', keys: ['Shift+H'], run: () => toggleDrawer(), tip: '`Shift+H` opens past sessions and the project files' },
+]) command({ ...c, group: 'Items' })
+command({ label: 'Draw mode', group: 'Draw', keys: ['D'], run: () => setDrawing(!drawing), tip: '`D` draws on the canvas; `A` draws an arrow between two items' })
 addEventListener('pointerdown', e => { lastDown = e.target }, true)
 // Single-key shortcuts, only when not typing.
 addEventListener('keydown', e => {
+  // Esc backs out one layer: this runs after every other handler, so anything nearer (a field, menu, dialog, Draw
+  // mode, full view, the selection) takes it first and calls preventDefault
   if (e.key === 'Escape') {
-    if (!inspector.hidden) closeInspector()
-    else if (!drawer.hidden) toggleDrawer(false)
+    if (e.defaultPrevented || !shortcutOk(e)) return
+    if (!inspector.hidden) { e.preventDefault(); closeInspector() }
+    else if (!drawer.hidden) { e.preventDefault(); toggleDrawer(false) }
     return
   }
   if (e.ctrlKey || e.metaKey || e.altKey || !shortcutOk(e)) return
+  if (e.key === '?') { e.preventDefault(); showHelp(); return }
   const k = e.key.toLowerCase(), c = e.code
   // arrows pan, unless something else took them (select.ts nudging a selection, a menu) or the last click was in a
   // window (its arrows scroll it) or a window is in full view; + / - zoom around the middle
@@ -104,7 +134,7 @@ addEventListener('keydown', e => {
   // Excalidraw's keys where we have the tool; the number row by its physical key (Shift+1 types "!")
   if (e.shiftKey) {
     if (c === 'Digit1') fit()
-    else if (c === 'Digit2') { const s = selected(); fit(true, s.length ? s.map(rect) : undefined) } // zoom to selection
+    else if (c === 'Digit2') fitSelection()
     else if (c === 'Digit0') zoomAt(1, undefined, undefined, true)
     else if (k === 'g') openGitHub()
     else if (k === 'h') toggleDrawer()
@@ -162,3 +192,4 @@ onReconnect(() => { for (const S of cards) attach(S); tree(); loadSessions() })
 tree()
 loadSessions()
 cur?.ta.focus({ preventScroll: true })
+showTip()

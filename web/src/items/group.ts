@@ -4,6 +4,7 @@
 // by being dropped into a frame and leaves only through its tab's Remove from group button.
 import { make, ICON, iconButton, confirmBox, shortcutOk, uuid, perFrame } from '../lib/dom'
 import { persist, each } from '../lib/store'
+import { command } from '../lib/keys'
 import { world, items, byIds, rect, savedRect, place, changed, onChange, onCanvas, moveWith, movesWith, viewCenter, type Rect } from '../canvas/canvas'
 import { makeWindow, winTitle, titleOf, expand } from '../canvas/window'
 import { referable } from '../canvas/refs'
@@ -274,6 +275,8 @@ addEventListener('keydown', e => {
   if (e.shiftKey) ungroupSelection(); else groupSelection()
 })
 
+command({ label: 'Group the selected windows', group: 'Selection', keys: ['Ctrl+G'] })
+command({ label: 'Ungroup the selected groups', group: 'Selection', keys: ['Ctrl+Shift+G'] })
 removable('group', g => ungroup(g), 'A group\'s windows stay unless they are selected too.')
 selectionAction('Group', 'Group the selected windows (Ctrl+G); groups in the selection merge', groupSelection, els => changes(touched(els)))
 selectionAction('Ungroup', 'Remove the selected groups, keep their windows (Ctrl+Shift+G)', ungroupSelection, els => els.some(isGroup))

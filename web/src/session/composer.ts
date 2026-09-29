@@ -15,6 +15,16 @@ import { modelPicker, effortPicker, infoBadge } from './gen'
 import { recall } from './recall'
 import { who, metaNow } from '../lib/agents'
 import { enhance } from '../lib/select'
+import { isSend, sendCombo, onSendKey } from '../lib/sendkey'
+import { command } from '../lib/keys'
+
+command({ label: 'Send (set in Appearance)', group: 'Message box', keys: ['Enter', 'Ctrl+Enter'], tip: '`Enter` or `Ctrl+Enter` sends a message: pick which in Appearance (Aa)' })
+command({ label: 'New line', group: 'Message box', keys: ['Shift+Enter'] })
+command({ label: 'Earlier messages', group: 'Message box', keys: ['↑↓'] })
+command({ label: 'Leave the box', group: 'Message box', keys: ['Esc'] })
+command({ label: 'Skills and commands', group: 'Message box', keys: ['/'] })
+command({ label: 'Mention a canvas item or file', group: 'Message box', keys: ['@'] })
+command({ label: 'Run a shell command', group: 'Message box', keys: ['!'] })
 
 /** Build the composer at the bottom of the card's body and hook it to the session. */
 export function composer(S: Session, body: HTMLElement) {
@@ -28,7 +38,6 @@ export function composer(S: Session, body: HTMLElement) {
   stopBtn.setAttribute('aria-label', 'Stop')
   sendBtn.type = 'submit'
   sendBtn.innerHTML = ICON.up
-  sendBtn.title = 'Send (Ctrl+Enter)'
   sendBtn.setAttribute('aria-label', 'Send')
   // effort is Claude Code's (--effort); other agents get only a model picker
   const modelSel = modelPicker(S), effortSel = S.backend === 'claude' ? effortPicker(S) : null, pick = modePicker(S)
@@ -37,6 +46,9 @@ export function composer(S: Session, body: HTMLElement) {
   form.append(ta, pick, stopBtn, sendBtn)
   chips.hidden = true
   const dock = make('div', 'dock') // the card's footer: attached references above a clearly bordered message field
+  const label = () => { sendBtn.title = `Send (${sendCombo()})` } // the placeholder says it too (renderCard)
+  label()
+  onSendKey(label) // ponytail: never unregistered; a closed card's closure is tiny, add an off() if cards churn by thousands
   dock.append(chips, gen, form)
   body.append(dock)
   for (const sel of [modelSel, effortSel, pick]) if (sel) enhance(sel) // the custom dropdowns, once they're in the page
@@ -115,9 +127,11 @@ export function composer(S: Session, body: HTMLElement) {
 }
 
 /* ---------- "/" menu: skills and slash commands; "@" menu: canvas items ---------- */
+let menus = 0 // numbers each card's menu, so its rows' ids are unique on the page
 function commandMenu(S: Session, form: HTMLFormElement) {
   const menu = make('div', 'cmds')
   menu.setAttribute('role', 'listbox')
+  menu.id = `cmds-${++menus}`
   menu.hidden = true
   form.before(menu)
   let items: { title: string; sub: string; pick: () => void }[] = [], sel = 0
@@ -174,10 +188,15 @@ function commandMenu(S: Session, form: HTMLFormElement) {
     }
     menu.hidden = !items.length
     sel = Math.max(0, Math.min(sel, items.length - 1))
+    if (menu.hidden) S.ta.removeAttribute('aria-activedescendant')
+    else S.ta.setAttribute('aria-activedescendant', `${menu.id}-${sel}`)
     menu.replaceChildren(...items.map((c, i) => {
       const o = make('button', 'cmd' + (i === sel ? ' on' : ''))
       o.type = 'button'
+      o.id = `${menu.id}-${i}`
+      o.tabIndex = -1
       o.setAttribute('role', 'option')
+      o.setAttribute('aria-selected', String(i === sel))
       o.append(make('b', '', c.title), make('span', '', c.sub))
       o.onmousedown = e => { e.preventDefault(); pick(i) }
       return o
@@ -185,15 +204,18 @@ function commandMenu(S: Session, form: HTMLFormElement) {
     menu.querySelector('.on')?.scrollIntoView({ block: 'nearest' })
   }
   S.ta.addEventListener('input', () => { sel = 0; draw() })
-  S.ta.addEventListener('blur', () => setTimeout(() => (menu.hidden = true), 100))
+  S.ta.addEventListener('blur', () => setTimeout(() => { menu.hidden = true; S.ta.removeAttribute('aria-activedescendant') }, 100))
   S.ta.addEventListener('keydown', e => {
     if (!menu.hidden && items.length) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); sel = (sel + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length; draw(); return }
-      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) { e.preventDefault(); pick(sel); return }
-      if (e.key === 'Escape') { menu.hidden = true; return }
+      // only plain Enter/Tab pick: Ctrl/Cmd+Enter always sends, and an IME's Enter confirms its own text
+      const plain = !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing
+      if (plain && (e.key === 'Tab' || e.key === 'Enter')) { e.preventDefault(); pick(sel); return }
+      if (e.key === 'Escape') { e.preventDefault(); menu.hidden = true; S.ta.removeAttribute('aria-activedescendant'); return }
     }
-    // Enter is a plain new line; Ctrl/Cmd+Enter sends; Esc leaves the box so single-key shortcuts work again
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing) { e.preventDefault(); form.requestSubmit() }
+    // the send key is a setting (lib/sendkey.ts); anything else on Enter is a new line. Esc leaves the box so
+    // single-key shortcuts work again
+    if (isSend(e)) { e.preventDefault(); form.requestSubmit() }
     else if (e.key === 'Escape') S.ta.blur()
   })
 }

@@ -7,6 +7,8 @@ tip.className = 'tip'
 tip.setAttribute('role', 'tooltip')
 tip.hidden = true
 let target: HTMLElement | null = null, timer = 0
+// a modal dialog sits in the top layer, over anything in the page: while one is open the tooltip goes inside it
+const place = () => { const host = document.querySelector('dialog:modal') ?? document.body; if (tip.parentElement !== host) host.append(tip) }
 
 function claim(el: HTMLElement) {
   if (el.title) {
@@ -21,6 +23,7 @@ function claim(el: HTMLElement) {
 function show(el: HTMLElement) {
   const text = claim(el)
   if (!text || !el.isConnected) return
+  place()
   tip.textContent = text
   tip.hidden = false
   const r = el.getBoundingClientRect(), t = tip.getBoundingClientRect()
@@ -36,6 +39,7 @@ function hide() { clearTimeout(timer); target = null; tip.hidden = true }
 export function tipAt(text: string, x: number, y: number) {
   clearTimeout(timer)
   target = null
+  place()
   tip.textContent = text
   tip.hidden = false
   keepOnScreen(tip, x + 12, y + 18)

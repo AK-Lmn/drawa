@@ -18,7 +18,7 @@
 
 .card .log{position:relative;flex:1;min-height:0;overflow-y:auto;padding:16px 18px 24px;cursor:auto}
 /* back to the latest message: floats over the log's bottom edge (a negative margin, so the log keeps its height) */
-.card .tobottom{position:relative;z-index:1;align-self:center;flex:none;margin:-40px 0 8px;border:1px solid var(--line-2);background:var(--bg);color:var(--ink)}
+.card .tobottom{position:relative;z-index:var(--z-over);align-self:center;flex:none;margin:-40px 0 8px;border:1px solid var(--line-2);background:var(--bg);color:var(--ink)}
 .card .tobottom:hover{border-color:var(--accent);color:var(--accent)}
 .card .tobottom[hidden]{display:none}
 .log>*{animation:enter .22s var(--ease)}
@@ -53,6 +53,7 @@
 .card .compose .xsel[data-mode=plan]{color:var(--accent)}.card .compose .xsel[data-mode=acceptEdits]{color:var(--edit)}.card .compose .xsel[data-mode=auto]{color:var(--write)}.card .compose .xsel[data-mode=bypassPermissions]{color:var(--danger)}
 .card .compose .xsel[data-mode=acceptEdits],.card .compose .xsel[data-mode=auto],.card .compose .xsel[data-mode=bypassPermissions],.card .compose .xsel[data-mode=plan]{border-color:color-mix(in oklab,currentColor 40%,var(--line))}
 .card .compose.shell{border-color:var(--run)}
+/* how to send (the key is a setting): only while typing in the box, so an idle card stays compact */
 .card .compose.shell::before{content:"$";color:var(--run)}
 .card.droptarget .compose{border-color:var(--accent);background:var(--sel)}
 .card textarea{flex:1;min-height:24px;max-height:180px;overflow-y:hidden;padding:4px 0;border:0;background:none;font-size:14px;line-height:1.5;resize:none;outline:none;cursor:text}
