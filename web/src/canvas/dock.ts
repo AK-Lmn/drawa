@@ -3,7 +3,7 @@
 // it was on the canvas: pinned windows keep their canvas position and size in their inline styles (see rect()).
 import { $, make } from '../lib/dom'
 import { persist } from '../lib/store'
-import { world, stage, items, front, centerOn, changed, track, onChange, byIds, edgeGrip, holder } from './canvas'
+import { world, stage, items, front, centerOn, changed, track, onChange, byIds, edgeGrip, holder, rect, view, toWorld, place } from './canvas'
 import { redraw } from './graph'
 import { exitFull } from './fullview'
 
@@ -42,8 +42,7 @@ export function toggleDock(el: HTMLElement) {
   if (docked(el)) {
     el.classList.remove('docked')
     world.append(el)
-    front(el)
-    centerOn(el)
+    bringBack(el)
   } else {
     el.classList.add('docked')
     dock.append(el)
@@ -53,6 +52,29 @@ export function toggleDock(el: HTMLElement) {
   shown() // arrows to a pinned window are hidden while it's pinned
   changed()
 }
+
+// drag a pinned window's tab: along the sidebar to reorder it, or out onto the canvas to unpin it where it's dropped
+dock.addEventListener('pointerdown', e => {
+  const t = e.target as Element, el = t.closest<HTMLElement>('.pinbar > .item'), head = el?.querySelector<HTMLElement>(':scope > .win-h')
+  if (!el || !head || e.button !== 0 || !t.closest('.win-h') || t.closest('button, [contenteditable="plaintext-only"]')) return
+  const r = el.getBoundingClientRect(), grab = { x: e.clientX - r.left, y: e.clientY - r.top }
+  track(head, e, (_dx, _dy, ev) => {
+    el.classList.add('dragging')
+    const others = [...dock.children].filter(c => c !== el && c.classList.contains('item'))
+    const mids = others.map(c => { const b = c.getBoundingClientRect(); return b.top + b.height / 2 }) // every read, then the write
+    const next = others[mids.findIndex(m => ev.clientY < m)] ?? null
+    if (el.nextElementSibling !== next) dock.insertBefore(el, next)
+  }, ev => {
+    el.classList.remove('dragging')
+    if (ev.type === 'pointerup' && ev.clientX < dock.getBoundingClientRect().left) {
+      const p = toWorld(ev.clientX - grab.x, ev.clientY - grab.y)
+      place(el, p.x, p.y)
+      toggleDock(el)
+    }
+    shown()
+    changed()
+  }, { late: true })
+})
 
 /** A window's toggle button (pin, float, full view) shows whether it's on, and says what a click will do. */
 export function setToggle(el: HTMLElement, cls: string, on: boolean, onTitle: string, offTitle: string) {
@@ -83,7 +105,7 @@ const setAt = (el: HTMLElement, x: number, y: number) => {
 /** Stick a window to the screen where it is now, or put a floating one back on the canvas. */
 export function toggleFloat(el: HTMLElement) {
   if (el.classList.contains('full')) exitFull()
-  if (floating(el)) { unfloat(el); front(el); centerOn(el) }
+  if (floating(el)) { unfloat(el); bringBack(el) }
   else {
     const b = el.getBoundingClientRect()
     if (docked(el)) { el.classList.remove('docked'); shown() }
@@ -95,6 +117,13 @@ export function toggleFloat(el: HTMLElement) {
   sync(el)
   redraw()
   changed()
+}
+/** Back on the canvas, on top; the camera goes to it only if its spot is off screen (a window you just unpinned
+ *  from next to where it belongs shouldn't send the view flying). */
+function bringBack(el: HTMLElement) {
+  front(el)
+  const r = rect(el), x = (r.x + r.w / 2) * view.k + view.x, y = (r.y + r.h / 2) * view.k + view.y
+  if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) centerOn(el)
 }
 function unfloat(el: HTMLElement) {
   el.classList.remove('floating')
@@ -112,7 +141,7 @@ floats.addEventListener('pointerdown', e => {
   if (e.button !== 0 || !t.closest('.win-h') || t.closest('button, [contenteditable="plaintext-only"]')) return
   const sx = parseFloat(el.style.getPropertyValue('--fx')), sy = parseFloat(el.style.getPropertyValue('--fy'))
   el.classList.add('dragging')
-  track(el.querySelector<HTMLElement>('.win-h')!, e as PointerEvent, (dx, dy) => { setAt(el, sx + dx, sy + dy); redraw() }, () => { el.classList.remove('dragging'); changed() })
+  track(el.querySelector<HTMLElement>('.win-h')!, e as PointerEvent, (dx, dy) => { setAt(el, sx + dx, sy + dy); redraw() }, () => { el.classList.remove('dragging'); changed() }, { late: true })
 })
 
 // a smaller window (a phone turned, a smaller screen): keep every floating window's tab reachable
