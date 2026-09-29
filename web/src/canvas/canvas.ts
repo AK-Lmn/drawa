@@ -3,12 +3,15 @@
 // Every item carries class "item" and data-kind (session, file, run, diagram, sketch, plan, note, ...):
 // that's all the canvas, the minimap and the saved layout need to know about it.
 import { $, make, perFrame, EDITABLE, uuid } from '../lib/dom'
+import { persist, each, saveSoon } from '../lib/store'
 
 export const stage = $('#stage')
 export const world = $('#world')
 const inkworld = $('#inkworld') // drawing layer: same transform, stacked above every item
 export const view = { x: 0, y: 0, k: 1 }
-const MIN = 0.15, MAX = 2
+// Fit may go below MIN, so a canvas spread past ~9000px shows whole; from there the wheel can zoom in but not out.
+// ponytail: FIT_MIN still cuts off a canvas wider than ~45000px (its middle shows)
+const MIN = 0.15, MAX = 2, FIT_MIN = 0.03
 const clamp = (k: number) => Math.min(MAX, Math.max(MIN, k))
 
 const listeners: ((viewOnly: boolean) => void)[] = []
@@ -36,7 +39,7 @@ export function apply(glide = false) {
   if (glide) setTimeout(() => { for (const el of [world, inkworld, stage]) el.classList.remove('glide') }, 460)
   world.style.transform = inkworld.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`
   const g = 24 * view.k, mod = (a: number) => ((a % g) + g) % g - g
-  if (g !== gridG) { grid.style.backgroundSize = `${g}px ${g}px`; gridG = g; zLabel.textContent = Math.round(view.k * 100) + '%' }
+  if (g !== gridG) { grid.style.backgroundSize = `${g}px ${g}px`; gridG = g; zLabel.textContent = Math.round(view.k * 100) + '%'; grid.hidden = view.k < MIN } // (under MIN the dots are a grey haze)
   grid.style.transform = `translate(${mod(view.x)}px, ${mod(view.y)}px)`
   changed(true)
 }
@@ -44,7 +47,7 @@ export function apply(glide = false) {
 export const applySoon = perFrame(() => apply())
 
 export function zoomView(k: number, cx: number, cy: number) {
-  k = clamp(k)
+  k = Math.min(MAX, Math.max(Math.min(MIN, view.k), k)) // under MIN (a fit): no further out
   view.x = cx - (cx - view.x) * (k / view.k)
   view.y = cy - (cy - view.y) * (k / view.k)
   view.k = k
@@ -112,7 +115,12 @@ export const savedRect = (el: HTMLElement): Rect => {
 }
 
 let z = 10 // stacking inside #world only
-export const front = (el: HTMLElement) => { if (el.style.zIndex !== String(z)) el.style.zIndex = String(++z) }
+export const front = (el: HTMLElement) => { if (el.style.zIndex !== String(z)) { el.style.zIndex = String(++z); saveSoon() } }
+// which one is on top survives a reload: ids bottom to top, raised in that order once the items exist. Layouts from
+// before (no key) stack in load order, as they always did. ponytail: an item that shows up later (a card rebuilt
+// from its process) lands on top.
+persist('z', () => items().filter(el => el.style.zIndex).sort((a, b) => +a.style.zIndex - +b.style.zIndex).map(el => el.dataset.id!),
+  (ids: string[]) => { const found = byIds(); each(ids, id => { const el = found.get(id); if (el) front(el) }) }, 2)
 // a press anywhere on an item (not only its tab) brings it to the front: overlapping windows swap as you click them
 world.addEventListener('pointerdown', e => { const el = (e.target as Element).closest<HTMLElement>('#world > .item'); if (el) front(el) }, true)
 
@@ -200,29 +208,36 @@ export function edgeGrip(panel: HTMLElement, minW: number, onMove?: () => void, 
 
 /** Follow one pointer press on `handle`: move(dx, dy, ev) in screen px, end(ev) on release or cancel (check
  *  `ev.type`: a cancelled press's coordinates are 0,0). Options: `keep` leaves the press's default and propagation
- *  alone (a canvas press should still blur what's focused); `every` sees every move, not one per frame (pen ink). */
+ *  alone (a canvas press should still blur what's focused); `every` sees every move, not one per frame (pen ink);
+ *  `late` captures the pointer only once it really drags (a title under the handle can still be double-clicked:
+ *  capturing on press sends the double-click to the handle). */
 export function track(handle: Element, e: PointerEvent, move: (dx: number, dy: number, ev: PointerEvent) => void, end?: (ev: PointerEvent) => void,
-  o: { keep?: boolean; every?: boolean } = {}) {
+  o: { keep?: boolean; every?: boolean; late?: boolean } = {}) {
   if (!o.keep) { e.preventDefault(); e.stopPropagation() }
-  const sx = e.clientX, sy = e.clientY
-  handle.setPointerCapture(e.pointerId)
-  let done = false
-  const step = (ev: PointerEvent) => { if (!done) move(ev.clientX - sx, ev.clientY - sy, ev) }
+  const sx = e.clientX, sy = e.clientY, id = e.pointerId, on: EventTarget = o.late ? window : handle // uncaptured: moves go elsewhere
+  let done = false, held = !o.late
+  if (held) handle.setPointerCapture(id)
+  const step = (ev: PointerEvent) => {
+    if (done || ev.pointerId !== id) return
+    if (!held && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 4) return
+    if (!held) { handle.setPointerCapture(id); held = true }
+    move(ev.clientX - sx, ev.clientY - sy, ev)
+  }
   // once a frame (high-rate mice send several moves per frame); nothing after the end, which applies the last one
   const mv = (o.every ? step : perFrame(step)) as (ev: Event) => void
   const up = (ev: Event) => {
-    if (done) return
     const p = ev as PointerEvent
-    if (ev.type === 'pointerup') move(p.clientX - sx, p.clientY - sy, p) // where it really ended
+    if (done || p.pointerId !== id) return
+    if (ev.type === 'pointerup' && held) move(p.clientX - sx, p.clientY - sy, p) // where it really ended
     done = true
-    handle.removeEventListener('pointermove', mv)
-    handle.removeEventListener('pointerup', up)
-    handle.removeEventListener('pointercancel', up)
+    on.removeEventListener('pointermove', mv)
+    on.removeEventListener('pointerup', up)
+    on.removeEventListener('pointercancel', up)
     end?.(p)
   }
-  handle.addEventListener('pointermove', mv)
-  handle.addEventListener('pointerup', up)
-  handle.addEventListener('pointercancel', up)
+  on.addEventListener('pointermove', mv)
+  on.addEventListener('pointerup', up)
+  on.addEventListener('pointercancel', up)
 }
 
 /** Drag something out of a window onto the canvas. Past a few px, `create(x, y)` makes the new item at the
@@ -352,7 +367,7 @@ export function fit(glide = true, rs = placed().map(rect)) {
   const x0 = Math.min(...rs.map(r => r.x)), y0 = Math.min(...rs.map(r => r.y))
   const x1 = Math.max(...rs.map(r => r.x + r.w)), y1 = Math.max(...rs.map(r => r.y + r.h))
   const pad = 80, top = 64 // keep clear of the toolbar
-  const k = clamp(Math.min((innerWidth - pad * 2) / (x1 - x0), (innerHeight - top - pad * 2) / (y1 - y0), 1))
+  const k = Math.max(FIT_MIN, Math.min((innerWidth - pad * 2) / (x1 - x0), (innerHeight - top - pad * 2) / (y1 - y0), 1))
   view.k = k
   view.x = (innerWidth - (x1 - x0) * k) / 2 - x0 * k
   view.y = top + (innerHeight - top - (y1 - y0) * k) / 2 - y0 * k

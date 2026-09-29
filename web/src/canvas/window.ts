@@ -2,7 +2,7 @@
 // The header is a tab on the top-left that carries the title and the window's buttons; the body sits under it.
 // Drag by the tab, double-click it (or its – button) to collapse the window down to the tab, resize from the corner.
 import { make, ICON, iconButton } from '../lib/dom'
-import { addItem, place, front, draggable, resizable, changed, type Rect } from './canvas'
+import { addItem, place, front, draggable, resizable, changed, onChange, view, type Rect } from './canvas'
 import { redraw, forget } from './graph'
 import { toggleDock, toggleFloat, syncPin } from './dock'
 import { toggleFull, syncFull } from './fullview'
@@ -24,6 +24,8 @@ export { winTitle } // its home is refs.ts
 export const titleOf = (el: HTMLElement) => (winTitle(el) || refOf(el)?.label || tipText(el)).trim()
 /** Open a collapsed window. */
 export const expand = (el: HTMLElement) => { if (el.classList.contains('min')) el.querySelector<HTMLElement>('.minbtn')?.click() }
+/** Collapse an open window to its tab. */
+export const collapse = (el: HTMLElement) => { if (!el.classList.contains('min')) el.querySelector<HTMLElement>('.minbtn')?.click() }
 /** Put the cursor in a window's message box, if it has one. */
 export const focusInput = (el: HTMLElement) => el.querySelector<HTMLTextAreaElement>('.compose textarea')?.focus({ preventScroll: true })
 /** Rename a window: its tab, plus a `rename` event for kinds that keep their title elsewhere (a session's title, a
@@ -49,6 +51,16 @@ export function removeButton(label: string, also?: (el: HTMLElement) => void, cl
   }, 'closebtn' + (cls ? ' ' + cls : '')) // closebtn: how a multi-select delete finds each item's own way out
   return b
 }
+
+// Resize grips are in world units, so at 15% zoom they're a pixel wide: widen them by 1/zoom (twice that for a
+// finger), in half steps, through one rule of their own: a zoom restyles only the grips, and only now and then.
+const grips = new CSSStyleSheet(), finger = matchMedia('(pointer: coarse)')
+document.adoptedStyleSheets = [...document.adoptedStyleSheets, grips]
+let gs = 0
+onChange(() => {
+  const f = finger.matches ? 2 : 1, g = Math.max(1, Math.round(2 / view.k) / 2) * f
+  if (g !== gs) grips.replaceSync(`.grip{--gs:${f}} #world .grip{--gs:${(gs = g)}}`) // floating windows aren't zoomed
+})
 
 interface Win { el: HTMLElement; head: HTMLElement; title: HTMLElement; body: HTMLElement }
 let titles = 0
