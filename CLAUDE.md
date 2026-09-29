@@ -81,7 +81,7 @@ Rules for these registries:
 - **Themes and color schemes:**
   - `lib/theme.ts` puts light/dark on `<html data-theme>` and the chosen scheme on `data-scheme`. The inline script in `index.html` does the same before first paint, so keep its defaults in sync.
   - A scheme is 13 base colors (`--c-*`) in `styles/schemes.css`. `tokens.css` derives every UI color from them.
-  - To add a scheme: one block in `schemes.css` plus one line in `SCHEMES` in `theme.ts`. Keep `--c-muted` at 4.5:1 or better against `--c-bg`.
+  - To add a scheme: one block in `schemes.css` plus one line in `SCHEMES` in `theme.ts`. Keep `--c-muted` at 4.5:1 or better against `--c-bg`, `--sel`, `--hover` and `--code`. `cd web && npm run contrast` checks every scheme's text, button, focus-ring and field-border pairs, and fails if one is under its minimum.
   - Feature CSS uses only the derived tokens, never `--c-*` and never a `prefers-color-scheme` query.
   - Anything drawn with colors baked in (Mermaid, Excalidraw previews) reads `isDark()` and redraws in `onTheme()`.
 - **All values come from `styles/tokens.css`:**
@@ -89,6 +89,8 @@ Rules for these registries:
   - Radius scale: `--r-tab`, `--r-box`, `--r-ctl`, and `--r-tag` for small labels (inline code, badges, swatches).
   - z scale: `--z-float`, `--z-panel`, `--z-menu` for overlays; `--z-under`, `--z-sticky`, `--z-over` for stacking inside a window or panel.
   - Kind colors: `--k-*`.
+  - Palette hues as text (`--read`, `--edit`, `--write`, `--run`, `--add`, `--del`, `--warn`, `--danger`, `--accent-text`, `--syn-*`) have their lightness clamped to stay 4.5:1 on `--bg`. Strokes and fills (arrows, dots, pen colors) use the raw `--*-hue` tokens; text on an accent or danger fill uses `--on-accent` / `--on-danger`.
+  - Input borders use `--field-edge` (3:1 on `--bg`), their focus state `--focus`; `--line` and `--line-2` are dividers.
   - Don't write raw colors, radii or z-index numbers in feature CSS.
 - **Shape language:**
   - Windows are folders. A tab on the top-left carries the title and buttons, and a concave shoulder joins it to a nearly square body.
