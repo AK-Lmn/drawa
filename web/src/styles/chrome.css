@@ -17,6 +17,8 @@
   #bar-more.open{display:flex;animation:enter .15s var(--ease)}
   #bar #bar-more .btn{justify-content:flex-start;width:auto;padding:0 10px;border-color:transparent}
   #bar-more .btn .lbl{display:inline}
+  #bar-more .btn>svg,#bar-more .aa{flex:none;width:18px;text-align:center} /* one icon column, so the labels line up */
+  #bar-more #btn-fonts .aa{font-size:12.5px} /* the size of the line icons beside it */
   #btn-theme::after{content:attr(aria-label)} /* an icon alone doesn't say what it does in a list */
   #btn-fonts::after{content:"Appearance";font-weight:500}
 }
