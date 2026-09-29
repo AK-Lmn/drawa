@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,10 @@ type Live struct {
 	tasks    map[string]bool // background agents still running: they outlive the turn, so the card isn't idle
 	openMsg  *int            // line where the message being streamed began: a page attaching now reads from there
 	exited   bool            // the process exited, or its input broke: the next send starts a new one (Python: p.poll())
+	effort   string          // the --effort it was started with (the CLI can't change it on a running process)
+	unread   []string        // uuids of sent messages the agent hasn't echoed back yet (queued), oldest first
+	picked   bool            // the agent echoed a message back during the current turn
+	replaced bool            // closed to start another in its place: its exit isn't the card's (see Start)
 }
 
 type ask struct{ rid, line string }
@@ -84,7 +89,7 @@ func New(cid, kind, sid, mode, model, effort string) (*Live, error) {
 		kind = Default
 	}
 	l := &Live{
-		Token: randHex(16), Gen: randHex(3), Kind: kind, Mode: mode, Model: model,
+		Token: randHex(16), Gen: randHex(3), Kind: kind, Mode: mode, Model: model, effort: effort,
 		last: time.Now(), done: make(chan struct{}), calls: map[string]*Call{},
 	}
 	spec := Spec{Cid: cid, Sid: sid, Mode: mode, Model: model, Effort: effort}
@@ -115,12 +120,15 @@ func (l *Live) Exited(code int) {
 // Ended: the backend's output is drained after its process exited: the turn is over, and the page is told how it ended.
 func (l *Live) Ended() {
 	l.mu.Lock()
-	l.busy = false
+	l.busy, l.unread, l.picked = false, nil, false
 	l.mu.Unlock()
 	<-l.done
 	l.mu.Lock()
-	code := l.code
+	code, replaced := l.code, l.replaced
 	l.mu.Unlock()
+	if replaced { // a page still reading it would take the exit for the new process's, and fail its message
+		return
+	}
 	b, _ := json.Marshal(map[string]any{"type": "exit", "code": code})
 	l.Push(string(b) + "\n")
 }
@@ -133,6 +141,9 @@ func (l *Live) classify(line string) string {
 		return string(b)
 	}
 	l.trackTasks(line)
+	if strings.Contains(line, `"type":"user"`) {
+		l.trackRead(line)
+	}
 	switch {
 	case strings.HasPrefix(line, `{"type":"system","subtype":"init"`):
 		l.mu.Lock()
@@ -158,6 +169,10 @@ func (l *Live) classify(line string) string {
 	case strings.Contains(line, `"type":"result"`) && isResult(line): // its keys come in any order
 		l.mu.Lock()
 		l.busy, l.accepted = false, false
+		if !l.picked && len(l.unread) > 0 { // a local command (/model, /cost) ends its turn without echoing the message
+			l.unread = l.unread[1:]
+		}
+		l.picked = false
 		if len(l.asks) == 0 {
 			l.trimTo = l.base + len(l.lines) // this result's index: what came before goes when the next turn starts
 		}
@@ -231,10 +246,16 @@ func (l *Live) Send(content any, id string) error {
 		// ponytail: trimmed here, not at the result, so streams still reading that turn's tail aren't cut off
 		l.dropTo(l.trimTo)
 	}
+	if id != "" {
+		l.unread = append(l.unread, id) // before it's written: the echo can come back before Send returns
+	}
 	l.mu.Unlock()
 	err := l.wrote(l.be.Send(content, id))
 	l.mu.Lock()
 	l.inflight--
+	if err != nil {
+		l.dropUnread(id)
+	}
 	if err == nil {
 		l.accepted = l.busy // (not if its turn's result already came: that would outlive the turn)
 	} else if refused(err) && l.inflight == 0 && !l.accepted { // every send was turned down: no turn is coming
@@ -250,7 +271,39 @@ func (l *Live) Unsend(id string) (bool, error) {
 	if !ok {
 		return false, nil
 	}
-	return u.Unsend(id)
+	cancelled, err := u.Unsend(id)
+	if cancelled {
+		l.mu.Lock()
+		l.dropUnread(id)
+		l.mu.Unlock()
+	}
+	return cancelled, err
+}
+
+// trackRead notes a user line: the echo of a queued message (by its uuid), or a background agent's report, which
+// starts a turn of its own. Mirrors what the page does with them (stream.ts), so a page attaching later knows which
+// of its messages are still queued (Snapshot).
+func (l *Live) trackRead(line string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if strings.Contains(line, `"<task-notification>`) {
+		l.picked = true
+		return
+	}
+	for _, id := range l.unread {
+		if strings.Contains(line, `"uuid":"`+id+`"`) {
+			l.dropUnread(id)
+			l.picked = true
+			return
+		}
+	}
+}
+
+// dropUnread forgets a queued message (read, taken back, or never sent). Called with l.mu held.
+func (l *Live) dropUnread(id string) {
+	if i := slices.Index(l.unread, id); i >= 0 {
+		l.unread = slices.Delete(l.unread, i, i+1)
+	}
 }
 
 // Respond answers the open ask rid (an approval or questions).
@@ -273,6 +326,21 @@ func (l *Live) Close() {
 		return
 	}
 	l.be.Close()
+}
+
+// otherEffort: idle, and started with another effort than the one asked for now.
+func (l *Live) otherEffort(effort string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return effort != l.effort && !l.working()
+}
+
+// replace closes it quietly, to start another in its place.
+func (l *Live) replace() {
+	l.mu.Lock()
+	l.replaced = true
+	l.mu.Unlock()
+	l.Close()
 }
 
 func (l *Live) PopAsk(rid string) (string, bool) {

@@ -1,7 +1,7 @@
 // Rendering Claude's stream-json output into a card: text, thinking, tool calls and their results, sub-agent
 // activity, background-agent notifications. Saved transcripts replay through the same path, so the graph rebuilds too.
 import type { ContentBlock, SavedMessage } from '../lib/api'
-import { make, rel, clip } from '../lib/dom'
+import { make, rel, clip, button } from '../lib/dom'
 import { save } from '../lib/store'
 import { md, enhance } from '../lib/markdown'
 import { touch, run, settle, quiet, type Act } from '../canvas/graph'
@@ -10,7 +10,7 @@ import { tree, openInspector, inspecting } from '../panels/files'
 import { liveDiagrams } from '../items/diagram'
 import { showPlan, planResult, focusPlan } from '../items/plan'
 import { agentWindow, agentMsg, agentDone, showAgent, agentId, agentCall, agentMessaged, relayed } from '../items/agent'
-import { put, follow, renderCard, type Session, type ToolRow, type Block } from './session'
+import { put, follow, renderCard, clearSession, type Session, type ToolRow, type Block } from './session'
 import { approval, withdrawAsk } from './asks'
 import { thumb } from './images'
 import { notify } from './notify'
@@ -46,7 +46,18 @@ const ACTS: Record<string, Act> = { Read: 'read', Edit: 'edit', MultiEdit: 'edit
 function shown(S: Session, text: string, uuid?: string) {
   if (uuid && S.log.querySelector(`:scope > .me[data-uuid="${CSS.escape(uuid)}"]`)) return true
   const last = [...S.log.querySelectorAll(':scope > .me')].pop()
-  return !!last && (last.textContent ?? '').trim().startsWith(text.trim()) // the bubble may add chips after the text
+  return !!last && (last.textContent ?? '').trim().startsWith(text.split(REFS)[0].trim()) // the bubble may add chips after the text
+}
+const REFS = '\n\nReferenced from my canvas:\n\n' // what refs.ts toContent puts between a message and its references
+/** A message you sent, read back from a transcript: what you typed, with its references' contents folded away. */
+function sentBubble(text: string, uuid?: string) {
+  const at = text.indexOf(REFS), b = make('div', 'me', at < 0 ? text : text.slice(0, at))
+  if (uuid) b.dataset.uuid = uuid
+  if (at < 0) return b
+  const d = make('details', 'refdump')
+  d.append(make('summary', '', 'Referenced from the canvas'), make('pre', '', text.slice(at + REFS.length)))
+  b.append(d)
+  return b
 }
 const tag = (xml: string, name: string) => xml.match(new RegExp(`<${name}>([\\s\\S]*?)</${name}>`))?.[1]?.trim()
 const tags = (xml: string, name: string) => [...xml.matchAll(new RegExp(`<${name}>([\\s\\S]*?)</${name}>`, 'g'))].map(m => m[1].trim())
@@ -270,6 +281,7 @@ export function on(S: Session, m: Msg) {
     if (/permission mode/i.test(m.response.error ?? '')) modeRefused(S)
   }
   if (m.type === 'system' && m.subtype === 'init') {
+    if (!S.pending) S.pending = 1 // a turn is starting (one the page didn't send, e.g. a background agent's report)
     S.reportedModel = m.model
     S.toolCount = (m.tools ?? []).length
     const mcps = m.mcp_servers ?? []
@@ -312,7 +324,9 @@ export function on(S: Session, m: Msg) {
     const text = (m.message.content ?? []).filter((b: ContentBlock) => b.type === 'text').map((b: ContentBlock) => b.text).join('\n')
     if (text) { const el = put(S, make('div', 'md')); el.innerHTML = md(text); enhance(el) }
   } else if (m.type === 'error') {
-    put(S, make('div', 'err', m.text))
+    const e = put(S, make('div', 'err', m.text))
+    // its saved conversation is gone (deleted, or never written): every resume would fail the same way
+    if (S.sid && /No conversation found/i.test(m.text)) e.append(' ', button('Start a new conversation', '', () => clearSession(S)))
   } else if (m.type === 'result') {
     if (m.is_error && m.subtype !== 'error_during_execution') put(S, make('div', 'err', m.result || m.subtype))
     if (m.subtype === 'error_during_execution') put(S, make('p', 'note', 'Stopped.'))
@@ -347,7 +361,7 @@ export function on(S: Session, m: Msg) {
 }
 
 /** Rebuild a saved transcript through the same start/delta/stop path the live stream uses (so the graph rebuilds too). */
-export function replay(S: Session, m: SavedMessage & { usage?: Msg; parent?: string; aid?: string; lazy?: boolean; isMeta?: boolean }) {
+export function replay(S: Session, m: SavedMessage & { usage?: Msg; parent?: string; aid?: string; lazy?: boolean; isMeta?: boolean; uuid?: string }) {
   if (m.aid) return agentId(m.parent!, m.aid, m.lazy) // a sub-agent's id (the server sends these first): what SendMessage addresses; lazy: its log comes when its window opens
   if (m.parent) return subagent(S, m.parent, { type: m.role, message: { content: m.content } }) // a sub-agent's own transcript
   if (m.usage) usage(S, m.usage) // the latest reply's token counts: the context meter works for reopened sessions too
@@ -359,7 +373,7 @@ export function replay(S: Session, m: SavedMessage & { usage?: Msg; parent?: str
       else if (b.type === 'text' && b.text!.startsWith('<task-notification>')) notification(S, b.text!)
       else if (b.type === 'text' && m.isMeta) { if (!handoff(S, b.text!, false)) meta(S, b.text!) } // as live: an agent's report or a skill's instructions, not something you typed
       else if (b.type === 'text' && b.text!.startsWith('<bash-input>')) { const rest = replayShell(S, b.text!); if (rest) bubble = put(S, make('div', 'me', rest)) }
-      else if (b.type === 'text' && !b.text!.startsWith('<')) bubble = put(S, make('div', 'me', relayed(b.text!) ?? b.text))
+      else if (b.type === 'text' && !b.text!.startsWith('<')) bubble = put(S, sentBubble(relayed(b.text!) ?? b.text!, m.uuid))
       else if (b.type === 'image' && ((b as any).source?.data || (b as any).source?.url)) { // images you sent: thumbnails
         bubble ??= put(S, make('div', 'me'))
         const row = bubble.querySelector('.refs.sent') ?? bubble.appendChild(make('div', 'refs sent'))

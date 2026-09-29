@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -332,3 +333,57 @@ func TestRefusedSendsBusy(t *testing.T) {
 }
 
 func closed() chan struct{} { c := make(chan struct{}); close(c); return c }
+
+// Messages sent but not echoed back yet are reported as queued to pages that attach; a local command's turn (no
+// echo) answers the oldest.
+func TestQueuedOnAttach(t *testing.T) {
+	l := NewForTest("", "g")
+	l.be = nopBackend{}
+	push := func(s string) { l.Push(l.classify(s) + "\n") }
+	l.Send("one", "u1")
+	l.Send("two", "u2")
+	push(`{"type":"user","message":{"content":"one"},"uuid":"u1"}`)
+	if s := l.Snapshot(); !slices.Equal(s.Queued, []string{"u2"}) || !s.Picked {
+		t.Fatalf("mid-turn: queued %v picked %v", s.Queued, s.Picked)
+	}
+	push(`{"type":"result","subtype":"success"}`)
+	if s := l.Snapshot(); !slices.Equal(s.Queued, []string{"u2"}) || s.Picked {
+		t.Fatalf("after the turn: queued %v picked %v", s.Queued, s.Picked)
+	}
+	push(`{"type":"result","subtype":"success"}`) // u2 was /cost: its turn ended without an echo
+	if s := l.Snapshot(); len(s.Queued) != 0 {
+		t.Fatalf("local command's turn left %v queued", s.Queued)
+	}
+}
+
+type closeCount struct {
+	nopBackend
+	closed *int
+}
+
+func (c closeCount) Close() { *c.closed++ }
+
+// An idle card asked for another effort gets a new process; a working one, or the same effort, keeps its own.
+func TestEffortReplacesIdle(t *testing.T) {
+	closed := 0
+	Register("test-effort", Kind{Spawn: func(Spec, Sink) (Backend, error) { return closeCount{closed: &closed}, nil }})
+	const cid = "22222222-2222-2222-2222-222222222222"
+	t.Cleanup(func() { Mu.Lock(); delete(Registry, cid); Mu.Unlock(); delete(kinds, "test-effort") })
+	a, _ := Start(cid, "test-effort", "", "", "", "high")
+	if b, _ := Start(cid, "test-effort", "", "", "", "high"); b != a || closed != 0 {
+		t.Fatal("same effort: replaced")
+	}
+	a.mu.Lock()
+	a.busy = true
+	a.mu.Unlock()
+	if b, _ := Start(cid, "test-effort", "", "", "", "low"); b != a {
+		t.Fatal("replaced mid-turn")
+	}
+	a.mu.Lock()
+	a.busy = false
+	a.mu.Unlock()
+	b, _ := Start(cid, "test-effort", "", "", "", "low")
+	if b == a || closed != 1 || !a.replaced {
+		t.Fatalf("idle with another effort: same process %v, closed %d", b == a, closed)
+	}
+}

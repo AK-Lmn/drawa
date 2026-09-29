@@ -1,7 +1,7 @@
 // Session cards: each is a live Claude process on the server. You can type any time (messages queue while Claude
 // or its agents work, like the terminal); output streams in continuously (stream.ts). Every tool call also lands on
 // the graph. This module owns the card itself: creating, focusing, closing, and its header / status.
-import { make, ICON, iconButton, project, ping, uuid, perFrame, EDITABLE } from '../lib/dom'
+import { make, ICON, iconButton, project, ping, uuid, perFrame, EDITABLE, confirmBox } from '../lib/dom'
 import { api, post } from '../lib/api'
 import { persist, save, saveSoon, each } from '../lib/store'
 import { front, savedRect, nextColumn, centerOn, fit, byIds, type Rect, onCanvas } from '../canvas/canvas'
@@ -22,6 +22,7 @@ import { setModel, setEffort, renderInfo, seedInfo } from './gen'
 import { loadSessions, resume, sessionPath } from './history'
 import { lastAgent, modesOf, installed, title, who } from '../lib/agents'
 import { sendCombo, onSendKey } from '../lib/sendkey'
+import { hasDraft, keepImages } from './drafts'
 
 export type ToolRow = HTMLDetailsElement & { chg?: Change }
 export interface Block {
@@ -67,6 +68,7 @@ export interface Session {
   modeSel?: HTMLSelectElement // its picker in the message bar
   confirmedMode?: string // the mode Claude last reported (or the card was restored with)
   reader?: string // this page's reader id on the server stream (canvas tool calls name the page to run them)
+  atEnd: boolean // new output scrolls into view: off once you scroll up to read, on again back at the bottom
   replaying?: boolean // rebuilding a saved transcript: no per-message scroll pinning or header updates (see history.ts)
   asks: Set<string> // approval requests waiting on you
   refs: Ref[] // canvas items attached to the next message
@@ -95,10 +97,11 @@ export const meta: {
 
 /* ---------- saved with the canvas: open cards (by transcript id) and which one had focus ---------- */
 // A card still waiting for its first reply has no transcript id yet: it's saved by its process (cid) alone and, after a
-// reload, rebuilt from the process's output from the start (live.ts reads from line 0 when n is 0).
+// reload, rebuilt from the process's output from the start (live.ts reads from line 0 when n is 0). So is a new card
+// with a draft in its box (drafts.ts): it has no process, and reads as such.
 type SavedCard = Rect & { id?: string; title: string; cid?: string; mode?: string; model?: string; effort?: string; backend?: string } // no backend: claude
 persist('cards',
-  () => cards.filter(S => S.sid || S.pending).map((S): SavedCard => ({ id: S.sid ?? undefined, title: S.title, cid: S.cid, mode: S.mode, model: S.model, effort: S.effort, backend: S.backend === 'claude' ? undefined : S.backend, ...savedRect(S.card) })),
+  () => cards.filter(S => S.sid || S.pending || hasDraft(S)).map((S): SavedCard => ({ id: S.sid ?? undefined, title: S.title, cid: S.cid, mode: S.mode, model: S.model, effort: S.effort, backend: S.backend === 'claude' ? undefined : S.backend, ...savedRect(S.card) })),
   async (list: SavedCard[], all) => {
     // every transcript is fetched at once; they're replayed in order as they arrive
     if (!Array.isArray(list)) throw new Error('not a list')
@@ -140,8 +143,8 @@ persist('cards',
     if (bad) throw bad
   })
 persist('focus', () => cur?.sid ?? undefined)
-// a deleted selection clicks the card's own × (it doesn't ask), and says what closing means
-removable('session', null, 'Sessions are closed; their conversations stay in History.')
+// a deleted selection closes cards without the × button's own confirm (its delete confirm covers them), and says what that means
+removable('session', el => { const S = cards.find(s => s.card === el); if (S) closeSession(S) }, 'Sessions are closed, stopping any that are working; their conversations stay in History.')
 // drop a card on another card's message box: that conversation goes along as context (its recent part, as text)
 referable('session', {
   icon: '◆',
@@ -203,7 +206,7 @@ function emptyState(S: Session) {
 
 export function newSession(opts: { rect?: Rect; cid?: string; backend?: string } = {}) {
   const r = opts.rect ?? nextColumn(Math.max(340, Math.min(460, innerWidth - 32)), 600) // phones: fits the screen
-  const close = iconButton(ICON.x, 'Close session', () => closeSession(S), 'closebtn')
+  const close = iconButton(ICON.x, 'Close session', () => askClose(S), 'closebtn')
   const { el: card, head, title, body } = makeWindow({ kind: 'session', cls: 'card', title: 'New session', rect: r, minW: 340, minH: 300, actions: [close] })
   head.prepend(make('span', 'dot'))
   const ctx = make('span', 'ctx') // a span, not a button: the tab's buttons are the window controls at its end
@@ -222,14 +225,29 @@ export function newSession(opts: { rect?: Rect; cid?: string; backend?: string }
   log.setAttribute('role', 'log') // a screen reader reads out what's added; aria-busy (renderCard) holds a streaming reply until it's whole
   log.setAttribute('aria-label', 'Conversation')
   // scrolled up to read: a way back to the latest message (appends while you're up there don't scroll, so it stays shown)
-  const down = iconButton(ICON.open, 'Scroll to the latest message', () => { log.scrollTop = log.scrollHeight }, 'tobottom')
+  const down = iconButton(ICON.open, 'Scroll to the latest message', () => { S.atEnd = true; pinToBottom(S) }, 'tobottom')
   down.hidden = true
-  log.addEventListener('scroll', perFrame(() => { down.hidden = log.scrollHeight - log.scrollTop - log.clientHeight < 200 }), { passive: true })
+  // Scrolling up stops following new output at once (checked per event: a streaming frame would pull you back
+  // first); scrolling back down to where the way-back button hides follows again. (Rows below render at their real
+  // height only once on screen, so "the bottom" moves as you get there.) Content shrinking at the end also moves
+  // scrollTop up, but leaves you at the bottom, so it re-follows on the next frame.
+  let lastTop = 0, wentDown = false
+  const settle = perFrame(() => {
+    const left = log.scrollHeight - log.scrollTop - log.clientHeight
+    if (left < 4 || (wentDown && left < 200)) S.atEnd = true
+    down.hidden = left < 200
+  })
+  log.addEventListener('scroll', () => {
+    wentDown = log.scrollTop > lastTop
+    if (log.scrollTop < lastTop - 1) S.atEnd = false
+    lastTop = log.scrollTop
+    settle()
+  }, { passive: true })
   body.append(log, down)
 
   const S: Session = {
     cid: opts.cid ?? uuid(), sid: null, backend: opts.backend ?? lastAgent(), title: 'New session', reportedModel: '', model: '', effort: '', toolCount: 0, mcpTotal: 0, mcpConnected: 0, cost: 0, done: false,
-    card, log, ta: null!, stopBtn: null!, blocks: {}, tools: {}, pending: 0, bg: 0, queued: [], picked: false, mode: lastMode(), asks: new Set(), refs: [], images: [], sentRefs: new Set(), chips: null!, n: -1, ctx: { used: 0, max: 0 },
+    card, log, ta: null!, stopBtn: null!, atEnd: true, blocks: {}, tools: {}, pending: 0, bg: 0, queued: [], picked: false, mode: lastMode(), asks: new Set(), refs: [], images: [], sentRefs: new Set(), chips: null!, n: -1, ctx: { used: 0, max: 0 },
   }
   if (!(modesOf(S.backend)?.includes(S.mode) ?? true)) S.mode = 'default' // e.g. Auto, which OpenCode doesn't have
   composer(S, body) // message box, reference chips, / and @ menu
@@ -288,8 +306,17 @@ export function focus(S: Session) {
   saveSoon()
 }
 
+/** The card's ×: closing kills its process, so a card still working (a turn, a question for you, background agents) asks first. */
+async function askClose(S: Session) {
+  const work = [S.pending && 'a reply', S.asks.size && 'a question for you', S.bg && 'background agents'].filter(Boolean)
+  if (work.length && !await confirmBox('Close this session?', `${who(S.backend)} is still working (${work.join(', ')}). Closing stops it; the conversation stays in History.`, 'Close')) return
+  closeSession(S)
+}
+
 function closeSession(S: Session) {
   post('close', { cid: S.cid }).catch(() => {})
+  S.images = []
+  keepImages(S) // its draft's pictures
   dropSession(S)
   dropPlans(S)
   dropAgents(S)
@@ -348,20 +375,19 @@ export function renderCard(S: Session) {
   renderInfo(S)
   S.log.classList.toggle('busy', S.pending > 0)
   S.log.setAttribute('aria-busy', String(S.pending > 0))
-  S.stopBtn.hidden = S.pending === 0
+  S.stopBtn.hidden = !busy
+  // with no turn running, what's left to stop is background agents: they end with the process (see composer.ts)
+  S.stopBtn.title = S.pending ? `Stop what ${who(S.backend)} is doing` : 'Stop its background agents'
   S.ta.placeholder = busy ? `${who(S.backend)} is working. Type to queue a message.` : `Message ${who(S.backend)}: / commands, @ files, ! shell · ${sendCombo()} sends`
 }
 
 onSendKey(() => cards.forEach(renderCard)) // the placeholder names the send key
 
 /* ---------- appending to the log ---------- */
-const nearBottom = (S: Session, px: number) => S.log.scrollHeight - S.log.scrollTop - S.log.clientHeight < px
 /** Append to the log, staying pinned to the bottom if you were reading there. */
 export function put<T extends HTMLElement>(S: Session, e: T): T {
-  if (S.replaying) { S.log.append(e); return e } // measuring the log after every append re-lays it out each time
-  const stick = nearBottom(S, 80)
   S.log.append(e)
-  if (stick) S.log.scrollTop = S.log.scrollHeight
+  if (!S.replaying && S.atEnd) S.log.scrollTop = S.log.scrollHeight
   return e
 }
 /** Open at the latest message and stay there while the log settles: rows render at their real height only once
@@ -378,4 +404,4 @@ export function pinToBottom(S: Session) {
   }
   tick()
 }
-export const follow = (S: Session) => { if (!S.replaying && nearBottom(S, 200)) S.log.scrollTop = S.log.scrollHeight }
+export const follow = (S: Session) => { if (!S.replaying && S.atEnd) S.log.scrollTop = S.log.scrollHeight }
