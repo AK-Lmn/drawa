@@ -8,7 +8,7 @@
 #bar>:not(.brand){flex:none} /* buttons keep their size; the project name is what gives way */
 .brand-text{display:flex;flex-direction:column;justify-content:center;min-width:0;line-height:1.25}
 #pname{overflow:hidden;text-overflow:ellipsis}
-.logo{align-self:center;width:18px;height:18px;flex:none;background:conic-gradient(from 200deg,var(--edit),var(--write),var(--run),var(--read),var(--edit));
+.logo{align-self:center;width:18px;height:18px;flex:none;background:conic-gradient(from 200deg,var(--edit-hue),var(--write-hue),var(--run-hue),var(--read-hue),var(--edit-hue));
   clip-path:polygon(0 30%,30% 30%,40% 0,100% 0,100% 100%,0 100%)} /* a tiny folder */
 .brand b{min-width:0;font-weight:650;font-size:14px;white-space:nowrap}
 /* narrower windows: the toolbar steps down instead of overlapping (labels stay as aria-labels and tooltips) */
@@ -29,14 +29,14 @@
 #inkbar .sz{display:grid;place-items:center;width:30px;height:30px;border-radius:var(--r-ctl)}
 #inkbar .sz i{width:var(--d);height:var(--d);border-radius:50%;background:var(--ink)}
 #inkbar .sz.on,#inkbar .sz:hover{background:var(--hover)}
-#inkbar .icon.on{background:var(--sel);color:var(--accent)}
+#inkbar .icon.on{background:var(--sel);color:var(--accent-text)}
 
 #fontpanel{top:64px;left:12px;display:flex;flex-direction:column;gap:6px;width:280px;padding:12px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow-lift);animation:enter .18s var(--ease)}
 #fontpanel hr{width:100%;margin:8px 0 2px;border:0;border-top:1px solid var(--line)}
 #fontpanel label{margin-top:4px;font-size:12px;font-weight:500;color:var(--muted)}
 #fontpanel .xsel{width:100%;justify-content:space-between}
-#fontpanel input{height:32px;padding:0 10px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13px var(--sans);outline:none}
-#fontpanel input:focus{border-color:var(--accent)}
+#fontpanel input{height:32px;padding:0 10px;border:1px solid var(--field-edge);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13px var(--sans);outline:none}
+#fontpanel input:focus{border-color:var(--focus)}
 #fontpanel .preview{margin:8px 0 0;padding:10px;border-radius:var(--r-box);background:var(--rail);font:15px var(--sans);color:var(--ink)}
 #fontpanel .preview code{font:13px var(--mono);padding:1px 5px;border-radius:var(--r-tag);background:var(--hover)}
 
@@ -56,7 +56,7 @@
 #conn[data-state=down]{color:var(--danger);border-color:color-mix(in oklab,var(--danger) 45%,var(--line))}
 #conn[data-state=down] i{background:var(--danger);animation:pulse .8s ease-in-out infinite alternate}
 #conn[data-state=back]{color:var(--add)}
-#conn[data-state=back] i{background:var(--add)}
+#conn[data-state=back] i{background:var(--add-hue)}
 
 /* find a window (Ctrl+K): a command-palette box, top center */
 .finder{position:fixed;left:50%;top:72px;z-index:var(--z-menu);transform:translateX(-50%);display:flex;flex-direction:column;width:min(560px,calc(100vw - 24px));max-height:min(480px,calc(100vh - 100px));background:var(--bg);border:1px solid var(--line-2);border-radius:var(--r-box);box-shadow:var(--shadow-lift);overflow:hidden;animation:enter .15s var(--ease)}

@@ -23,7 +23,7 @@
 .win-h .icon{width:26px;height:26px;flex:none}
 .win-h .spacer{flex:1 1 0} /* pushes the window controls to the tab's end, whichever of them are showing */
 .win-h :is(.floatbtn,.pinbtn,.fullbtn) svg{width:14px;height:14px}
-.win-h :is(.floatbtn,.pinbtn,.fullbtn).on{color:var(--accent)}
+.win-h :is(.floatbtn,.pinbtn,.fullbtn).on{color:var(--accent-text)}
 /* stick to screen, pin to sidebar and full view: a strip just right of the tab (past its shoulder), shown when you
    reach for the tab (or always, for one that's on). Its padding bridges the gap so the hover isn't lost on the way. */
 .win-x{position:absolute;left:100%;top:0;height:100%;display:flex;align-items:center;padding-left:calc(var(--r-tab) + 2px);cursor:default}
