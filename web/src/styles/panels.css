@@ -2,7 +2,7 @@
    Their section switchers are folder tabs too: the open tab joins the panel's content. */
 .panel{position:fixed;z-index:var(--z-panel);display:flex;flex-direction:column;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow-lift);overflow:hidden}
 #drawer{top:64px;left:12px;bottom:12px;width:320px;animation:from-left .25s var(--ease)}
-#inspector{top:12px;right:12px;bottom:12px;width:min(560px,calc(100vw - 24px));max-width:calc(100vw - 24px);animation:from-right .25s var(--ease)}
+#inspector{top:64px;right:12px;bottom:12px;width:min(560px,calc(100vw - 24px));max-width:calc(100vw - 24px);animation:from-right .25s var(--ease)}
 @keyframes from-left{from{transform:translateX(-16px);opacity:0}}
 @keyframes from-right{from{transform:translateX(16px);opacity:0}}
 .panel .bar{display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid var(--line)}

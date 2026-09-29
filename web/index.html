@@ -50,7 +50,7 @@
   <button id="btn-drawer" class="btn" title="History and files (Shift+H)" aria-expanded="false" aria-label="History and files"><svg viewBox="0 0 16 16"><path d="M2.5 4h11M2.5 8h11M2.5 12h7"/></svg><span class="lbl">History &amp; files</span></button>
   <button id="btn-help" class="btn icon-btn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M6.2 6.3a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.4M8 11.3v.2"/></svg></button>
   <button id="btn-theme" class="btn icon-btn"></button>
-  <button id="btn-fonts" class="btn" title="Appearance: color schemes and fonts" aria-expanded="false" aria-controls="fontpanel"><span class="aa">Aa</span></button>
+  <button id="btn-fonts" class="btn" aria-label="Appearance" title="Appearance: color schemes and fonts" aria-expanded="false" aria-controls="fontpanel"><span class="aa">Aa</span></button>
 </header>
 
 <div id="fontpanel" class="float" hidden role="dialog" aria-label="Appearance">
@@ -100,7 +100,7 @@
   <div class="bar tabs">
     <div class="seg"><button data-l="sessions" class="on">History</button><button data-l="tree">Files</button></div>
     <button id="refresh" class="icon" title="Refresh" aria-label="Refresh"><svg viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"/></svg></button>
-    <button id="dclose" class="icon" title="Close (Esc or H)" aria-label="Close history and files"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+    <button id="dclose" class="icon" title="Close (Esc or Shift+H)" aria-label="Close history and files"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
   </div>
   <div id="sessions" class="pane"></div>
   <ul id="tree" class="pane" hidden></ul>

@@ -127,9 +127,11 @@ export function composer(S: Session, body: HTMLElement) {
 }
 
 /* ---------- "/" menu: skills and slash commands; "@" menu: canvas items ---------- */
+let menus = 0 // numbers each card's menu, so its rows' ids are unique on the page
 function commandMenu(S: Session, form: HTMLFormElement) {
   const menu = make('div', 'cmds')
   menu.setAttribute('role', 'listbox')
+  menu.id = `cmds-${++menus}`
   menu.hidden = true
   form.before(menu)
   let items: { title: string; sub: string; pick: () => void }[] = [], sel = 0
@@ -186,10 +188,15 @@ function commandMenu(S: Session, form: HTMLFormElement) {
     }
     menu.hidden = !items.length
     sel = Math.max(0, Math.min(sel, items.length - 1))
+    if (menu.hidden) S.ta.removeAttribute('aria-activedescendant')
+    else S.ta.setAttribute('aria-activedescendant', `${menu.id}-${sel}`)
     menu.replaceChildren(...items.map((c, i) => {
       const o = make('button', 'cmd' + (i === sel ? ' on' : ''))
       o.type = 'button'
+      o.id = `${menu.id}-${i}`
+      o.tabIndex = -1
       o.setAttribute('role', 'option')
+      o.setAttribute('aria-selected', String(i === sel))
       o.append(make('b', '', c.title), make('span', '', c.sub))
       o.onmousedown = e => { e.preventDefault(); pick(i) }
       return o
@@ -197,12 +204,14 @@ function commandMenu(S: Session, form: HTMLFormElement) {
     menu.querySelector('.on')?.scrollIntoView({ block: 'nearest' })
   }
   S.ta.addEventListener('input', () => { sel = 0; draw() })
-  S.ta.addEventListener('blur', () => setTimeout(() => (menu.hidden = true), 100))
+  S.ta.addEventListener('blur', () => setTimeout(() => { menu.hidden = true; S.ta.removeAttribute('aria-activedescendant') }, 100))
   S.ta.addEventListener('keydown', e => {
     if (!menu.hidden && items.length) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); sel = (sel + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length; draw(); return }
-      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) { e.preventDefault(); pick(sel); return }
-      if (e.key === 'Escape') { menu.hidden = true; return }
+      // only plain Enter/Tab pick: Ctrl/Cmd+Enter always sends, and an IME's Enter confirms its own text
+      const plain = !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing
+      if (plain && (e.key === 'Tab' || e.key === 'Enter')) { e.preventDefault(); pick(sel); return }
+      if (e.key === 'Escape') { e.preventDefault(); menu.hidden = true; S.ta.removeAttribute('aria-activedescendant'); return }
     }
     // the send key is a setting (lib/sendkey.ts); anything else on Enter is a new line. Esc leaves the box so
     // single-key shortcuts work again

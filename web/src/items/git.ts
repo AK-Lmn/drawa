@@ -75,10 +75,12 @@ export function openGit(r?: Rect) {
 
 function say(text: string, bad = false) { if (!win) return; win.out.textContent = text; win.out.classList.toggle('bad', bad) }
 
+const UNREAD = 'Could not read git status: '
 export async function refresh() {
   if (!win) return
   let st: GitState
-  try { st = await api<GitState>('git') } catch (e) { return say(`Could not read git status: ${(e as Error).message}`, true) }
+  try { st = await api<GitState>('git') } catch (e) { return say(`${UNREAD}${(e as Error).message}`, true) }
+  if (win.out.textContent?.startsWith(UNREAD)) say('') // that was an earlier fetch's error; a failed commit's or push's stays
   const sig = JSON.stringify(st)
   if (sig === win.last) { win.delay = Math.min(win.delay * 2, SLOW); return } // nothing changed: keep the DOM (and any open diffs)
   win.last = sig

@@ -69,13 +69,21 @@ function peek() {
 }
 
 // files matching the query: the server's fuzzy search (the same as @ in a message), asked once typing pauses
-let found: string[] = [], fileQ = '', typing = 0
+// `pending` while this query's files are still being asked for; `pickFirst` when Enter came meanwhile with nothing to pick
+let found: string[] = [], fileQ = '', typing = 0, pending = false, pickFirst = false
 function findFiles() {
   clearTimeout(typing)
   const q = fileQ = input.value.trim()
   found = [] // the last query's files aren't this one's: none are pickable until the answer comes
-  if (!q || !openFile) return
-  typing = setTimeout(() => api<string[]>('files?q=' + enc(q)).then(list => { if (fileQ === q && !box.hidden) { found = list; draw(); if (peekFile) list.slice(0, 3).forEach(peekOf) } }).catch(() => {}), 120)
+  pending = !!q && !!openFile
+  if (!pending) return
+  const answer = (list: string[]) => {
+    if (fileQ !== q || box.hidden) return
+    found = list; pending = false; draw()
+    if (pickFirst) { pickFirst = false; if (hits[0]) pick(hits[0]); return }
+    if (peekFile) list.slice(0, 3).forEach(peekOf)
+  }
+  typing = setTimeout(() => api<string[]>('files?q=' + enc(q)).then(answer, () => answer([])), 120)
 }
 const fileHit = (path: string): Hit => {
   const cut = path.lastIndexOf('/')
@@ -118,34 +126,45 @@ function draw() {
   sel = Math.min(sel, Math.max(0, hits.length - 1))
   list.replaceChildren(...(hits.length ? hits.flatMap((h, i) => {
     const row = make('button', 'finder-row' + (i === sel ? ' on' : ''))
+    row.id = `finder-${i}`
+    row.tabIndex = -1 // Tab in the input moves the highlight instead (focus leaving the input would close the finder)
     row.setAttribute('role', 'option')
+    row.setAttribute('aria-selected', String(i === sel))
     row.dataset.kind = h.kind
     const main = make('span', 'fr-main')
     main.append(make('b', '', h.title || '(untitled)'), ...(h.excerpt ? [make('small', '', h.excerpt)] : []))
     row.append(make('i', 'fr-g', h.run ? '›' : refIcon(h.kind)), main, make('span', 'fr-k', h.run ? h.key ?? '' : kindName(h.kind)))
     row.onmousedown = e => { e.preventDefault(); pick(h) }
     // mousemove, not mouseenter: a redraw puts a new row under a resting pointer, which would take the highlight back from the arrow keys
-    row.onmousemove = () => { if (sel === i) return; list.querySelector('.on')?.classList.remove('on'); row.classList.add('on'); sel = i; peek() }
+    row.onmousemove = () => {
+      if (sel === i) return
+      const was = list.querySelector('.on')
+      was?.classList.remove('on'); was?.setAttribute('aria-selected', 'false')
+      row.classList.add('on'); row.setAttribute('aria-selected', 'true'); input.setAttribute('aria-activedescendant', row.id)
+      sel = i; peek()
+    }
     // a header where a section starts: commands, then windows (unnamed when first), then files
     const sec = section(h)
     if (sec === section(hits[i - 1]) || (sec === 'Windows' && !i)) return [row]
     const head = make('p', 'finder-sec', sec)
     head.setAttribute('role', 'presentation')
     return [head, row]
-  }) : [make('p', 'none', 'Nothing matches.')]))
+  }) : [make('p', 'none', pending ? 'Searching files…' : 'Nothing matches.')]))
+  if (hits.length) input.setAttribute('aria-activedescendant', `finder-${sel}`)
+  else input.removeAttribute('aria-activedescendant')
   list.querySelector('.on')?.scrollIntoView({ block: 'nearest' })
   peek()
 }
 
 const pick = (h: Hit) => {
-  if (h.run) { close(); h.run(); return }
+  if (h.run) { close(false); h.run(); return }
   const el = h.el ?? openFile?.(h.path!)
   if (el) go(el)
 }
 
 /** Fly to a window: expand it if collapsed, bring it forward, and put the cursor in it when it takes typing. */
 function go(el: HTMLElement) {
-  close()
+  close(false)
   expand(el)
   if (!onCanvas(el)) el.scrollIntoView({ block: 'nearest', behavior: reducedMotion() ? 'auto' : 'smooth' }) // pinned (or in full view): already on screen
   else { front(el); centerOn(el) }
@@ -153,7 +172,9 @@ function go(el: HTMLElement) {
   focusInput(el)
 }
 
+let from: HTMLElement | null = null // where focus was before the finder opened: it goes back there unless something is picked
 function openFinder() {
+  if (box.hidden) from = document.activeElement as HTMLElement | null
   box.hidden = false
   input.value = ''
   sel = 0
@@ -161,19 +182,28 @@ function openFinder() {
   draw()
   input.focus()
 }
-const close = () => { box.hidden = true; index = []; found = []; peeked = ''; peeks.clear(); clearTimeout(typing); peekBox.replaceChildren() } // don't hold on to big texts
+function close(restore = true) {
+  const back = from
+  from = null // first: hiding the focused input blurs it, which calls close again
+  box.hidden = true; index = []; found = []; pending = pickFirst = false; peeked = ''; peeks.clear(); clearTimeout(typing); peekBox.replaceChildren() // don't hold on to big texts
+  if (restore && back?.isConnected) back.focus({ preventScroll: true })
+}
 
-input.addEventListener('input', () => { sel = 0; findFiles(); draw() })
+input.addEventListener('input', () => { sel = 0; pickFirst = false; findFiles(); draw() })
 input.addEventListener('keydown', e => {
   e.stopPropagation() // typing here isn't a canvas shortcut
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); sel = (sel + (e.key === 'ArrowDown' ? 1 : hits.length - 1)) % Math.max(1, hits.length); draw() }
-  else if (e.key === 'Enter') { e.preventDefault(); if (hits[sel]) pick(hits[sel]) }
+  const down = e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey), up = e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)
+  if (down || up) { e.preventDefault(); sel = (sel + (down ? 1 : hits.length - 1)) % Math.max(1, hits.length); draw() }
+  else if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); if (hits[sel]) pick(hits[sel]); else if (pending) pickFirst = true }
   else if (e.key === 'Escape') { e.preventDefault(); close() }
 })
-input.onblur = close // rows keep focus in the input (mousedown is prevented), so this is a real blur
+// rows keep focus in the input (mousedown is prevented), so this is a real blur; focus that went somewhere stays there
+input.onblur = e => close(!e.relatedTarget)
 // Ctrl/Cmd+K from anywhere, even while typing in a card
 addEventListener('keydown', e => {
-  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') { e.preventDefault(); box.hidden ? openFinder() : close() }
+  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'k') return
+  if (document.querySelector('dialog[open]')) return // a modal (or the whiteboard editor, whose own Ctrl+K it is) has the keyboard
+  e.preventDefault(); box.hidden ? openFinder() : close()
 }, true)
 $('#btn-find').onclick = () => openFinder()
 command({ label: 'Find a window, file or command', group: 'Items', keys: ['Ctrl+K'], tip: '`Ctrl+K` finds windows and files, and runs commands by name' })
