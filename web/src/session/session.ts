@@ -1,7 +1,7 @@
 // Session cards: each is a live Claude process on the server. You can type any time (messages queue while Claude
 // or its agents work, like the terminal); output streams in continuously (stream.ts). Every tool call also lands on
 // the graph. This module owns the card itself: creating, focusing, closing, and its header / status.
-import { make, ICON, iconButton, project, ping, uuid, perFrame } from '../lib/dom'
+import { make, ICON, iconButton, project, ping, uuid, perFrame, EDITABLE } from '../lib/dom'
 import { api, post } from '../lib/api'
 import { persist, save, saveSoon, each } from '../lib/store'
 import { front, savedRect, nextColumn, centerOn, fit, byIds, type Rect, onCanvas } from '../canvas/canvas'
@@ -242,11 +242,17 @@ export function newSession(opts: { rect?: Rect; cid?: string; backend?: string }
   card.addEventListener('rename', e => { S.title = (e as CustomEvent<string>).detail; renderCard(S); saveSoon() })
   card.addEventListener('pointerdown', () => focus(S), true)
   card.addEventListener('focusin', () => focus(S))
-  // a waiting permission prompt answers to Enter / Esc from the card (unless you're typing a message)
+  // a waiting permission prompt answers to Enter / Esc from the card, but never from a control of the card's own:
+  // Enter on Stop or a dropdown must not allow a command, Esc in the message box only leaves it
   card.addEventListener('keydown', e => {
-    const open = S.log.querySelector<HTMLElement>('.ask.perm:not(.done)')
-    if (!open || (e.target === S.ta && S.ta.value.trim()) || (e.target as Element).closest('.cmds, .pnode')) return
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); open.querySelector<HTMLButtonElement>('.btn.primary')!.click() }
+    const open = S.log.querySelector<HTMLElement>('.ask.perm:not(.done)'), t = e.target as Element
+    if (!open || t.closest('.cmds, .pnode')) return
+    const control = t.closest(`${EDITABLE}, button, a[href], [role=button]`)
+    if (control && !open.contains(control)) return
+    if (e.key === 'Enter' && !e.shiftKey) {
+      if (control) return // the ask's own buttons (Deny, View diff...) do what they say
+      e.preventDefault(); e.stopPropagation(); open.querySelector<HTMLButtonElement>('.btn.primary')!.click()
+    }
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); open.querySelector<HTMLButtonElement>('.row .btn:not(.primary)')!.click() }
   }, true)
   new ResizeObserver(redraw).observe(card)

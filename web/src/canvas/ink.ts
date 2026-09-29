@@ -236,9 +236,9 @@ function eraseAt(e: PointerEvent) {
 }
 
 addEventListener('keydown', e => {
-  if (!drawing || !shortcutOk(e)) return
+  if (!drawing || e.defaultPrevented || !shortcutOk(e)) return
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); const s = strokes.at(-1); if (s) remove(s) }
-  else if (e.key === 'Escape') setDrawing(false)
+  else if (e.key === 'Escape') { e.preventDefault(); setDrawing(false) }
   else if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
   const t = toolKey(e)
   if (t) pick(t)

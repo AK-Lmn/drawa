@@ -63,6 +63,6 @@ btn.onclick = () => setOpen(panel.hidden === true)
 addEventListener('pointerdown', e => {
   if (!panel.hidden && !(e.target as Element).closest('#fontpanel, #btn-fonts, .xsel-menu')) setOpen(false)
 })
-addEventListener('keydown', e => { if (e.key === 'Escape' && !panel.hidden) setOpen(false) })
+addEventListener('keydown', e => { if (e.key === 'Escape' && !panel.hidden && !e.defaultPrevented) { e.preventDefault(); setOpen(false); btn.focus() } })
 
 apply()

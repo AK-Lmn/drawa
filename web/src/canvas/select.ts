@@ -9,6 +9,7 @@ import { redraw } from './graph'
 import { drawing, remove, type Stroke } from './ink'
 import { canvasStrokes, strokeRect, markStroke, strokeMover } from './inksel'
 import { handDrag } from './mode'
+import { anyFull } from './fullview'
 
 const sel = new Set<HTMLElement>()
 const removers = new Map<string, (el: HTMLElement) => void>(), notes = new Map<string, string>()
@@ -170,6 +171,8 @@ stage.addEventListener('pointerdown', e => {
   }
   e.stopImmediatePropagation() // not a pan
   e.preventDefault() // and not a text selection: selected note text would turn the next drag into the browser's own
+  // which also cancels the browser's own blur, so a message box would keep focus and take the next shortcut key
+  if (document.activeElement instanceof HTMLElement && document.activeElement.matches(EDITABLE)) document.activeElement.blur()
   getSelection()?.removeAllRanges()
   const start = toWorld(e.clientX, e.clientY), before = e.shiftKey ? new Set(sel) : new Set<HTMLElement>()
   const inkBefore = e.shiftKey ? new Set(inkSel) : new Set<Stroke>()
@@ -211,7 +214,7 @@ addEventListener('keydown', e => {
   if (!shortcutOk(e)) return
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); selectAll(); return }
   if ((!sel.size && !inkSel.size) || e.ctrlKey || e.metaKey) return
-  if (e.key === 'Escape') clearSelection()
+  if (e.key === 'Escape') { if (anyFull()) return; e.preventDefault(); clearSelection() } // full view backs out first
   else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeSelected() }
   else if (NUDGE[e.key]) { // arrow keys nudge the selection (Shift: 10px), like Excalidraw
     e.preventDefault()

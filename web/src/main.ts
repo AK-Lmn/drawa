@@ -106,9 +106,12 @@ command({ label: 'Draw mode', group: 'Draw', keys: ['D'], run: () => setDrawing(
 addEventListener('pointerdown', e => { lastDown = e.target }, true)
 // Single-key shortcuts, only when not typing.
 addEventListener('keydown', e => {
+  // Esc backs out one layer: this runs after every other handler, so anything nearer (a field, menu, dialog, Draw
+  // mode, full view, the selection) takes it first and calls preventDefault
   if (e.key === 'Escape') {
-    if (!inspector.hidden) closeInspector()
-    else if (!drawer.hidden) toggleDrawer(false)
+    if (e.defaultPrevented || !shortcutOk(e)) return
+    if (!inspector.hidden) { e.preventDefault(); closeInspector() }
+    else if (!drawer.hidden) { e.preventDefault(); toggleDrawer(false) }
     return
   }
   if (e.ctrlKey || e.metaKey || e.altKey || !shortcutOk(e)) return
