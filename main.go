@@ -28,6 +28,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -85,6 +86,7 @@ func askTrust() bool {
 // preflight checks the external tools this app shells out to and prints a pass/fail line for each. At least one
 // agent backend's CLI is required (every card is one of their processes); the others, and git and gh, are optional
 // (the Git/GitHub windows and their per-call code already degrade gracefully without them), so those only warn.
+// Only PATH lookups here: version checks run each CLI (seconds for some), so versionWarnings does them after listening.
 func preflight() {
 	if st, err := os.Stat(config.Root); err != nil || !st.IsDir() { // claude can't start in it: every send would fail
 		if arg := firstArg(); strings.Contains(arg, "://") || strings.HasPrefix(arg, "git@") {
@@ -100,16 +102,15 @@ func preflight() {
 	type check struct {
 		cmd, label, help string
 		agent            bool
-		warn             func() string
 	}
 	var checks []check
 	for _, name := range live.Names() {
 		k, _ := live.Lookup(name)
-		checks = append(checks, check{k.Bin, k.Label, k.Install, true, k.Warn})
+		checks = append(checks, check{k.Bin, k.Label, k.Install, true})
 	}
 	checks = append(checks,
-		check{"git", "git", "the Git window and file history won't work", false, nil},
-		check{"gh", "gh (GitHub CLI)", "the GitHub window won't work — get it: https://cli.github.com", false, nil},
+		check{"git", "git", "the Git window and file history won't work", false},
+		check{"gh", "gh (GitHub CLI)", "the GitHub window won't work — get it: https://cli.github.com", false},
 	)
 	agents, missing := 0, false
 	var lines []string
@@ -117,9 +118,6 @@ func preflight() {
 		if _, err := exec.LookPath(c.cmd); err != nil {
 			lines = append(lines, fmt.Sprintf("  [x] %s — not found (%s)", c.label, c.help))
 			missing = true
-		} else if w := warnOf(c.warn); w != "" {
-			lines = append(lines, fmt.Sprintf("  [!] %s — %s", c.label, w))
-			agents, missing = agents+1, true
 		} else {
 			lines = append(lines, fmt.Sprintf("  [✓] %s", c.label))
 			if c.agent {
@@ -150,11 +148,27 @@ func firstArg() string {
 	return ""
 }
 
-func warnOf(f func() string) string {
-	if f == nil {
-		return ""
+// versionWarnings prints each installed backend's note (an untested version), all run at once: the slowest CLI
+// takes about two seconds to print its version, and nothing waits on these.
+func versionWarnings() {
+	var wg sync.WaitGroup
+	for _, name := range live.Names() {
+		k, _ := live.Lookup(name)
+		if k.Warn == nil {
+			continue
+		}
+		if _, err := exec.LookPath(k.Bin); err != nil {
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if w := k.Warn(); w != "" { // one Printf is one write, so lines don't interleave
+				fmt.Printf("%s!%s %s — %s\n", yellow, reset, k.Label, w)
+			}
+		}()
 	}
-	return f()
+	wg.Wait()
 }
 
 // watchedFiles is every non-test .go source file plus go.mod in the repo (skipping web/ and dot-directories: no reason to walk
@@ -363,6 +377,7 @@ func main() {
 		os.Setenv("DRAWA_OPENED", "1")
 		openBrowser(url)
 	}
+	go versionWarnings()
 	if err := http.Serve(ln, server.Handler()); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
