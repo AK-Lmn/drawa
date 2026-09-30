@@ -83,7 +83,7 @@ var modes = map[string]bool{"default": true, "acceptEdits": true, "plan": true, 
 func init() {
 	live.Register("opencode", live.Kind{
 		Bin: "opencode", Label: "opencode (OpenCode CLI)", Install: "install it: https://opencode.ai", Title: "OpenCode",
-		Blurb: "Any provider you set up in OpenCode, or its free models",
+		Blurb: "Any provider you set up in OpenCode, or its free models", Resume: "opencode --session",
 		Modes: modes, SidOK: sidRe.MatchString,
 		Spawn: spawn, Meta: meta, History: history{}, OneShot: oneShot, Warn: versionWarning,
 	})

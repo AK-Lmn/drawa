@@ -20,7 +20,7 @@ import { attach } from './live'
 import { setMode, lastMode } from './mode'
 import { setModel, setEffort, renderInfo, seedInfo } from './gen'
 import { loadSessions, resume, sessionPath } from './history'
-import { lastAgent, modesOf, installed, title, who } from '../lib/agents'
+import { lastAgent, modesOf, installed, title, who, copySidTip } from '../lib/agents'
 import { sendCombo, onSendKey } from '../lib/sendkey'
 import { hasDraft, keepImages } from './drafts'
 
@@ -378,7 +378,7 @@ export function renderCard(S: Session) {
   ctx.title = `Context: ${S.ctx.used.toLocaleString()} of ${S.ctx.max.toLocaleString()} tokens used. Click to write /compact (summarizes the conversation to free space).`
   const sidBtn = S.card.querySelector<HTMLElement>('.win-h .sidbtn')!
   sidBtn.hidden = !S.sid
-  if (S.sid) sidBtn.title = S.backend === 'claude' ? `Copy session ID (open it with claude --resume ${S.sid})` : `Copy session ID (${S.sid})`
+  if (S.sid) sidBtn.title = copySidTip(S.backend, S.sid)
   renderInfo(S)
   S.log.classList.toggle('busy', S.pending > 0)
   S.log.setAttribute('aria-busy', String(S.pending > 0))
