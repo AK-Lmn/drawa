@@ -27,14 +27,14 @@ func TestNewer(t *testing.T) {
 
 func TestResolveTag(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/probablysamir/drawa/releases/latest" {
-			http.Redirect(w, r, "/probablysamir/drawa/releases/tag/v1.2.3", http.StatusFound)
+		if r.URL.Path == "/HimalayanNomads/drawa/releases/latest" {
+			http.Redirect(w, r, "/HimalayanNomads/drawa/releases/tag/v1.2.3", http.StatusFound)
 			return
 		}
 	}))
 	defer srv.Close()
 
-	tag, url, err := resolveTag(srv.URL + "/probablysamir/drawa/releases/latest")
+	tag, url, err := resolveTag(srv.URL + "/HimalayanNomads/drawa/releases/latest")
 	if err != nil {
 		t.Fatal(err)
 	}

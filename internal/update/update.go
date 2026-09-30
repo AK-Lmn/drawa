@@ -27,7 +27,7 @@ import (
 	"drawa/internal/live"
 )
 
-const repo = "probablysamir/drawa" // matches install.sh's $repo
+const repo = "HimalayanNomads/drawa" // matches install.sh's $repo
 const ttl = 6 * time.Hour
 
 var (
