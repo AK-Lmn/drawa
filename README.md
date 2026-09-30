@@ -4,9 +4,11 @@
 
 # Drawa
 
-**A canvas workspace for Claude Code.**
+**Your coding agents, on a canvas.**
 
-Run several Claude sessions side by side, watch every file they read, edit and run as a live map, and review every change without leaving the browser.
+Run Claude Code, OpenCode and Codex side by side, watch every file they read, edit and run as a live map, and review each change without leaving the browser.
+
+**[drawa.cc](https://drawa.cc)**
 
 [![Latest release](https://img.shields.io/github/v/release/HimalayanNomads/drawa)](https://github.com/HimalayanNomads/drawa/releases/latest)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
@@ -16,25 +18,20 @@ Run several Claude sessions side by side, watch every file they read, edit and r
 
 </div>
 
----
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/hero-dark.png">
+  <img src="docs/readme/hero-light.png" alt="The Drawa canvas: session cards, each wired to a window of the files its agent read, edited and wrote, with a diagram beside them">
+</picture>
 
 ## Why Drawa
 
-In a terminal, Claude Code's work scrolls past as a transcript. Drawa lays it out as a map instead. Each session is a card on a canvas. The files it touches appear in a window wired to that card, colored by what happened to them (read, edited, written). The commands it runs collect beside it. You can see at a glance what Claude did, and click any file to see exactly how it changed.
+In a terminal, an agent's work scrolls past as a transcript. Drawa lays it out as a map instead.
 
-Drawa runs entirely on your machine. It drives the `claude` CLI you already have, with your login, settings, skills and MCP servers, and serves the UI on `127.0.0.1`.
+- **Several agents at once.** Each session is a card on the canvas: Claude Code, OpenCode or Codex, side by side, on the same project.
+- **Work drawn as a map.** The files each agent reads, edits and writes appear in a window wired to its card, colored by what happened to them. The commands it runs collect beside it.
+- **Review in place.** Click any file for its diff from every session, and approve or answer the agent from the card it's running in.
 
-## Features
-
-- **Parallel sessions.** Each card is a live Claude process. Type any time; messages queue while Claude or its sub-agents work.
-- **Your work, drawn as a map.** Files Claude reads, edits and writes are linked to its card and colored by action. Commands it runs collect in their own window.
-- **Diffs everywhere.** Click a file for its changes from every session, plus the file itself with Markdown and Mermaid preview.
-- **Sub-agents in the open.** Each sub-agent gets its own window showing its work as it happens, and you can message it directly.
-- **Claude can use the canvas too.** Claude can read, create, edit and link canvas items through built-in tools, with changes going through the normal approval flow.
-- **A whiteboard around your code.** Sticky notes, a Markdown scratchpad, Mermaid diagrams, pictures, pinned snippets, shapes, arrows and freehand ink. `@`-reference any of them in a message, or drop them on a card.
-- **Git and GitHub built in.** Browse status and history. Open pull requests and issues through `gh`, and send a PR, its failing checks or its reviews straight to Claude.
-- **Picks up where you left off.** Resume past sessions from history. The whole layout survives a reload, and a reload re-attaches to sessions that are still running.
-- **Themes.** Light and dark, with Rosé Pine, Catppuccin, Tokyo Night, Gruvbox, Nord, Kanagawa, Everforest, Solarized and GitHub color schemes.
+Drawa runs entirely on your machine. It drives the agent CLIs you already have, with your logins, settings, skills and MCP servers, and serves the UI on `127.0.0.1`.
 
 ## Requirements
 
@@ -47,30 +44,35 @@ Drawa runs entirely on your machine. It drives the `claude` CLI you already have
 | [`gh`](https://cli.github.com) | Optional. Powers the GitHub window. |
 | OS | macOS or Linux. Windows isn't supported yet. |
 
-### No Claude subscription? Use OpenCode
+### Choosing an agent
 
-[OpenCode](https://opencode.ai) is an open-source coding agent that works with most model providers (OpenRouter, Google, OpenAI, local models and more). With it installed, **New session ▾** in the toolbar offers an OpenCode session next to a Claude Code one, and each session card picks its model from OpenCode's list.
+No Claude subscription? [OpenCode](https://opencode.ai) is an open-source coding agent that works with most model providers (OpenRouter, Google, OpenAI, local models and more), and [Codex](https://developers.openai.com/codex/cli) is OpenAI's. With either installed, **New session ▾** in the toolbar offers it next to Claude Code, and each session card picks its model from that agent's list. Drawa's startup check lists the agents it finds, and warns if a version isn't the one Drawa was tested with.
 
-1. Install it: `curl -fsSL https://opencode.ai/install | bash` (or see [its docs](https://opencode.ai/docs)).
-2. Connect a provider with `opencode auth login`, or skip that: OpenCode's own free models work without a key.
-3. Start Drawa as usual. Its startup check lists `opencode`, and warns if your version isn't the one Drawa was tested with.
+| | Claude Code | OpenCode | Codex |
+|---|---|---|---|
+| **Sign in with** | Your Claude subscription | Any provider, via `opencode auth login`; its own free models need no key | Your ChatGPT plan or an OpenAI API key, via `codex login` |
+| **Install** | [claude.com/claude-code](https://claude.com/claude-code) | `curl -fsSL https://opencode.ai/install \| bash` ([docs](https://opencode.ai/docs)) | [Codex CLI docs](https://developers.openai.com/codex/cli) |
+| **Tested with** | Not pinned | 1.18.32 | 0.158.0 |
+| **Approvals, files and commands windows, canvas tools, history** | ✓ | ✓ | ✓ (looking at the canvas never asks) |
+| **Pasted images** | ✓ | ✓ | ✓ |
+| **Sub-agents** | Own window | Own window | One row, not their own window |
+| **Auto mode** | ✓ | – | – |
+| **Effort setting** | ✓ | – | – (uses its default) |
+| **Usage windows in the status line** | ✓ | – | – |
+| **Take back a queued message** | ✓ | – | – |
+| **Memory per session** | Its own `claude` process | About 300 MB (its own `opencode` server) | About 250 MB (its own `codex app-server`) |
 
-Things to know:
+Neither OpenCode nor Codex has an agent-specific process limit: set `DRAWA_MAX_LIVE` if your machine needs one. The Git window's **Write with ▾** picks which agent writes commit messages and pull request descriptions.
 
-- **Privacy.** A session's prompts, and the files it reads, go to the provider you pick. OpenCode's free models are run by third parties that may use what you send to improve their models (check [OpenCode Zen's terms](https://opencode.ai/docs/zen/)), so don't use them on code you can't share.
-- **What's the same.** Approvals, questions, the files and commands windows, sub-agents, canvas tools and history work as they do for Claude Code.
-- **What differs.** OpenCode has no Auto mode, and no effort setting. The status line's usage windows are Claude Code's, so OpenCode cards don't show them.
-- **Memory.** Each OpenCode session runs its own `opencode` server (about 300 MB). There's no OpenCode-specific limit: set `DRAWA_MAX_LIVE` if your machine needs one.
-- **Commit messages.** The Git window's **Write with ▾** picks which agent writes commit messages and pull request descriptions.
+- **OpenCode privacy.** A session's prompts, and the files it reads, go to the provider you pick. OpenCode's free models are run by third parties that may use what you send to improve their models (check [OpenCode Zen's terms](https://opencode.ai/docs/zen/)), so don't use them on code you can't share.
+- **Codex trust.** For a local folder, Drawa marks it trusted for Codex, so, as with Claude Code, its `.codex/` settings and `AGENTS.md` load. A cloned GitHub repo you didn't trust is marked untrusted, so they don't. Either way nothing is written to `~/.codex/config.toml`.
 
-### Use Codex
+<details>
+<summary><b>How the permission modes map onto Codex</b></summary>
 
-[Codex](https://developers.openai.com/codex/cli) is OpenAI's coding agent. With `codex` installed and logged in (`codex login`), **New session ▾** offers a Codex session, and each card picks its model from Codex's list.
+**Read only** asks before edits and before any command Codex doesn't consider safe. **Plan only** never asks, nothing it runs can write, and it doesn't hand you a plan to approve: it answers in the chat. **Allow edits** approves file changes inside the project only (not in `.git`, `.codex`, `.agents` or `.claude`, and not renames out of it). **Always allow** covers a command or edit until the card's Codex process closes (after 30 idle minutes, or to stay under `DRAWA_MAX_LIVE`; it asks again after resuming), and Drawa doesn't save Codex's permanent command rules; canvas changes ask each time. A mode change applies from the next turn (a message sent mid-turn joins the running one), except that leaving **Allow everything** stops a running turn, since it can't lose full access mid-turn.
 
-- **What's the same.** Approvals (commands, file edits, canvas changes), the files and commands windows, canvas tools, pasted images and history work as they do for Claude Code. Looking at the canvas never asks.
-- **What differs.** Codex has no Auto mode and no effort setting here (it uses its default). **Read only** asks before edits and before any command Codex doesn't consider safe. **Plan only** never asks, nothing it runs can write, and it doesn't hand you a plan to approve: it answers in the chat. **Allow edits** approves file changes inside the project only (not in `.git`, `.codex`, `.agents` or `.claude`, and not renames out of it). **Always allow** covers a command or edit until the card's Codex process closes (after 30 idle minutes, or to stay under `DRAWA_MAX_LIVE`; it asks again after resuming), and Drawa doesn't save Codex's permanent command rules; canvas changes ask each time. A mode change applies from the next turn (a message sent mid-turn joins the running one), except that leaving **Allow everything** stops a running turn, since it can't lose full access mid-turn. Sub-agents show as one row, not their own window, and a queued message can't be taken back.
-- **Trust.** For a local folder, Drawa marks it trusted for Codex, so, as with Claude Code, its `.codex/` settings and `AGENTS.md` load. A cloned GitHub repo you didn't trust is marked untrusted, so they don't. Either way nothing is written to `~/.codex/config.toml`.
-- **Memory.** Each Codex session runs its own `codex app-server` (about 250 MB). There's no Codex-specific limit: set `DRAWA_MAX_LIVE` if your machine needs one.
+</details>
 
 ## Install
 
@@ -126,6 +128,52 @@ By default Drawa only answers on localhost. Pass `--net` (in any position) and, 
 ```
 
 It also prints a QR code of the Network link, so a phone can open it with its camera. The Network link lets another device on the same network — a laptop, a phone — open the same workspace. It only works with its `?token=` (a fresh one each run, checked once, then kept in a cookie and dropped from the address), and an address that guesses wrong 5 times locks out for a few minutes. See [Security](#security).
+
+## Features
+
+- **Parallel sessions.** Each card is a live agent process: Claude Code, OpenCode or Codex, picked per session. Type any time; messages queue while the agent or its sub-agents work.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/agents-dark.png">
+  <img src="docs/readme/agents-light.png" width="480" alt="The New session menu listing the installed agents: Claude Code and OpenCode">
+</picture>
+
+- **Your work, drawn as a map.** Files the agent reads, edits and writes are linked to its card and colored by action. Commands it runs collect in their own window.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/files-dark.png">
+  <img src="docs/readme/files-light.png" alt="A session card wired to its files window: dom.ts edited (+2 −1), keys.ts read, and a commands window below">
+</picture>
+
+- **Review in place.** An edit waiting for approval shows its diff inside the card. Click any file for its changes from every session, plus the file itself with Markdown and Mermaid preview.
+
+<img src="docs/readme/review-dark.png" alt="An edit to dom.ts waiting for approval, its diff shown inside the card above Deny, Always allow and Allow">
+
+- **Sub-agents in the open.** Each sub-agent gets its own window showing its work as it happens, and you can message it directly.
+- **Agents can use the canvas too.** They can read, create, edit and link canvas items through built-in tools, with changes going through the normal approval flow.
+- **A whiteboard around your code.** Sticky notes, a Markdown scratchpad, Mermaid diagrams, pictures, pinned snippets, shapes, arrows and freehand ink. `@`-reference any of them in a message, or drop them on a card.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/diagram-dark.png">
+  <img src="docs/readme/diagram-light.png" alt="A Mermaid diagram Claude drew on the canvas, in full view: how a window, its reference chip and its arrows relate">
+</picture>
+
+- **Git and GitHub built in.** Browse status and history. Open pull requests and issues through `gh`, and send a PR, its failing checks or its reviews straight to a session.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/github-dark.png">
+  <img src="docs/readme/github-light.png" alt="The GitHub window pinned to the sidebar beside a session card, showing a pull request with Send to Claude, Merge and its conversation">
+</picture>
+
+- **Picks up where you left off.** Resume past sessions from history. The whole layout survives a reload, and a reload re-attaches to sessions that are still running.
+- **Works on your phone.** Start with `--net` and open the printed link or QR code: the same canvas, starting in Hand mode so a drag pans.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/phone-dark.png">
+  <img src="docs/readme/phone-light.png" width="300" alt="Drawa at phone width: a session card and its commands window">
+</picture>
+
+- **Themes.** Light and dark, with Rosé Pine, Catppuccin, Tokyo Night, Gruvbox, Nord, Kanagawa, Everforest, Solarized and GitHub color schemes.
 
 ## Configuration
 
