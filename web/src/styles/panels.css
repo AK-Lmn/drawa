@@ -87,7 +87,7 @@
 .mdview hr{border:0;border-top:1px solid var(--line);margin:1.5em 0}
 
 /* pinned windows: a sidebar on the right; windows stack and share its height, each keeping its folder tab */
-.pinbar{position:fixed;z-index:var(--z-float);top:64px;right:12px;bottom:12px;width:420px;max-width:calc(100vw - 24px);display:flex;flex-direction:column;gap:12px;padding-left:8px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.pinbar{position:fixed;z-index:var(--z-float);top:12px;right:12px;bottom:12px;width:420px;max-width:calc(100vw - 24px);display:flex;flex-direction:column;gap:12px;padding-left:8px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
 .pinbar>.edge-grip{position:absolute;left:0;top:0;bottom:0;width:6px;cursor:ew-resize;touch-action:none;z-index:var(--z-over)}
 .pinbar>.edge-grip:hover,.pinbar.resizing>.edge-grip{background:linear-gradient(90deg,var(--accent) 2px,transparent 2px)}
 .pinbar.resizing{user-select:none}
