@@ -5,42 +5,42 @@ Needs [Claude Code](https://claude.com/claude-code) (`claude`) on `PATH` — `dr
 ## Quick install (macOS, Linux)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/probablysamir/drawa/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/HimalayanNomads/drawa/main/install.sh | sh
 ```
 
 Checks your platform, downloads the right release binary, verifies its SHA-256 checksum, and installs it to `~/.local/bin/drawa`. Set `DRAWA_INSTALL_DIR` first to install somewhere else:
 
 ```sh
-DRAWA_INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/probablysamir/drawa/main/install.sh | sh
+DRAWA_INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/HimalayanNomads/drawa/main/install.sh | sh
 ```
 
 (needs `sudo sh` instead of `sh` if that directory isn't writable by your user). If the install directory isn't already on `PATH`, the script tells you the line to add to your shell's rc file.
 
 ## Manual install
 
-Pick the archive matching your machine from the [Releases page](https://github.com/probablysamir/drawa/releases/latest), or with `curl`:
+Pick the archive matching your machine from the [Releases page](https://github.com/HimalayanNomads/drawa/releases/latest), or with `curl`:
 
 **macOS, Apple Silicon (M1/M2/M3/…):**
 ```sh
-curl -fsSLO https://github.com/probablysamir/drawa/releases/latest/download/drawa-darwin-arm64.tar.gz
+curl -fsSLO https://github.com/HimalayanNomads/drawa/releases/latest/download/drawa-darwin-arm64.tar.gz
 tar -xzf drawa-darwin-arm64.tar.gz
 ```
 
 **macOS, Intel:**
 ```sh
-curl -fsSLO https://github.com/probablysamir/drawa/releases/latest/download/drawa-darwin-amd64.tar.gz
+curl -fsSLO https://github.com/HimalayanNomads/drawa/releases/latest/download/drawa-darwin-amd64.tar.gz
 tar -xzf drawa-darwin-amd64.tar.gz
 ```
 
 **Linux, x86_64:**
 ```sh
-curl -fsSLO https://github.com/probablysamir/drawa/releases/latest/download/drawa-linux-amd64.tar.gz
+curl -fsSLO https://github.com/HimalayanNomads/drawa/releases/latest/download/drawa-linux-amd64.tar.gz
 tar -xzf drawa-linux-amd64.tar.gz
 ```
 
 **Linux, arm64:**
 ```sh
-curl -fsSLO https://github.com/probablysamir/drawa/releases/latest/download/drawa-linux-arm64.tar.gz
+curl -fsSLO https://github.com/HimalayanNomads/drawa/releases/latest/download/drawa-linux-arm64.tar.gz
 tar -xzf drawa-linux-arm64.tar.gz
 ```
 

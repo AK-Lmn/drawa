@@ -4,7 +4,7 @@ labels: [enhancement]
 body:
   - type: markdown
     attributes:
-      value: "For something new Drawa can't do yet. To improve something it already does, use the Enhancement template. [PRODUCT.md](https://github.com/probablysamir/drawa/blob/main/PRODUCT.md) explains what Drawa is trying to be; proposals that fit it are easier to accept."
+      value: "For something new Drawa can't do yet. To improve something it already does, use the Enhancement template. [PRODUCT.md](https://github.com/HimalayanNomads/drawa/blob/main/PRODUCT.md) explains what Drawa is trying to be; proposals that fit it are easier to accept."
   - type: textarea
     id: problem
     attributes:

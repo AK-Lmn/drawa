@@ -4,11 +4,11 @@
 
 Please don't report security problems in public issues, pull requests or discussions.
 
-Open a [private security advisory](https://github.com/probablysamir/drawa/security/advisories/new) instead. Include what's affected, how to reproduce it, and what an attacker could do with it. The maintainers will reply in the advisory and can credit you in it when the fix is released, unless you'd rather stay anonymous.
+Open a [private security advisory](https://github.com/HimalayanNomads/drawa/security/advisories/new) instead. Include what's affected, how to reproduce it, and what an attacker could do with it. The maintainers will reply in the advisory and can credit you in it when the fix is released, unless you'd rather stay anonymous.
 
 ## Supported versions
 
-Fixes go into the next release. Only the [latest release](https://github.com/probablysamir/drawa/releases/latest) and `main` are supported.
+Fixes go into the next release. Only the [latest release](https://github.com/HimalayanNomads/drawa/releases/latest) and `main` are supported.
 
 ## Scope
 

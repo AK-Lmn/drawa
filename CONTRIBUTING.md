@@ -14,13 +14,13 @@ You can contribute in several ways:
 - Writing or improving documentation (`README.md`, `INSTALL.md` and this file)
 - Submitting bug fixes or enhancements (see [Making a change](#making-a-change))
 
-Looking for a place to start? Try issues labeled [`good first issue`](https://github.com/probablysamir/drawa/labels/good%20first%20issue) or [`help wanted`](https://github.com/probablysamir/drawa/labels/help%20wanted). Comment on an issue before you start so two people don't work on the same thing.
+Looking for a place to start? Try issues labeled [`good first issue`](https://github.com/HimalayanNomads/drawa/labels/good%20first%20issue) or [`help wanted`](https://github.com/HimalayanNomads/drawa/labels/help%20wanted). Comment on an issue before you start so two people don't work on the same thing.
 
 Security problems don't go in public issues. See [`SECURITY.md`](SECURITY.md).
 
 ## Reporting bugs
 
-Search open and closed issues first. If nobody has reported it yet, open one with the [Bug report](https://github.com/probablysamir/drawa/issues/new?template=bug_report.yml) template. It asks for:
+Search open and closed issues first. If nobody has reported it yet, open one with the [Bug report](https://github.com/HimalayanNomads/drawa/issues/new?template=bug_report.yml) template. It asks for:
 
 - What you did, what you expected, and what happened instead.
 - Your OS, browser, Drawa version (`drawa --version`, or the commit if you run from source) and `claude --version`.
@@ -29,11 +29,11 @@ Search open and closed issues first. If nobody has reported it yet, open one wit
 
 ## Suggesting features
 
-A feature is something Drawa can't do yet. Open an issue with the [Feature request](https://github.com/probablysamir/drawa/issues/new?template=feature_request.yml) template. Describe the problem before the solution: what you were trying to do and what got in the way. [`PRODUCT.md`](PRODUCT.md) explains what Drawa is trying to be, and a proposal that fits it is easier to accept. Wait for a maintainer to agree on the direction before you start a large change.
+A feature is something Drawa can't do yet. Open an issue with the [Feature request](https://github.com/HimalayanNomads/drawa/issues/new?template=feature_request.yml) template. Describe the problem before the solution: what you were trying to do and what got in the way. [`PRODUCT.md`](PRODUCT.md) explains what Drawa is trying to be, and a proposal that fits it is easier to accept. Wait for a maintainer to agree on the direction before you start a large change.
 
 ## Suggesting enhancements and improvements
 
-An enhancement makes something Drawa already does better: faster, clearer, easier to reach or more accessible. Open an issue with the [Enhancement](https://github.com/probablysamir/drawa/issues/new?template=enhancement.yml) template. Name the part of Drawa, describe how it behaves now and how it should behave, and add a screenshot if the change is visible.
+An enhancement makes something Drawa already does better: faster, clearer, easier to reach or more accessible. Open an issue with the [Enhancement](https://github.com/HimalayanNomads/drawa/issues/new?template=enhancement.yml) template. Name the part of Drawa, describe how it behaves now and how it should behave, and add a screenshot if the change is visible.
 
 ## Development setup
 
@@ -59,11 +59,11 @@ Open http://localhost:5173. This also builds and starts the Go server, unless on
 
 ## Making a change
 
-Contributors don't push to `probablysamir/drawa` directly. Every change goes through a fork and a pull request:
+Contributors don't push to `HimalayanNomads/drawa` directly. Every change goes through a fork and a pull request:
 
 ```mermaid
 sequenceDiagram
-  participant U as probablysamir/drawa
+  participant U as HimalayanNomads/drawa
   participant F as your fork
   participant L as your machine
   U->>F: 1. Fork on GitHub
@@ -79,7 +79,7 @@ sequenceDiagram
    ```sh
    git clone https://github.com/<your-username>/drawa.git
    cd drawa
-   git remote add upstream https://github.com/probablysamir/drawa.git
+   git remote add upstream https://github.com/HimalayanNomads/drawa.git
    ```
 
    Then create a branch from an up-to-date `main`, one branch per change:

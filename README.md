@@ -8,7 +8,7 @@
 
 Run several Claude sessions side by side, watch every file they read, edit and run as a live map, and review every change without leaving the browser.
 
-[![Latest release](https://img.shields.io/github/v/release/probablysamir/drawa)](https://github.com/probablysamir/drawa/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/HimalayanNomads/drawa)](https://github.com/HimalayanNomads/drawa/releases/latest)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)
 
@@ -75,10 +75,10 @@ Things to know:
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/probablysamir/drawa/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/HimalayanNomads/drawa/main/install.sh | sh
 ```
 
-This downloads the right [release binary](https://github.com/probablysamir/drawa/releases/latest) for your OS and architecture and installs it to `~/.local/bin/drawa`. You don't need Go or Node.
+This downloads the right [release binary](https://github.com/HimalayanNomads/drawa/releases/latest) for your OS and architecture and installs it to `~/.local/bin/drawa`. You don't need Go or Node.
 
 Update later with `drawa --update`. For manual downloads, custom install locations and uninstalling, see [INSTALL.md](INSTALL.md).
 
@@ -88,7 +88,7 @@ Update later with `drawa --update`. For manual downloads, custom install locatio
 Needs Go 1.22+ and Node 20.19+ (or 22.12+).
 
 ```sh
-git clone https://github.com/probablysamir/drawa.git
+git clone https://github.com/HimalayanNomads/drawa.git
 cd drawa/web && npm install && npm run build
 cd .. && go build -o drawa .
 ```
@@ -166,7 +166,7 @@ Drawa is built to run locally for one user:
 - File access is confined to the project folder you opened.
 - Claude's canvas tools use a per-process token, so only that session's own `claude` process can call them.
 
-To report a vulnerability, see [SECURITY.md](SECURITY.md): please open a [private security advisory](https://github.com/probablysamir/drawa/security/advisories/new) rather than a public issue.
+To report a vulnerability, see [SECURITY.md](SECURITY.md): please open a [private security advisory](https://github.com/HimalayanNomads/drawa/security/advisories/new) rather than a public issue.
 
 ## Contributing
 
