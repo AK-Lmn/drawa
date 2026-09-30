@@ -104,6 +104,8 @@
 .fr-main small{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .finder-sec{margin:8px 10px 2px;font:600 11px var(--sans);letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
 .fr-k{flex:none;font:11.5px var(--mono);color:var(--muted)}
+.finder-row[data-state=busy] .fr-k{color:var(--accent-text)}.finder-row[data-state=asking] .fr-k{color:var(--run)}.finder-row[data-state=done] .fr-k{color:var(--add)}
+.finder-row[data-state=asking]{--kind:var(--run-hue)}.finder-row[data-state=done]{--kind:var(--add-hue)}
 
 /* tooltips (lib/tooltip.ts): every title="…" in the app */
 .tip{position:fixed;z-index:var(--z-menu);max-width:320px;padding:5px 9px;border-radius:var(--r-ctl);background:var(--ink);color:var(--bg);font:500 12px/1.4 var(--sans);box-shadow:var(--shadow-lift);pointer-events:none;white-space:pre-line;animation:enter .12s var(--ease)}
