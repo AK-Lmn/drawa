@@ -44,30 +44,35 @@ Drawa runs entirely on your machine. It drives the agent CLIs you already have, 
 | [`gh`](https://cli.github.com) | Optional. Powers the GitHub window. |
 | OS | macOS or Linux. Windows isn't supported yet. |
 
-### No Claude subscription? Use OpenCode
+### Choosing an agent
 
-[OpenCode](https://opencode.ai) is an open-source coding agent that works with most model providers (OpenRouter, Google, OpenAI, local models and more). With it installed, **New session ▾** in the toolbar offers an OpenCode session next to a Claude Code one, and each session card picks its model from OpenCode's list.
+No Claude subscription? [OpenCode](https://opencode.ai) is an open-source coding agent that works with most model providers (OpenRouter, Google, OpenAI, local models and more), and [Codex](https://developers.openai.com/codex/cli) is OpenAI's. With either installed, **New session ▾** in the toolbar offers it next to Claude Code, and each session card picks its model from that agent's list. Drawa's startup check lists the agents it finds, and warns if a version isn't the one Drawa was tested with.
 
-1. Install it: `curl -fsSL https://opencode.ai/install | bash` (or see [its docs](https://opencode.ai/docs)).
-2. Connect a provider with `opencode auth login`, or skip that: OpenCode's own free models work without a key.
-3. Start Drawa as usual. Its startup check lists `opencode`, and warns if your version isn't the one Drawa was tested with.
+| | Claude Code | OpenCode | Codex |
+|---|---|---|---|
+| **Sign in with** | Your Claude subscription | Any provider, via `opencode auth login`; its own free models need no key | Your ChatGPT plan or an OpenAI API key, via `codex login` |
+| **Install** | [claude.com/claude-code](https://claude.com/claude-code) | `curl -fsSL https://opencode.ai/install \| bash` ([docs](https://opencode.ai/docs)) | [Codex CLI docs](https://developers.openai.com/codex/cli) |
+| **Tested with** | Not pinned | 1.18.32 | 0.158.0 |
+| **Approvals, files and commands windows, canvas tools, history** | ✓ | ✓ | ✓ (looking at the canvas never asks) |
+| **Pasted images** | ✓ | ✓ | ✓ |
+| **Sub-agents** | Own window | Own window | One row, not their own window |
+| **Auto mode** | ✓ | – | – |
+| **Effort setting** | ✓ | – | – (uses its default) |
+| **Usage windows in the status line** | ✓ | – | – |
+| **Take back a queued message** | ✓ | – | – |
+| **Memory per session** | Its own `claude` process | About 300 MB (its own `opencode` server) | About 250 MB (its own `codex app-server`) |
 
-Things to know:
+Neither OpenCode nor Codex has an agent-specific process limit: set `DRAWA_MAX_LIVE` if your machine needs one. The Git window's **Write with ▾** picks which agent writes commit messages and pull request descriptions.
 
-- **Privacy.** A session's prompts, and the files it reads, go to the provider you pick. OpenCode's free models are run by third parties that may use what you send to improve their models (check [OpenCode Zen's terms](https://opencode.ai/docs/zen/)), so don't use them on code you can't share.
-- **What's the same.** Approvals, questions, the files and commands windows, sub-agents, canvas tools and history work as they do for Claude Code.
-- **What differs.** OpenCode has no Auto mode, and no effort setting. The status line's usage windows are Claude Code's, so OpenCode cards don't show them.
-- **Memory.** Each OpenCode session runs its own `opencode` server (about 300 MB). There's no OpenCode-specific limit: set `DRAWA_MAX_LIVE` if your machine needs one.
-- **Commit messages.** The Git window's **Write with ▾** picks which agent writes commit messages and pull request descriptions.
+- **OpenCode privacy.** A session's prompts, and the files it reads, go to the provider you pick. OpenCode's free models are run by third parties that may use what you send to improve their models (check [OpenCode Zen's terms](https://opencode.ai/docs/zen/)), so don't use them on code you can't share.
+- **Codex trust.** For a local folder, Drawa marks it trusted for Codex, so, as with Claude Code, its `.codex/` settings and `AGENTS.md` load. A cloned GitHub repo you didn't trust is marked untrusted, so they don't. Either way nothing is written to `~/.codex/config.toml`.
 
-### Use Codex
+<details>
+<summary><b>How the permission modes map onto Codex</b></summary>
 
-[Codex](https://developers.openai.com/codex/cli) is OpenAI's coding agent. With `codex` installed and logged in (`codex login`), **New session ▾** offers a Codex session, and each card picks its model from Codex's list.
+**Read only** asks before edits and before any command Codex doesn't consider safe. **Plan only** never asks, nothing it runs can write, and it doesn't hand you a plan to approve: it answers in the chat. **Allow edits** approves file changes inside the project only (not in `.git`, `.codex`, `.agents` or `.claude`, and not renames out of it). **Always allow** covers a command or edit until the card's Codex process closes (after 30 idle minutes, or to stay under `DRAWA_MAX_LIVE`; it asks again after resuming), and Drawa doesn't save Codex's permanent command rules; canvas changes ask each time. A mode change applies from the next turn (a message sent mid-turn joins the running one), except that leaving **Allow everything** stops a running turn, since it can't lose full access mid-turn.
 
-- **What's the same.** Approvals (commands, file edits, canvas changes), the files and commands windows, canvas tools, pasted images and history work as they do for Claude Code. Looking at the canvas never asks.
-- **What differs.** Codex has no Auto mode and no effort setting here (it uses its default). **Read only** asks before edits and before any command Codex doesn't consider safe. **Plan only** never asks, nothing it runs can write, and it doesn't hand you a plan to approve: it answers in the chat. **Allow edits** approves file changes inside the project only (not in `.git`, `.codex`, `.agents` or `.claude`, and not renames out of it). **Always allow** covers a command or edit until the card's Codex process closes (after 30 idle minutes, or to stay under `DRAWA_MAX_LIVE`; it asks again after resuming), and Drawa doesn't save Codex's permanent command rules; canvas changes ask each time. A mode change applies from the next turn (a message sent mid-turn joins the running one), except that leaving **Allow everything** stops a running turn, since it can't lose full access mid-turn. Sub-agents show as one row, not their own window, and a queued message can't be taken back.
-- **Trust.** For a local folder, Drawa marks it trusted for Codex, so, as with Claude Code, its `.codex/` settings and `AGENTS.md` load. A cloned GitHub repo you didn't trust is marked untrusted, so they don't. Either way nothing is written to `~/.codex/config.toml`.
-- **Memory.** Each Codex session runs its own `codex app-server` (about 250 MB). There's no Codex-specific limit: set `DRAWA_MAX_LIVE` if your machine needs one.
+</details>
 
 ## Install
 
@@ -154,6 +159,12 @@ It also prints a QR code of the Network link, so a phone can open it with its ca
 </picture>
 
 - **Git and GitHub built in.** Browse status and history. Open pull requests and issues through `gh`, and send a PR, its failing checks or its reviews straight to a session.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/github-dark.png">
+  <img src="docs/readme/github-light.png" alt="The GitHub window pinned to the sidebar beside a session card, showing a pull request with Send to Claude, Merge and its conversation">
+</picture>
+
 - **Picks up where you left off.** Resume past sessions from history. The whole layout survives a reload, and a reload re-attaches to sessions that are still running.
 - **Works on your phone.** Start with `--net` and open the printed link or QR code: the same canvas, starting in Hand mode so a drag pans.
 
