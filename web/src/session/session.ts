@@ -18,7 +18,7 @@ import { composer } from './composer'
 import { reportOf } from './notices'
 import { attach } from './live'
 import { setMode, lastMode } from './mode'
-import { setModel, setEffort, renderInfo, seedInfo } from './gen'
+import { setModel, setEffort, renderInfo, seedInfo, lastModel, lastEffort } from './gen'
 import { loadSessions, resume, sessionPath } from './history'
 import { lastAgent, modesOf, installed, title, who } from '../lib/agents'
 import { sendCombo, onSendKey } from '../lib/sendkey'
@@ -250,6 +250,8 @@ export function newSession(opts: { rect?: Rect; cid?: string; backend?: string }
     card, log, ta: null!, stopBtn: null!, atEnd: true, blocks: {}, tools: {}, pending: 0, bg: 0, queued: [], picked: false, mode: lastMode(), asks: new Set(), refs: [], images: [], sentRefs: new Set(), chips: null!, n: -1, ctx: { used: 0, max: 0 },
   }
   if (!(modesOf(S.backend)?.includes(S.mode) ?? true)) S.mode = 'default' // e.g. Auto, which OpenCode doesn't have
+  S.model = lastModel(S.backend) // restored cards set their own afterwards
+  if (S.backend === 'claude') S.effort = lastEffort()
   composer(S, body) // message box, reference chips, / and @ menu
   seedInfo(S) // tools/MCP/usage from the account-wide meta info, if it's already in by now
   card.dataset.id = S.cid // what canvas tools call this card

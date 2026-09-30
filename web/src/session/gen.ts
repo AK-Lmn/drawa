@@ -5,7 +5,7 @@
 import { make } from '../lib/dom'
 import { saveSoon } from '../lib/store'
 import { cards, meta, type Session } from './session'
-import { meta as agentMeta, metaNow, title } from '../lib/agents'
+import { meta as agentMeta, metaNow, title, getPref, setPref } from '../lib/agents'
 
 // Claude Code's models come with its other account-wide info (meta, main.ts); another agent's from lib/agents.ts
 const modelsOf = (S: Session) => S.backend === 'claude' ? meta.models : metaNow(S.backend).models
@@ -19,8 +19,14 @@ function fillModel(S: Session, sel: HTMLSelectElement) {
     opt.title = o.description
     return opt
   }))
+  if (!models.some(o => o.value === S.model)) S.model = '' // e.g. a remembered model the agent no longer offers
   sel.value = S.model // the card's choice, restored or picked before the list arrived
 }
+
+// The last model (per agent: model names don't carry over) and effort you picked: new cards start with them (this browser)
+export const lastModel = (backend: string) => getPref('drawa:model:' + backend)
+// not Auto: it's the /effort command's, not a level Claude can start at (config.Efforts), so a new card couldn't send
+export const lastEffort = () => { const e = getPref('drawa:effort'); return e !== 'auto' && EFFORTS.some(([v]) => v === e) ? e : '' }
 
 /** The model picker for a card's message bar: options come from its agent itself (GET /api/meta). A fresh backend
  *  (nothing asked yet this page load) can take a few seconds the first time (its own throwaway process, and for
@@ -43,7 +49,7 @@ export function modelPicker(S: Session) {
     })
   }
   sel.value = S.model
-  sel.onchange = () => { S.model = sel.value; saveSoon() }
+  sel.onchange = () => { S.model = sel.value; setPref('drawa:model:' + S.backend, S.model); saveSoon() }
   S.modelSel = sel
   return sel
 }
@@ -74,7 +80,7 @@ export function effortPicker(S: Session) {
   sel.setAttribute('aria-label', 'Effort for this session')
   sel.append(...EFFORTS.map(([value, label, desc]) => Object.assign(make('option', '', label), { value, title: desc })))
   sel.value = S.effort
-  sel.onchange = () => { S.effort = sel.value; saveSoon() }
+  sel.onchange = () => { S.effort = sel.value; setPref('drawa:effort', S.effort); saveSoon() }
   S.effortSel = sel
   return sel
 }
