@@ -25,8 +25,17 @@ function shown() {
   wasCompact = compact
   document.body.classList.toggle('has-dock', !dock.hidden && !compact)
   document.documentElement.style.setProperty('--dock-w', `${dock.offsetWidth || 420}px`)
+  clearBar()
   redraw() // arrows to pinned windows end where they sit now
 }
+/** Up to the top of the screen, unless the sidebar would slide under the toolbar. */
+// ponytail: rechecked on pin changes and resizes only; a toolbar that grows by itself (a longer project name) isn't watched
+function clearBar() {
+  if (dock.hidden) return
+  const bar = $('#bar')?.getBoundingClientRect(), d = dock.getBoundingClientRect()
+  dock.style.top = bar && d.left < bar.right ? `${bar.bottom + 8}px` : ''
+}
+addEventListener('resize', clearBar)
 dock.addEventListener('scroll', () => redraw(), { passive: true })
 onChange(viewOnly => { // a pinned window collapsed, opened or closed
   if (viewOnly) return
@@ -97,7 +106,10 @@ const sync = syncPin
 const floats = holder(stage.insertBefore(make('div', 'floats'), $('.fullview') ?? $('#ink-capture')))
 export const floating = (el: HTMLElement) => el.classList.contains('floating')
 const setAt = (el: HTMLElement, x: number, y: number) => {
-  const nx = Math.min(Math.max(0, x), innerWidth - 120), ny = Math.min(Math.max(56, y), innerHeight - 40) // a tab stays reachable
+  // a tab stays reachable: below the toolbar only where the window would slide under it, not across the whole width
+  const nx = Math.min(Math.max(0, x), innerWidth - 120), bar = $('#bar')?.getBoundingClientRect()
+  const under = bar && nx < bar.right && nx + el.offsetWidth > bar.left
+  const ny = Math.min(Math.max(under ? bar.bottom + 4 : 0, y), innerHeight - 40)
   el.style.setProperty('--fx', `${Math.round(nx)}px`)
   el.style.setProperty('--fy', `${Math.round(ny)}px`)
 }
