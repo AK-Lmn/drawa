@@ -1,7 +1,7 @@
 // History: Claude Code's saved transcripts for this folder. Opening one puts its card (and its graph) on the canvas.
 import { api, q, type SavedMessage, type SessionInfo } from '../lib/api'
 import { installed, title } from '../lib/agents'
-import { $, make, ago, quietPings, button } from '../lib/dom'
+import { $, make, ago, quietPings, button, copyButton } from '../lib/dom'
 import { enhanceMarked } from '../lib/markdown'
 import { save } from '../lib/store'
 import { cards, newSession, focus, renderCard, pinToBottom, type Session } from './session'
@@ -23,7 +23,9 @@ export async function loadSessions() {
     b.append(make('span', 't', s.title), d)
     b.title = s.title
     b.onclick = () => resume(s)
-    return b
+    const row = make('div', 'sessrow') // the copy button beside the row's button, not inside it (no nested buttons)
+    row.append(b, copyButton(() => s.id, (s.backend ?? 'claude') === 'claude' ? `Copy session ID (open it with claude --resume ${s.id})` : `Copy session ID (${s.id})`))
+    return row
   }))
 }
 
