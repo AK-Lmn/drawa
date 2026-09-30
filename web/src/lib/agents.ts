@@ -25,12 +25,14 @@ export const canUnsend = (name: string) => !!agents.find(a => a.name === name)?.
 /** The Drawa permission modes an agent supports (all, until the list has loaded). */
 export const modesOf = (name: string) => agents.find(a => a.name === name)?.modes
 
+/** A choice remembered in this browser ('' if none, or storage is off). */
+export const getPref = (key: string) => { try { return localStorage.getItem(key) ?? '' } catch { return '' } }
+export const setPref = (key: string, v: string) => { try { localStorage.setItem(key, v) } catch {} }
 function pref(key: string, ok: (a: Agent) => boolean) {
-  const usable = installed().filter(ok)
-  try { const v = localStorage.getItem(key); if (v && usable.some(a => a.name === v)) return v } catch {}
+  const usable = installed().filter(ok), v = getPref(key)
+  if (v && usable.some(a => a.name === v)) return v
   return usable.find(a => a.name === 'claude')?.name ?? usable[0]?.name ?? 'claude'
 }
-const setPref = (key: string, v: string) => { try { localStorage.setItem(key, v) } catch {} }
 /** The agent new sessions start with: the last one you picked (this browser). */
 export const lastAgent = () => pref('drawa:agent', () => true)
 export const setLastAgent = (v: string) => setPref('drawa:agent', v)
