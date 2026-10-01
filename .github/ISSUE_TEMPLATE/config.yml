@@ -3,3 +3,9 @@ contact_links:
   - name: Report a security vulnerability
     url: https://github.com/HimalayanNomads/drawa/security/advisories/new
     about: Please report security problems privately, not in a public issue.
+  - name: Ask a question
+    url: https://github.com/HimalayanNomads/drawa/discussions/new?category=q-a
+    about: How do I…? Questions about using Drawa go to Discussions.
+  - name: Share an idea
+    url: https://github.com/HimalayanNomads/drawa/discussions/new?category=ideas
+    about: Not sure it's a feature request yet? Talk it through in Discussions first.

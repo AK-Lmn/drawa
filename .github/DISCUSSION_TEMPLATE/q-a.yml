@@ -1,0 +1,31 @@
+body:
+  - type: markdown
+    attributes:
+      value: Ask anything about using Drawa. Search existing discussions first, and mark the reply that answers you. Something broken? Open a [bug report](https://github.com/HimalayanNomads/drawa/issues/new?template=bug_report.yml) instead. Security problems go to a [private advisory](https://github.com/HimalayanNomads/drawa/security/advisories/new), never here.
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What you're trying to do, and what you've tried so far.
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent
+      multiple: true
+      options:
+        - Claude Code
+        - OpenCode
+        - Codex
+        - Not about an agent
+  - type: input
+    id: version
+    attributes:
+      label: Drawa version
+      description: Output of `drawa --version`. A source build prints `dev`; give the commit instead (`git rev-parse --short HEAD`).
+  - type: input
+    id: env
+    attributes:
+      label: OS and browser
+      placeholder: macOS 15, Chrome 140

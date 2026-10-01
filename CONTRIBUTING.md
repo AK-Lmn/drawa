@@ -8,6 +8,7 @@ Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT
 
 You can contribute in several ways:
 
+- Asking and answering questions, and talking ideas through, in [Discussions](https://github.com/HimalayanNomads/drawa/discussions)
 - [Reporting bugs](#reporting-bugs)
 - [Suggesting features](#suggesting-features)
 - [Suggesting enhancements and improvements](#suggesting-enhancements-and-improvements)
@@ -29,7 +30,7 @@ Search open and closed issues first. If nobody has reported it yet, open one wit
 
 ## Suggesting features
 
-A feature is something Drawa can't do yet. Open an issue with the [Feature request](https://github.com/HimalayanNomads/drawa/issues/new?template=feature_request.yml) template. Describe the problem before the solution: what you were trying to do and what got in the way. [`PRODUCT.md`](PRODUCT.md) explains what Drawa is trying to be, and a proposal that fits it is easier to accept. Wait for a maintainer to agree on the direction before you start a large change.
+A feature is something Drawa can't do yet. Open an issue with the [Feature request](https://github.com/HimalayanNomads/drawa/issues/new?template=feature_request.yml) template. Describe the problem before the solution: what you were trying to do and what got in the way. [`PRODUCT.md`](PRODUCT.md) explains what Drawa is trying to be, and a proposal that fits it is easier to accept. Wait for a maintainer to agree on the direction before you start a large change. Not sure it's a feature yet? Talk it through in [Ideas](https://github.com/HimalayanNomads/drawa/discussions/categories/ideas) first.
 
 ## Suggesting enhancements and improvements
 
