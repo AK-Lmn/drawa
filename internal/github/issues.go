@@ -42,6 +42,7 @@ func flags(v any, flag string, check func(string) (string, error)) ([]string, er
 }
 
 func newIssue(b map[string]any) map[string]any {
+	repo := s(b["repo"]) // checked by Op
 	title := strings.TrimSpace(s(b["title"]))
 	if title == "" {
 		return fail(errf("An issue needs a title."))
@@ -50,11 +51,12 @@ func newIssue(b map[string]any) map[string]any {
 	if err != nil {
 		return fail(err)
 	}
-	return reply(Gh(0, s(b["body"]), append([]string{"issue", "create", "--title=" + title, "--body-file", "-"}, labels...)...))
+	return reply(Gh(repo, 0, s(b["body"]), append([]string{"issue", "create", "--title=" + title, "--body-file", "-"}, labels...)...))
 }
 
 // edit adds and removes labels and assignees on an issue (or pull request).
 func edit(b map[string]any) map[string]any {
+	repo := s(b["repo"]) // checked by Op
 	n, err := Num(b["n"])
 	if err != nil {
 		return fail(err)
@@ -74,5 +76,5 @@ func edit(b map[string]any) map[string]any {
 	if len(args) == 3 {
 		return fail(errf("Nothing to change."))
 	}
-	return reply(Gh(0, "", args...))
+	return reply(Gh(repo, 0, "", args...))
 }

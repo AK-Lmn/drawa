@@ -10,7 +10,7 @@ import (
 
 // Pr fetches one pull request in full: its diff, comments, reviews and inline (line) comments. The three `gh`
 // calls are independent (none needs another's result), so they run concurrently rather than one after another.
-func Pr(n string) (map[string]any, error) {
+func Pr(repo, n string) (map[string]any, error) {
 	n, err := Num(n)
 	if err != nil {
 		return nil, err
@@ -25,16 +25,16 @@ func Pr(n string) (map[string]any, error) {
 	go func() {
 		defer wg.Done()
 		fields := PRList + ",url,body,additions,deletions,changedFiles,reviews,comments,mergeable,createdAt"
-		viewErr = GhJSON(0, "", &p, "pr", "view", n, "--json", fields)
+		viewErr = GhJSON(repo, 0, "", &p, "pr", "view", n, "--json", fields)
 	}()
 	go func() {
 		defer wg.Done()
 		// comments on lines of code (reviews' inline comments): not in `pr view`. --slurp: every page, as one list of pages.
-		pagesErr = GhJSON(0, "", &pages, "api", "--paginate", "--slurp", "repos/{owner}/{repo}/pulls/"+n+"/comments?per_page=100")
+		pagesErr = GhJSON(repo, 0, "", &pages, "api", "--paginate", "--slurp", "repos/{owner}/{repo}/pulls/"+n+"/comments?per_page=100")
 	}()
 	go func() {
 		defer wg.Done()
-		diff, derr = Gh(0, "", "pr", "diff", n)
+		diff, derr = Gh(repo, 0, "", "pr", "diff", n)
 	}()
 	wg.Wait()
 	if viewErr != nil {
@@ -119,13 +119,13 @@ func asList(v any) []map[string]any {
 	return out
 }
 
-func Issue(n string) (map[string]any, error) {
+func Issue(repo, n string) (map[string]any, error) {
 	nn, err := Num(n)
 	if err != nil {
 		return nil, err
 	}
 	var i map[string]any
-	if err := GhJSON(0, "", &i, "issue", "view", nn, "--json", "number,title,body,author,state,labels,assignees,url,comments,createdAt,updatedAt"); err != nil {
+	if err := GhJSON(repo, 0, "", &i, "issue", "view", nn, "--json", "number,title,body,author,state,labels,assignees,url,comments,createdAt,updatedAt"); err != nil {
 		return nil, err
 	}
 	row := IssueRow(i)
@@ -146,13 +146,13 @@ func Issue(n string) (map[string]any, error) {
 }
 
 // PrChecks is only a pull request's checks: what the window polls while some are still running.
-func PrChecks(n string) ([]map[string]any, error) {
+func PrChecks(repo, n string) ([]map[string]any, error) {
 	n, err := Num(n)
 	if err != nil {
 		return nil, err
 	}
 	var p map[string]any
-	if err := GhJSON(0, "", &p, "pr", "view", n, "--json", "statusCheckRollup"); err != nil {
+	if err := GhJSON(repo, 0, "", &p, "pr", "view", n, "--json", "statusCheckRollup"); err != nil {
 		return nil, err
 	}
 	checks, _ := p["statusCheckRollup"].([]any)

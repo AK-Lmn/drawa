@@ -29,13 +29,22 @@ func RunEnv(timeout time.Duration, stdin string, env []string, argv ...string) (
 	return RunLimit(timeout, 0, stdin, env, argv...)
 }
 
+// RunEnvIn is RunEnv in dir, a folder inside the project (a repo in a subfolder) the caller has checked.
+func RunEnvIn(dir string, timeout time.Duration, stdin string, env []string, argv ...string) (*Result, error) {
+	return run(dir, timeout, 0, stdin, env, argv...)
+}
+
 // RunLimit is RunEnv keeping at most limit bytes of stdout (0: no limit): past that the process group is killed
 // and the result is marked Truncated, so a huge output (a big diff) is never buffered whole.
 func RunLimit(timeout time.Duration, limit int, stdin string, env []string, argv ...string) (*Result, error) {
+	return run(config.Root, timeout, limit, stdin, env, argv...)
+}
+
+func run(dir string, timeout time.Duration, limit int, stdin string, env []string, argv ...string) (*Result, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
-	cmd.Dir = config.Root
+	cmd.Dir = dir
 	cmd.Env = env
 	// on timeout kill the whole group (git push's ssh too), and stop waiting on pipes an escaped child still holds
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

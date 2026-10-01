@@ -7,7 +7,7 @@ import { referable } from '../canvas/refs'
 import { centerOn } from '../canvas/canvas'
 import { cur, cards, newSession, focus } from '../session/session'
 import { addRef } from '../session/composer'
-import { openGitHub } from './github'
+import { openGitHub, win } from './github'
 import { who, lastAgent } from '../lib/agents'
 
 export interface Check { name: string; state: 'pass' | 'fail' | 'pending' | 'skip'; url: string }
@@ -21,21 +21,31 @@ export interface Run { id: number; title: string; workflow: string; branch: stri
 export interface Label { name: string; color: string; description: string }
 export interface GhState { ok: boolean; error?: string; repo?: string; url?: string; default?: string; branch?: string; pr?: (PrRow & { url: string }) | null }
 
+/** The repo the GitHub window shows: '' the project's own, else a nested repo's folder. What everything here acts on
+ *  unless told otherwise (the Git window's strips and sent references name theirs). */
+export const here = () => win?.view.repo ?? ''
+/** A gh GET for `repo`. */
+export const ghGet = <T>(path: string, repo = here()) => api<T>(`${path}${path.includes('?') ? '&' : '?'}repo=${q(repo)}`)
+
 type GhReply = { ok?: boolean; out?: string; title?: string; body?: string; error?: string }
-/** A gh action (checkout, create, comment, draft). Never throws: a dead server comes back as a failed reply. */
+/** A gh action (checkout, create, comment, draft), in the window's repo unless the body names one. Never throws: a
+ *  dead server comes back as a failed reply. */
 export const ghPost = (body: object): Promise<GhReply> =>
-  post('gh', body).catch(e => ({ ok: false, out: (e as Error).message, error: (e as Error).message }))
-export const getPr = (n: number) => api<Pr>(`gh/pr?n=${n}`)
-export const getIssue = (n: number) => api<Issue>(`gh/issue?n=${n}`)
-export const getChecks = (n: number) => api<Check[]>(`gh/checks?n=${n}`)
-let me: Promise<{ login: string; repo: string } | null> | undefined
-/** Who gh publishes as, and where: asked once (null when it can't tell; the confirm then says less). */
-export const whoami = () => (me ??= api<{ login: string; repo: string }>('gh/me').catch(() => (me = undefined, null)))
+  post('gh', { repo: here(), ...body }).catch(e => ({ ok: false, out: (e as Error).message, error: (e as Error).message }))
+export const getPr = (n: number, repo = here()) => ghGet<Pr>(`gh/pr?n=${n}`, repo)
+export const getIssue = (n: number, repo = here()) => ghGet<Issue>(`gh/issue?n=${n}`, repo)
+export const getChecks = (n: number) => ghGet<Check[]>(`gh/checks?n=${n}`)
+const me = new Map<string, Promise<{ login: string; repo: string } | null>>()
+/** Who gh publishes as, and where: asked once per repo (null when it can't tell; the confirm then says less). */
+export function whoami(repo = here()) {
+  if (!me.has(repo)) me.set(repo, ghGet<{ login: string; repo: string }>('gh/me', repo).catch(() => (me.delete(repo), null)))
+  return me.get(repo)!
+}
 
 /** Every write goes through here: a confirm that says what gets published, as whom and where; then the op, and a
  *  toast either way. Resolves to the reply when it went through, undefined when cancelled or it failed. */
 export async function publish(title: string, what: string, action: string, body: object, done: string) {
-  const u = await whoami()
+  const u = await whoami((body as { repo?: string }).repo ?? here())
   const where = u ? `\n\nPublished on GitHub as @${u.login} in ${u.repo}.` : '\n\nPublished on GitHub under your account.'
   if (!await confirmBox(title, clip(what, 1200) + where, action)) return
   const r = await ghPost(body)
@@ -65,8 +75,8 @@ export const stateOf = (r: { state: string; draft?: boolean }) => (r.draft && r.
 const MAX_DIFF = 60_000
 const notes = (list: Note[]) => list.map(c => `@${c.author}${c.state ? ` (${reviewWord(c.state)})` : ''}, ${c.when.slice(0, 10)}:\n${c.body.trim()}`).join('\n\n')
 
-async function prText(n: number) {
-  const p = await getPr(n)
+async function prText(n: number, repo: string) {
+  const p = await getPr(n, repo)
   const cut = p.diff.length > MAX_DIFF || p.diff_truncated
   const diff = cut ? p.diff.slice(0, MAX_DIFF) + `\n… (diff truncated, see ${p.url}/files for all of it)` : p.diff
   return [`GitHub pull request #${p.number}: ${p.title}`, p.url,
@@ -76,18 +86,18 @@ async function prText(n: number) {
     `\nDiff:\n\`\`\`diff\n${diff}\n\`\`\``].join('\n')
 }
 
-async function checksText(n: number) {
-  const p = await getPr(n), failed = p.checks.filter(c => c.state === 'fail')
+async function checksText(n: number, repo: string) {
+  const p = await getPr(n, repo), failed = p.checks.filter(c => c.state === 'fail')
   if (!failed.length) return `Pull request #${n} (${p.title}) has no failing checks right now.`
   const parts = await Promise.all(failed.map(async c => {
-    const log = await api<{ log: string }>(`gh/log?url=${q(c.url)}`).then(r => r.log.slice(-6000), e => `(log not available: ${(e as Error).message})`)
+    const log = await ghGet<{ log: string }>(`gh/log?url=${q(c.url)}`, repo).then(r => r.log.slice(-6000), e => `(log not available: ${(e as Error).message})`)
     return `### ${c.name}\n${c.url}\n\`\`\`\n${log}\n\`\`\``
   }))
   return `Failing checks on pull request #${n}: ${p.title} (${p.head} → ${p.base})\n${p.url}\n\n${parts.join('\n\n')}`
 }
 
-async function reviewsText(n: number) {
-  const p = await getPr(n)
+async function reviewsText(n: number, repo: string) {
+  const p = await getPr(n, repo)
   const inline = p.inline.map(c => `${c.path}:${c.line ?? '?'}, @${c.author}:\n\`\`\`diff\n${c.hunk}\n\`\`\`\n${c.body.trim()}`).join('\n\n')
   if (!p.reviews.length && !p.inline.length && !p.comments.length && !p.inline_error) return `Pull request #${n} (${p.title}) has no reviews or comments yet.`
   return [`Review feedback on pull request #${n}: ${p.title} (${p.head} → ${p.base})`, p.url,
@@ -97,8 +107,8 @@ async function reviewsText(n: number) {
     ...(p.comments.length ? [`\nConversation:\n${notes(p.comments)}`] : [])].join('\n')
 }
 
-async function issueText(n: number) {
-  const i = await getIssue(n)
+async function issueText(n: number, repo: string) {
+  const i = await getIssue(n, repo)
   return [`GitHub issue #${i.number}: ${i.title}`, i.url, `${i.state.toLowerCase()} · by @${i.author}${i.labels.length ? ' · labels: ' + i.labels.join(', ') : ''}`,
     `\n${i.body.trim() || '(no description)'}`, ...(i.comments.length ? [`\nComments:\n${notes(i.comments)}`] : [])].join('\n')
 }
@@ -109,7 +119,7 @@ export type What = keyof typeof TEXT
 referable('gh', {
   icon: '⇄',
   label: el => el.dataset.label ?? '',
-  content: el => TEXT[el.dataset.what as What](Number(el.dataset.n)).then(text => ({ text }),
+  content: el => TEXT[el.dataset.what as What](Number(el.dataset.n), el.dataset.repo ?? '').then(text => ({ text }),
     e => ({ text: `${el.dataset.label}: could not load it from GitHub (${(e as Error).message}).` })),
 })
 
@@ -119,13 +129,14 @@ const target = () => cur ?? cards[0]
  *  of another agent afterwards leaves the old name until the window redraws. */
 export const sendLabel = () => `Send to ${who(target()?.backend ?? lastAgent())}`
 
-/** Attach a pull request (or its checks / reviews) or an issue to the focused card's next message. Its chip opens
- *  it in the GitHub window. */
-export function sendToClaude(what: What, n: number, title: string) {
+/** Attach a pull request (or its checks / reviews) or an issue of `repo` to the focused card's next message. Its chip
+ *  opens it in the GitHub window. */
+export function sendToClaude(what: What, n: number, title: string, repo = here()) {
   const el = make('span')
   const label = { pr: `PR #${n}`, checks: `PR #${n} failing checks`, reviews: `PR #${n} reviews`, issue: `Issue #${n}` }[what]
-  Object.assign(el.dataset, { kind: 'gh', what, n: String(n), label: `${label}: ${title}`.slice(0, 60) })
-  el.onclick = () => openGitHub({ tab: what === 'issue' ? 'issue' : 'pr', n })
+  const where = repo ? `${repo.split('/').pop()} ` : '' // which repo's #12, when there's more than one
+  Object.assign(el.dataset, { kind: 'gh', what, n: String(n), repo, label: `${where}${label}: ${title}`.slice(0, 60) })
+  el.onclick = () => openGitHub({ tab: what === 'issue' ? 'issue' : 'pr', n, repo })
   const S = target() ?? newSession()
   addRef(S, { kind: 'gh', label: el.dataset.label!, el })
   focus(S)

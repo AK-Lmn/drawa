@@ -104,13 +104,14 @@ var getRoutes = map[string]routeFunc{
 		}
 		return ok(filesx.Get(p))
 	},
-	"/api/git": func(q url.Values) (any, int, error) { return gitx.GitState(), 200, nil },
+	"/api/git":       func(q url.Values) (any, int, error) { return gitx.GitState(), 200, nil },
+	"/api/git/repos": func(q url.Values) (any, int, error) { return gitx.NonNil(gitx.Repos()), 200, nil },
 	"/api/git/diff": func(q url.Values) (any, int, error) {
 		p, err := need(q, "path")
 		if err != nil {
 			return nil, 0, err
 		}
-		return ok(gitx.GitDiff(p, q.Get("staged") == "1"))
+		return ok(gitx.GitDiff(q.Get("repo"), p, q.Get("staged") == "1"))
 	},
 	"/api/files":     func(q url.Values) (any, int, error) { return filesx.Find(q.Get("q"), 40), 200, nil },
 	"/api/meta":      func(q url.Values) (any, int, error) { return live.Meta(q.Get("backend")), 200, nil },
@@ -118,16 +119,16 @@ var getRoutes = map[string]routeFunc{
 	"/api/agents":    func(q url.Values) (any, int, error) { return agents(), 200, nil },
 	"/api/prefs":     func(q url.Values) (any, int, error) { return prefsAnswer(prefs.Load()), 200, nil },
 	"/api/session":   sessionRoute,
-	"/api/gh":        func(q url.Values) (any, int, error) { return github.State(), 200, nil },
-	"/api/gh/prs":    func(q url.Values) (any, int, error) { return ok(github.Prs(ghList(q))) },
-	"/api/gh/issues": func(q url.Values) (any, int, error) { return ok(github.Issues(ghList(q))) },
-	"/api/gh/checks": func(q url.Values) (any, int, error) { return ok(github.PrChecks(q.Get("n"))) },
-	"/api/gh/runs":   func(q url.Values) (any, int, error) { return ok(github.Runs(q.Get("limit"))) },
-	"/api/gh/labels": func(q url.Values) (any, int, error) { return ok(github.Labels()) },
-	"/api/gh/me":     func(q url.Values) (any, int, error) { return ok(github.Me()) },
-	"/api/gh/pr":     func(q url.Values) (any, int, error) { return ok(github.Pr(q.Get("n"))) },
-	"/api/gh/issue":  func(q url.Values) (any, int, error) { return ok(github.Issue(q.Get("n"))) },
-	"/api/gh/log":    func(q url.Values) (any, int, error) { return ok(github.Log(q.Get("url"))) },
+	"/api/gh":        func(q url.Values) (any, int, error) { return github.State(q.Get("repo")), 200, nil },
+	"/api/gh/prs":    func(q url.Values) (any, int, error) { return ok(github.Prs(q.Get("repo"), ghList(q))) },
+	"/api/gh/issues": func(q url.Values) (any, int, error) { return ok(github.Issues(q.Get("repo"), ghList(q))) },
+	"/api/gh/checks": func(q url.Values) (any, int, error) { return ok(github.PrChecks(q.Get("repo"), q.Get("n"))) },
+	"/api/gh/runs":   func(q url.Values) (any, int, error) { return ok(github.Runs(q.Get("repo"), q.Get("limit"))) },
+	"/api/gh/labels": func(q url.Values) (any, int, error) { return ok(github.Labels(q.Get("repo"))) },
+	"/api/gh/me":     func(q url.Values) (any, int, error) { return ok(github.Me(q.Get("repo"))) },
+	"/api/gh/pr":     func(q url.Values) (any, int, error) { return ok(github.Pr(q.Get("repo"), q.Get("n"))) },
+	"/api/gh/issue":  func(q url.Values) (any, int, error) { return ok(github.Issue(q.Get("repo"), q.Get("n"))) },
+	"/api/gh/log":    func(q url.Values) (any, int, error) { return ok(github.Log(q.Get("repo"), q.Get("url"))) },
 }
 
 // prefsAnswer is your settings, and why ~/.drawa/config.json couldn't be read or saved when it couldn't, for the
@@ -432,7 +433,11 @@ func doPOST(w http.ResponseWriter, r *http.Request) {
 	case "/api/git":
 		out, err := gitx.GitOp(body)
 		if err != nil {
-			sendJSON(w, map[string]any{"ok": false, "out": "path outside project folder"}, 403)
+			msg := "path outside project folder"
+			if errors.Is(err, gitx.ErrNoRepo) {
+				msg = err.Error()
+			}
+			sendJSON(w, map[string]any{"ok": false, "out": msg}, 403)
 			return
 		}
 		sendJSON(w, out, 200)

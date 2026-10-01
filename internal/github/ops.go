@@ -22,19 +22,20 @@ func BranchArg(b string) (string, error) {
 
 // Draft writes a pull request title and description for this branch against base, via a one-off call to the named
 // agent backend ("": the first installed one).
-func Draft(base, backend string) map[string]any {
+func Draft(repo, base, backend string) map[string]any {
 	base, err := BranchArg(base)
 	if err != nil {
 		return map[string]any{"error": err.Error()}
 	}
 	ref := base
-	if ok, _ := gitx.Git("rev-parse", "--verify", "-q", "origin/"+base); ok {
+	git := func(args ...string) (bool, string) { return gitx.GitOpts(gitx.Opts{Repo: repo}, args...) }
+	if ok, _ := git("rev-parse", "--verify", "-q", "origin/"+base); ok {
 		ref = "origin/" + base
-	} else if ok, errOut := gitx.Git("rev-parse", "--verify", base); !ok {
+	} else if ok, errOut := git("rev-parse", "--verify", base); !ok {
 		return map[string]any{"error": "No branch " + base + " here or on origin: " + errOut}
 	}
-	ok1, log := gitx.Git("log", "--format=%s%n%b", ref+"..HEAD")
-	ok2, diff := gitx.Git("diff", "--stat", "--patch", ref+"...HEAD")
+	ok1, log := git("log", "--format=%s%n%b", ref+"..HEAD")
+	ok2, diff := git("diff", "--stat", "--patch", ref+"...HEAD")
 	if !ok1 || !ok2 || strings.TrimSpace(diff) == "" {
 		return map[string]any{"error": "No changes between " + base + " and this branch to describe."}
 	}
@@ -59,7 +60,7 @@ func Draft(base, backend string) map[string]any {
 var ops = map[string]func(map[string]any) map[string]any{
 	"checkout": checkout,
 	"draft": func(b map[string]any) map[string]any {
-		return Draft(cmp.Or(strings.TrimSpace(s(b["base"])), "main"), s(b["backend"]))
+		return Draft(s(b["repo"]), cmp.Or(strings.TrimSpace(s(b["base"])), "main"), s(b["backend"]))
 	},
 	"create":      createPr,
 	"comment":     comment,
@@ -72,9 +73,12 @@ var ops = map[string]func(map[string]any) map[string]any{
 	"rerun":       rerun,
 }
 
-// Op carries out a write operation from the GitHub window.
+// Op carries out a write operation from the GitHub window, in the repo named by "repo" ("" the project's own).
 func Op(body map[string]any) map[string]any {
 	op := s(body["op"])
+	if err := gitx.Check(s(body["repo"])); err != nil {
+		return fail(err)
+	}
 	if f, ok := ops[op]; ok {
 		return f(body)
 	}
@@ -100,14 +104,16 @@ func kind(b map[string]any) string {
 }
 
 func checkout(b map[string]any) map[string]any {
+	repo := s(b["repo"]) // checked by Op
 	n, err := Num(b["n"])
 	if err != nil {
 		return fail(err)
 	}
-	return reply(Gh(120*time.Second, "", "pr", "checkout", n))
+	return reply(Gh(repo, 120*time.Second, "", "pr", "checkout", n))
 }
 
 func createPr(b map[string]any) map[string]any {
+	repo := s(b["repo"]) // checked by Op
 	title, base := strings.TrimSpace(s(b["title"])), strings.TrimSpace(s(b["base"]))
 	if title == "" || base == "" {
 		return map[string]any{"ok": false, "out": "A pull request needs a title and a base branch."}
@@ -115,7 +121,7 @@ func createPr(b map[string]any) map[string]any {
 	if _, err := BranchArg(base); err != nil {
 		return fail(err)
 	}
-	ok, out := gitx.GitOpts(gitx.Opts{Timeout: 120 * time.Second}, "push", "-u", "origin", "HEAD")
+	ok, out := gitx.GitOpts(gitx.Opts{Timeout: 120 * time.Second, Repo: repo}, "push", "-u", "origin", "HEAD")
 	if !ok { // gh can't open a PR for a branch GitHub doesn't have
 		if len(out) > 2000 {
 			out = out[len(out)-2000:]
@@ -126,10 +132,11 @@ func createPr(b map[string]any) map[string]any {
 	if truthy(b["draft"]) {
 		args = append(args, "--draft")
 	}
-	return reply(Gh(120*time.Second, s(b["body"]), args...))
+	return reply(Gh(repo, 120*time.Second, s(b["body"]), args...))
 }
 
 func comment(b map[string]any) map[string]any {
+	repo := s(b["repo"]) // checked by Op
 	text := strings.TrimSpace(s(b["body"]))
 	if text == "" {
 		return map[string]any{"ok": false, "out": "Write a comment first."}
@@ -138,5 +145,5 @@ func comment(b map[string]any) map[string]any {
 	if err != nil {
 		return fail(err)
 	}
-	return reply(Gh(0, text, kind(b), "comment", n, "--body-file", "-"))
+	return reply(Gh(repo, 0, text, kind(b), "comment", n, "--body-file", "-"))
 }

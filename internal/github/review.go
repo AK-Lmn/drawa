@@ -11,6 +11,7 @@ var reviewFlags = map[string]string{"approve": "--approve", "request-changes": "
 
 // review submits a review of a pull request: approve (a comment is optional), request changes or comment (one needed).
 func review(b map[string]any) map[string]any {
+	repo := s(b["repo"]) // checked by Op
 	n, err := Num(b["n"])
 	if err != nil {
 		return fail(err)
@@ -26,12 +27,13 @@ func review(b map[string]any) map[string]any {
 	} else if flag != "--approve" {
 		return fail(errf("Say what should change (or what you're commenting) first."))
 	}
-	return reply(Gh(0, text, args...))
+	return reply(Gh(repo, 0, text, args...))
 }
 
 // lineComment comments on one line of a pull request's diff, on its newest commit. RIGHT is the line as it is now
 // (added or unchanged), LEFT as it was (removed).
 func lineComment(b map[string]any) map[string]any {
+	repo := s(b["repo"]) // checked by Op
 	n, err := Num(b["n"])
 	if err != nil {
 		return fail(err)
@@ -50,18 +52,19 @@ func lineComment(b map[string]any) map[string]any {
 	if text == "" {
 		return fail(errf("Write a comment first."))
 	}
-	head, err := Gh(0, "", "pr", "view", n, "--json", "headRefOid", "--jq", ".headRefOid")
+	head, err := Gh(repo, 0, "", "pr", "view", n, "--json", "headRefOid", "--jq", ".headRefOid")
 	if err != nil {
 		return fail(err)
 	}
 	req, _ := json.Marshal(map[string]any{"body": text, "commit_id": strings.TrimSpace(head), "path": path, "line": json.Number(line), "side": side})
-	out, err := Gh(0, string(req), "api", "-X", "POST", "repos/{owner}/{repo}/pulls/"+n+"/comments", "--input", "-", "--jq", ".html_url")
+	out, err := Gh(repo, 0, string(req), "api", "-X", "POST", "repos/{owner}/{repo}/pulls/"+n+"/comments", "--input", "-", "--jq", ".html_url")
 	return reply(out, err)
 }
 
 var mergeFlags = map[string]string{"squash": "--squash", "merge": "--merge", "rebase": "--rebase"}
 
 func merge(b map[string]any) map[string]any {
+	repo := s(b["repo"]) // checked by Op
 	n, err := Num(b["n"])
 	if err != nil {
 		return fail(err)
@@ -70,11 +73,12 @@ func merge(b map[string]any) map[string]any {
 	if !ok {
 		return fail(errf("Merge by squash, merge or rebase."))
 	}
-	return reply(Gh(120*time.Second, "", "pr", "merge", n, flag))
+	return reply(Gh(repo, 120*time.Second, "", "pr", "merge", n, flag))
 }
 
 // setState closes or reopens a pull request or issue, or marks a draft pull request ready for review.
 func setState(b map[string]any) map[string]any {
+	repo := s(b["repo"]) // checked by Op
 	n, err := Num(b["n"])
 	if err != nil {
 		return fail(err)
@@ -83,5 +87,5 @@ func setState(b map[string]any) map[string]any {
 	if act != "close" && act != "reopen" && !(act == "ready" && k == "pr") {
 		return fail(errf("bad action %q", act))
 	}
-	return reply(Gh(0, "", k, act, n))
+	return reply(Gh(repo, 0, "", k, act, n))
 }

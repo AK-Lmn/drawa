@@ -1,7 +1,8 @@
 // The GitHub window: pull requests, issues and workflow runs of this repo (through the `gh` CLI), searchable, and one
 // pull request or issue in detail (ghpr.ts, ghissue.ts; runs and checks in ghruns.ts). Anything here can go to Claude
-// (see gh.ts), and every write asks first (publish() in gh.ts). One per canvas, like Git.
-import { make, ICON, iconButton, button, ping, extLink, ago, pressed } from '../lib/dom'
+// (see gh.ts), and every write asks first (publish() in gh.ts). One per canvas, like Git; with repos in the project's
+// subfolders it shows one of them at a time, picked at the top of its lists.
+import { make, ICON, iconButton, button, ping, extLink, ago, pressed, project } from '../lib/dom'
 import { api, q } from '../lib/api'
 import { md, enhance } from '../lib/markdown'
 import { enhance as enhanceSelect } from '../lib/select'
@@ -10,7 +11,7 @@ import { items, savedRect, centerOn, spotBeside, changed, type Rect } from '../c
 import { makeWindow } from '../canvas/window'
 import { forget } from '../canvas/graph'
 import { referable } from '../canvas/refs'
-import { tally, dot, reviewWord, stateOf, REVIEW, publish, type Pr, type Issue, type PrRow, type IssueRow, type Note, type Run } from './gh'
+import { tally, dot, reviewWord, stateOf, REVIEW, publish, ghGet, type Pr, type Issue, type PrRow, type IssueRow, type Note, type Run } from './gh'
 import { prDetail } from './ghpr'
 import { issueDetail, newIssue } from './ghissue'
 import { runList } from './ghruns'
@@ -19,30 +20,47 @@ export const GH_ICON = '<svg viewBox="0 0 16 16"><circle cx="4" cy="3.5" r="1.6"
 const REFRESH = '<svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5v3h-3"/></svg>'
 
 type Tab = 'pr' | 'issue' | 'runs'
-/** What the window shows. q and filter narrow the lists (GitHub search syntax; mine / review / assigned). */
-export interface View { tab: Tab; state: string; n?: number; sub?: 'conv' | 'files' | 'checks'; q?: string; filter?: string }
-export let win: { el: HTMLElement; body: HTMLElement; view: View; seen?: Pr | Issue | (PrRow | IssueRow | Run)[]; failed?: boolean; more: number } | undefined
+/** What the window shows. q and filter narrow the lists (GitHub search syntax; mine / review / assigned). repo: which
+ *  repository ('' or none: the project's own; else a nested repo's folder, as the Git window names it). */
+export interface View { tab: Tab; state: string; n?: number; sub?: 'conv' | 'files' | 'checks'; q?: string; filter?: string; repo?: string }
+export let win: {
+  el: HTMLElement; body: HTMLElement; meta: HTMLElement; view: View; seen?: Pr | Issue | (PrRow | IssueRow | Run)[]; failed?: boolean; more: number
+  repos: Promise<string[]>; list: string[] // the repos it can show, asked when it opens
+} | undefined
 
-/** Open (or bring into view) the GitHub window, optionally at a pull request or issue (and one of its tabs). */
-export function openGitHub(at?: { tab: 'pr' | 'issue'; n?: number; sub?: View['sub'] }, r?: Rect, saved?: View) {
+const repoLabel = (dir: string) => dir || project.name
+
+/** Open (or bring into view) the GitHub window, optionally at a repo, a pull request or issue (and one of its tabs). */
+export function openGitHub(at?: { tab?: 'pr' | 'issue'; n?: number; sub?: View['sub']; repo?: string }, r?: Rect, saved?: View) {
   if (!win) {
-    const { el, body } = makeWindow({
+    const { el, head, body } = makeWindow({
       kind: 'github', cls: 'ghnode', title: 'GitHub', minW: 320, minH: 240,
       rect: r ?? spotBeside(items('git')[0], Math.min(520, innerWidth - 32), 600, 60), // phones: fits the screen
       actions: [iconButton(ICON.x, 'Close', () => { forget(el); el.remove(); win = undefined; changed() }, 'closebtn')],
     })
     el.dataset.id = 'github'
     body.classList.add('ghbody')
-    win = { el, body, view: saved ?? { tab: 'pr', state: 'open' }, more: 0 }
+    const meta = make('span', 'm')
+    head.querySelector('.t')!.after(meta)
+    win = { el, body, meta, view: saved ?? { tab: 'pr', state: 'open' }, more: 0, repos: api<string[]>('git/repos').catch(() => []), list: [] }
     if (!r) centerOn(el)
   } else { centerOn(win.el); ping(win.el) }
-  if (at) win.view = { ...win.view, tab: at.tab, n: at.n, sub: at.sub ?? 'conv' }
+  // another repo: its lists from the top (a search or a number of the old one means nothing there)
+  if (at?.repo !== undefined && at.repo !== (win.view.repo ?? '')) win.view = { tab: win.view.tab, state: 'open', repo: at.repo }
+  if (at?.tab) win.view = { ...win.view, tab: at.tab, n: at.n, sub: at.sub ?? 'conv' }
   show()
   changed()
 }
 
-export function show() {
-  const w = win!
+export async function show() {
+  const w = win!, v = w.view
+  w.list = await w.repos
+  if (win !== w || w.view !== v) return // moved on meanwhile: that show() draws
+  // a repo that's gone (or none chosen while the project's own folder isn't one): the first there is
+  if (w.list.length && !w.list.includes(v.repo ?? '')) w.view = { tab: v.tab, state: 'open', repo: w.list[0] }
+  const many = w.list.length > 1 || !!w.view.repo
+  w.meta.textContent = many ? repoLabel(w.view.repo ?? '').split('/').pop()! : ''
+  w.meta.title = many ? `Showing ${repoLabel(w.view.repo ?? '')}` : ''
   w.seen = undefined
   w.failed = false
   if (w.view.n) return w.view.tab === 'pr' ? prDetail(w.view.n) : issueDetail(w.view.n)
@@ -94,8 +112,27 @@ export function topBar(...extra: HTMLElement[]) {
     pressed(b, v.tab === tab)
     tabs.append(b)
   }
-  bar.append(tabs, make('span', 'spacer'), ...extra, iconButton(REFRESH, 'Refresh', show))
+  bar.append(...repoPicker(), tabs, make('span', 'spacer'), ...extra, iconButton(REFRESH, 'Refresh', refreshAll))
   return bar
+}
+
+/** Refresh asks again which repos there are too (one cloned meanwhile). */
+function refreshAll() {
+  win!.repos = api<string[]>('git/repos').catch(() => win?.list ?? [])
+  show()
+}
+
+/** Which repo: a line of its own over the tabs, while there's more than one. */
+function repoPicker() {
+  const w = win!
+  if (w.list.length < 2) return []
+  const line = make('label', 'ghrepo'), sel = make('select')
+  sel.setAttribute('aria-label', 'Repository')
+  for (const dir of w.list) sel.append(new Option(repoLabel(dir), dir, false, dir === (w.view.repo ?? '')))
+  sel.onchange = () => go({ state: 'open', n: undefined, q: undefined, filter: undefined, repo: sel.value })
+  line.append(make('span', '', 'Repository'), sel)
+  enhanceSelect(sel)
+  return [line]
 }
 
 /** Rows of a list, and Load more under them while there are more (up to CAP). */
@@ -124,7 +161,7 @@ function list() {
   w.body.replaceChildren(topBar(sel), finder(v), rows)
   enhanceSelect(sel)
   const kind = v.tab === 'pr' ? 'pull requests' : 'issues'
-  pages(rows, limit => api<(PrRow | IssueRow)[]>(`gh/${v.tab === 'pr' ? 'prs' : 'issues'}?state=${v.state}&q=${q(v.q ?? '')}&filter=${v.filter ?? ''}&limit=${limit}`),
+  pages(rows, limit => ghGet<(PrRow | IssueRow)[]>(`gh/${v.tab === 'pr' ? 'prs' : 'issues'}?state=${v.state}&q=${q(v.q ?? '')}&filter=${v.filter ?? ''}&limit=${limit}`),
     row, `No ${v.state === 'all' ? '' : v.state + ' '}${kind}${v.q || v.filter ? ' match' : ''}.`)
 }
 
@@ -228,10 +265,11 @@ referable('github', {
   content: () => {
     const s = win?.seen, v = win?.view
     if (!s || !v) return { text: 'The GitHub window (nothing loaded yet).' }
+    const where = v.repo ? ` (the repository in ${v.repo}/)` : ''
     if (Array.isArray(s)) {
-      if (v.tab === 'runs') return { text: 'GitHub Actions workflow runs:\n' + (s as Run[]).map(r => `${r.workflow}: ${r.title} (${r.branch}, ${r.state}${r.conclusion ? ' ' + r.conclusion : ''}, ${r.url})`).join('\n') }
-      return { text: `GitHub ${v.tab === 'pr' ? 'pull requests' : 'issues'} (${v.state}${v.q ? ', search: ' + v.q : ''}${v.filter ? ', filter: ' + v.filter : ''}):\n` + (s as (PrRow | IssueRow)[]).map(r => `#${r.number} ${r.title} (@${r.author}, ${stateOf(r as PrRow)})`).join('\n') }
+      if (v.tab === 'runs') return { text: `GitHub Actions workflow runs${where}:\n` + (s as Run[]).map(r => `${r.workflow}: ${r.title} (${r.branch}, ${r.state}${r.conclusion ? ' ' + r.conclusion : ''}, ${r.url})`).join('\n') }
+      return { text: `GitHub ${v.tab === 'pr' ? 'pull requests' : 'issues'}${where} (${v.state}${v.q ? ', search: ' + v.q : ''}${v.filter ? ', filter: ' + v.filter : ''}):\n` + (s as (PrRow | IssueRow)[]).map(r => `#${r.number} ${r.title} (@${r.author}, ${stateOf(r as PrRow)})`).join('\n') }
     }
-    return { text: `GitHub ${'diff' in s ? 'pull request' : 'issue'} #${s.number}: ${s.title}\n${s.url}\n\n${s.body}` }
+    return { text: `GitHub ${'diff' in s ? 'pull request' : 'issue'}${where} #${s.number}: ${s.title}\n${s.url}\n\n${s.body}` }
   },
 })

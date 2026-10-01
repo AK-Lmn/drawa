@@ -1,10 +1,9 @@
 // One issue in the GitHub window (its conversation, a comment box, close / reopen, labels and assignees), and the
 // new issue form.
 import { make, button, ago, pressed, toast } from '../lib/dom'
-import { api } from '../lib/api'
 import { enhanceMarked } from '../lib/markdown'
 import { changed } from '../canvas/canvas'
-import { getIssue, sendToClaude, sendLabel, publish, type Issue, type Label } from './gh'
+import { getIssue, ghGet, here, sendToClaude, sendLabel, publish, type Issue, type Label } from './gh'
 import { win, load, header, conversation, writeBox, commentOn, ghLink, show, go, topBar } from './github'
 
 export async function issueDetail(n: number) {
@@ -24,8 +23,12 @@ export async function issueDetail(n: number) {
   enhanceMarked(pane)
 }
 
-let labelList: Promise<Label[]> | undefined
-const repoLabels = () => (labelList ??= api<Label[]>('gh/labels').catch(e => { labelList = undefined; throw e }))
+const labelLists = new Map<string, Promise<Label[]>>() // by repo
+function repoLabels() {
+  const repo = here()
+  if (!labelLists.has(repo)) labelLists.set(repo, ghGet<Label[]>('gh/labels', repo).catch(e => { labelLists.delete(repo); throw e }))
+  return labelLists.get(repo)!
+}
 
 /** Toggle buttons for the repo's labels, `on` pressed. Returns the box and what's picked now. */
 function labelPicker(on: string[]) {
