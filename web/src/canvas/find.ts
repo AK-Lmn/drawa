@@ -1,6 +1,6 @@
 // Find a window: Ctrl/Cmd+K (or the toolbar's search button) lists everything on the canvas; type to filter by
-// title and content, Enter flies to it, brings it to the front and expands it if it was collapsed. Code symbols
-// (lib/symbols.ts) and project files matching the query are listed below the windows, the highlighted one previewed
+// title and content, Enter flies to it, brings it to the front and expands it if it was collapsed. Project files and
+// then code symbols (lib/symbols.ts) matching the query are listed below the windows, the highlighted one previewed
 // beside the list; picking one opens its file in a window (see fileOpener), at the symbol's line. Commands
 // (lib/keys.ts entries with `run`) matching the query are listed above.
 import { api, q as enc } from '../lib/api'
@@ -136,7 +136,7 @@ function search(q: string): Hit[] {
 }
 
 function draw() {
-  hits = [...findCommands(input.value), ...search(input.value).slice(0, 50), ...syms, ...found]
+  hits = [...findCommands(input.value), ...search(input.value).slice(0, 50), ...found, ...syms]
   sel = Math.min(sel, Math.max(0, hits.length - 1))
   list.replaceChildren(...(hits.length ? hits.flatMap((h, i) => {
     const row = make('button', 'finder-row' + (i === sel ? ' on' : ''))
@@ -159,7 +159,7 @@ function draw() {
       row.classList.add('on'); row.setAttribute('aria-selected', 'true'); input.setAttribute('aria-activedescendant', row.id)
       sel = i; peek()
     }
-    // a header where a section starts: commands, then windows (unnamed when first), then symbols, then files
+    // a header where a section starts: commands, then windows (unnamed when first), then files, then symbols
     const sec = section(h)
     if (sec === section(hits[i - 1]) || (sec === 'Windows' && !i)) return [row]
     const head = make('p', 'finder-sec', sec)
