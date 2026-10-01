@@ -181,16 +181,21 @@ func gitStatus(repo string) map[string]any {
 	for _, f := range files {
 		f.Staged, f.Unstaged = staged[f.Path], unstaged[f.Path]
 	}
-	ok, out = git("log", "-n", "12", "--pretty=format:%h\x1f%s\x1f%cr\x1f%an")
+	// %H last: the full hash of HEAD, which a pull request's files are compared against (are they the ones on disk?)
+	ok, out = git("log", "-n", "12", "--pretty=format:%h\x1f%s\x1f%cr\x1f%an\x1f%H")
 	var log []map[string]string
+	headSha := ""
 	if ok {
 		for _, line := range strings.Split(out, "\n") {
 			if line == "" {
 				continue
 			}
 			p := strings.Split(line, "\x1f")
-			for len(p) < 4 {
+			for len(p) < 5 {
 				p = append(p, "")
+			}
+			if headSha == "" {
+				headSha = p[4]
 			}
 			log = append(log, map[string]string{"hash": p[0], "subject": p[1], "when": p[2], "author": p[3]})
 		}
@@ -214,6 +219,6 @@ func gitStatus(repo string) map[string]any {
 	}
 	return map[string]any{
 		"repo": true, "branch": branch, "upstream": strings.Contains(head, "..."),
-		"ahead": ahead, "behind": behind, "files": fileList, "total": len(files), "log": NonNil(log),
+		"ahead": ahead, "behind": behind, "files": fileList, "total": len(files), "log": NonNil(log), "head": headSha,
 	}
 }

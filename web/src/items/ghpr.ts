@@ -1,11 +1,12 @@
 // One pull request in the GitHub window: its conversation (comment, review), its files (with the review comments
 // under their lines, and a comment on any line), its checks; merge, close, reopen, mark ready, check out.
 import { make, button, confirmBox, toast } from '../lib/dom'
+import { api } from '../lib/api'
 import { enhanceMarked } from '../lib/markdown'
 import { enhance as enhanceSelect } from '../lib/select'
 import { changed } from '../canvas/canvas'
-import { unified } from '../panels/diff'
-import { ghPost, getPr, getChecks, tally, stateOf, REVIEW, sendToClaude, sendLabel, publish, whoami, type Pr, type Inline, type What } from './gh'
+import { unified, openable, openFileButton } from '../panels/diff'
+import { ghPost, getPr, getChecks, tally, stateOf, REVIEW, sendToClaude, sendLabel, publish, whoami, here as ghRepo, type Pr, type Inline, type What } from './gh'
 import { win, load, header, conversation, note, writeBox, commentOn, ghLink, show, still } from './github'
 import { checkList, whilePending } from './ghruns'
 
@@ -94,29 +95,21 @@ function reviewBar(p: Pr) {
   return box
 }
 
-/** Where each row of `unified(part)` is: its line number and side, as GitHub's review comments count them. */
-function lineMap(part: string) {
-  const out: ({ line: number; side: Inline['side'] } | null)[] = []
-  let a = 0, b = 0
-  const lines = part.replace(/\n$/, '').split('\n')
-  const start = lines.findIndex(l => l.startsWith('@@'))
-  if (start < 0) return out
-  for (const l of lines.slice(start)) {
-    if (l.startsWith('\\')) continue
-    const h = /^@@ -(\d+)(?:,\d+)? \+(\d+)/.exec(l)
-    if (h) { a = +h[1]; b = +h[2]; out.push(null); continue }
-    out.push(l.startsWith('-') ? { line: a++, side: 'LEFT' } : l.startsWith('+') ? { line: b++, side: 'RIGHT' } : (a++, { line: b++, side: 'RIGHT' }))
-  }
-  return out
-}
-
 /** Each file as a foldable diff, its review comments under their lines (outdated ones above it). Click a line to
  *  comment on it. ponytail: pointer only; from the keyboard, comment on github.com (a focus stop per diff line would
- *  make a big diff untabbable). */
+ *  make a big diff untabbable). When HEAD is the pull request's newest commit, the files on disk are its files (bar
+ *  uncommitted edits): each opens in its window, from its button or a line number. A nested repo's paths get its
+ *  folder in front. ponytail: the project's own repo's paths are from its top, so a project opened in a subfolder of
+ *  its repo can't open them. */
 function files(p: Pr) {
   const parts = p.diff.split(/^(?=diff --git )/m).filter(s => s.startsWith('diff --git'))
   if (!parts.length) return [make('p', 'ghnote', p.diff.trim() || 'No changes.')]
-  const open = p.state === 'OPEN'
+  const open = p.state === 'OPEN', onHead: (() => void)[] = []
+  const repo = ghRepo() // the pull request's: '' the project's own repo, else a nested repo's folder
+  api<{ head?: string; nested?: { dir?: string; head?: string }[] }>('git').then(g => {
+    const st = repo ? g.nested?.find(n => n.dir === repo) : g
+    if (st?.head && st.head === p.headOid) onHead.forEach(f => f())
+  }, () => {})
   return parts.map(part => {
     const d = make('details', 'ghfile'), s = make('summary')
     const path = /^diff --git a\/.+? b\/(.+)$/m.exec(part)?.[1] ?? 'file'
@@ -125,8 +118,11 @@ function files(p: Pr) {
     const here = p.inline.filter(c => c.path === path)
     s.append(make('span', 'ghpath', path), ...(here.length ? [make('span', 'ghcount', `${here.length} comment${here.length > 1 ? 's' : ''}`)] : []), make('span', 'a', `+${add}`), make('span', 'r', `−${del}`))
     d.open = parts.length <= 8 || here.length > 0
-    const diff = unified(part), rows = [...diff.children] as HTMLElement[], map = lineMap(part)
-    rows.forEach((r, i) => { const at = map[i]; if (at) { r.dataset.line = String(at.line); r.dataset.side = at.side } })
+    const diff = unified(part), rows = [...diff.children] as HTMLElement[]
+    // where each row is as GitHub's review comments count it: a removed line by its old number, others by their new
+    for (const r of rows) if (r.dataset.n || r.dataset.a) { r.dataset.line = r.dataset.n ?? r.dataset.a; r.dataset.side = r.dataset.n ? 'RIGHT' : 'LEFT' }
+    const disk = repo ? `${repo}/${path}` : path // the project's path for it
+    if (!/^deleted file mode/m.test(part)) onHead.push(() => { s.querySelector('.ghcount, .a')!.before(openFileButton(disk, () => diff)); openable(diff, disk) })
     for (const c of here.filter(c => !c.outdated)) {
       const r = rows.find(r => r.dataset.line === String(c.line) && r.dataset.side === c.side)
       if (r) under(r, inl(c))

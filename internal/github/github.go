@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,15 +28,29 @@ func errf(format string, a ...any) *Error {
 var ghEnv = append(os.Environ(), "GH_PROMPT_DISABLED=1", "NO_COLOR=1", "GH_NO_UPDATE_NOTIFIER=1", "GH_PAGER=")
 
 // Gh runs gh in repo ("" the project, else one of its nested repos: gh then reads that repo's remote, and checks out or
-// pushes there); returns its output or a *Error with gh's own message.
+// pushes there), on the GitHub repo Repo(repo) names; returns its output or a *Error with gh's own message. Left to
+// itself gh acts on the repo the git remote names, and after a rename or transfer that's the old name: GitHub
+// redirects reads, but answers writes (a comment, a merge) with a 307 gh doesn't follow. GH_REPO points it at the
+// repo as it's called now, the same one every confirm names. Without it (no GitHub remote, gh missing) gh runs as
+// before and says why itself.
 func Gh(repo string, timeout time.Duration, stdin string, args ...string) (string, error) {
+	env := ghEnv
+	if r, err := Repo(repo); err == nil {
+		if name := strings.TrimPrefix(s(r["url"]), "https://"); name != "" { // host/owner/name: right on GitHub Enterprise too
+			env = append(slices.Clip(ghEnv), "GH_REPO="+name)
+		}
+	}
+	return gh(repo, timeout, stdin, env, args...)
+}
+
+func gh(repo string, timeout time.Duration, stdin string, env []string, args ...string) (string, error) {
 	if err := gitx.Check(repo); err != nil {
 		return "", &Error{err.Error()}
 	}
 	if timeout == 0 {
 		timeout = 60 * time.Second
 	}
-	r, err := procx.RunEnvIn(gitx.Path(repo), timeout, stdin, ghEnv, append([]string{"gh"}, args...)...)
+	r, err := procx.RunEnvIn(gitx.Path(repo), timeout, stdin, env, append([]string{"gh"}, args...)...)
 	if err != nil {
 		var execErr *exec.Error
 		if errors.As(err, &execErr) {
@@ -203,9 +218,14 @@ func Repo(repo string) (map[string]any, error) {
 	if v := repoCache.val[repo]; v != nil {
 		return v, nil
 	}
-	var v map[string]any
-	if err := GhJSON(repo, 0, "", &v, "repo", "view", "--json", "nameWithOwner,url,defaultBranchRef"); err != nil {
+	// asked of gh as it is (not Gh, which asks this): it follows the remote's old name to the repo's current one
+	out, err := gh(repo, 0, "", ghEnv, "repo", "view", "--json", "nameWithOwner,url,defaultBranchRef")
+	if err != nil {
 		return nil, err
+	}
+	var v map[string]any
+	if err := json.Unmarshal([]byte(out), &v); err != nil || v == nil {
+		return nil, errf("gh repo view answered something that isn't a repo")
 	}
 	repoCache.val[repo] = v
 	return v, nil

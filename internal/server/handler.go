@@ -31,6 +31,7 @@ import (
 	"drawa/internal/live"
 	"drawa/internal/prefs"
 	"drawa/internal/sessions"
+	"drawa/internal/symbols"
 	"drawa/internal/update"
 	"drawa/internal/webassets"
 )
@@ -114,6 +115,7 @@ var getRoutes = map[string]routeFunc{
 		return ok(gitx.GitDiff(q.Get("repo"), p, q.Get("staged") == "1"))
 	},
 	"/api/files":     func(q url.Values) (any, int, error) { return filesx.Find(q.Get("q"), 40), 200, nil },
+	"/api/symbols":   symbolsRoute,
 	"/api/meta":      func(q url.Values) (any, int, error) { return live.Meta(q.Get("backend")), 200, nil },
 	"/api/sessions":  func(q url.Values) (any, int, error) { return allSessions(), 200, nil },
 	"/api/agents":    func(q url.Values) (any, int, error) { return agents(), 200, nil },
@@ -139,6 +141,22 @@ func prefsAnswer(p map[string]any, err error) map[string]any {
 		out["error"] = err.Error()
 	}
 	return out
+}
+
+// symbolsRoute is code definitions: ?q= fuzzy by name (Ctrl+K), ?def= exactly this name (a diff's go to
+// definition), or neither: whether universal-ctags is installed (the Settings panel says). Lookups are empty when
+// it isn't, or when your settings turn symbols off.
+func symbolsRoute(q url.Values) (any, int, error) {
+	if !q.Has("q") && !q.Has("def") {
+		return map[string]any{"installed": symbols.Installed()}, 200, nil
+	}
+	if p, _ := prefs.Load(); p["symbols"] == "off" {
+		return []symbols.Symbol{}, 200, nil
+	}
+	if q.Has("def") {
+		return symbols.Exact(q.Get("def"), 50), 200, nil
+	}
+	return symbols.Fuzzy(q.Get("q"), 40), 200, nil
 }
 
 func ghList(q url.Values) github.List {

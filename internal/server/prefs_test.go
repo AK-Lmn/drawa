@@ -27,3 +27,21 @@ func TestPrefsRoutes(t *testing.T) {
 		}
 	}
 }
+
+// /api/symbols says whether ctags is there; with symbols turned off in your settings, lookups answer an empty list.
+func TestSymbolsRoute(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	srv := httptest.NewServer(Handler())
+	defer srv.Close()
+	if code, body := call(t, srv, "GET", "/api/symbols", ""); code != 200 || !strings.Contains(body, `"installed":`) {
+		t.Errorf("status: %d %s", code, body)
+	}
+	if code, body := call(t, srv, "POST", "/api/prefs", `{"symbols":"off"}`); code != 200 || !strings.Contains(body, `"symbols":"off"`) {
+		t.Fatalf("turning symbols off: %d %s", code, body)
+	}
+	for _, path := range []string{"/api/symbols?q=find", "/api/symbols?def=Find"} {
+		if code, body := call(t, srv, "GET", path, ""); code != 200 || body != "[]" {
+			t.Errorf("%s with symbols off: %d %s", path, code, body)
+		}
+	}
+}

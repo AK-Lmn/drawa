@@ -1,8 +1,11 @@
-// A diff block for every Edit / MultiEdit / Write. Blocks live on their file's node; the inspector shows them.
+// A diff block for every Edit / MultiEdit / Write. Blocks live on their file's node; the inspector shows them. Names in
+// them lead to their definitions (defs.ts).
 import { diffLines } from 'diff'
-import { make } from '../lib/dom'
+import { make, iconButton, ICON } from '../lib/dom'
 import { api, q } from '../lib/api'
 import type { Session } from '../session/session'
+import { definable, defField } from './defs'
+import { openFileAt } from '../canvas/find'
 
 export type Change = HTMLDivElement & { file: string; add: number; del: number }
 const MAX_LINES = 600 // ponytail: per-change cap; huge writes are unreadable as a diff anyway
@@ -39,7 +42,7 @@ export function change(S: Session, tool: string, file: string, inp: Record<strin
   c.add = add
   c.del = del
   stat.append(make('span', 'a', `+${add}`), ' ', make('span', 'r', `−${del}`))
-  h.append(who, stat, make('span', 'state', 'pending'))
+  h.append(who, stat, defField(), make('span', 'state', 'pending'))
   // click the header to fold the diff down to this one line
   h.tabIndex = 0
   h.setAttribute('role', 'button')
@@ -48,6 +51,7 @@ export function change(S: Session, tool: string, file: string, inp: Record<strin
   h.onclick = fold
   h.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fold() } }
   c.append(h, body)
+  definable(c) // on the change, not its rows: inFile swaps the rows for the file's
   return c
 }
 
@@ -95,17 +99,48 @@ export function settleChange(c: Change, ok: boolean) {
   c.querySelector('.state')!.textContent = ok ? '' : 'failed'
 }
 
-/** A unified diff as rows in the same style as the inspector's diffs. */
+/** A unified diff as rows in the same style as the inspector's diffs, each numbered with its line in the new file
+ *  (`data-n`, shown in the gutter; a removed line has its old one instead, `data-a`, not shown). */
 export function unified(text: string) {
-  const box = make('div', 'diff')
+  const box = make('div', 'diff num')
   const lines = text.replace(/\n$/, '').split('\n')
   const start = lines.findIndex(l => l.startsWith('@@'))
+  let a = 0, b = 0, last = 0
   for (const l of start < 0 ? ['(no textual changes)'] : lines.slice(start)) {
     if (l.startsWith('\\')) continue // "\ No newline at end of file"
     // a hunk header says where it is: git's function context, or the line number when there's none
-    if (l.startsWith('@@')) { box.append(make('div', 'sep hunk', l.replace(/^@@ -\d+(?:,\d+)? \+(\d+).*?@@\s?(.*)$/, (_, n, ctx) => ctx || `line ${n}`))); continue }
-    const kind = l.startsWith('+') ? 'add' : l.startsWith('-') ? 'del' : 'eq'
-    box.appendChild(make('div', kind, l.slice(1))).dataset.s = kind === 'add' ? '+' : kind === 'del' ? '−' : ''
+    const h = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@\s?(.*)$/.exec(l)
+    if (h) { a = +h[1]; b = +h[2]; box.append(make('div', 'sep hunk', h[3] || `line ${b}`)); continue }
+    const kind = l.startsWith('+') ? 'add' : l.startsWith('-') ? 'del' : 'eq', row = box.appendChild(make('div', kind, l.slice(1)))
+    row.dataset.s = kind === 'add' ? '+' : kind === 'del' ? '−' : ''
+    if (start < 0) continue
+    if (kind !== 'add') row.dataset.a = String(a++)
+    if (kind !== 'del') row.dataset.n = String(last = b++)
   }
+  box.style.setProperty('--ln', `${String(last).length + 1}ch`) // the gutter fits the biggest number
   return box
+}
+
+/** Let a unified() diff of `path` open the file: clicking a line number opens it in its window at that line. Only
+ *  for a diff whose new side is the file on disk. */
+export function openable(diff: HTMLElement, path: string) {
+  diff.classList.add('opens')
+  diff.addEventListener('click', e => {
+    const r = e.target as HTMLElement
+    if (r.parentElement !== diff || !r.dataset.n) return
+    // the gutter is the row's first column; offsetX is in the row's own pixels, so it's right at any canvas zoom
+    if (e.offsetX > parseFloat(getComputedStyle(r).gridTemplateColumns)) return
+    e.stopPropagation() // not also a click on the line (a pull request's line comment)
+    openFileAt(path, Number(r.dataset.n))
+  }, true) // capturing: first, whenever this was added
+}
+
+/** A button that opens `path` in its window: at the first line `diff` adds, or the first it shows, when it's open. */
+export function openFileButton(path: string, diff: () => HTMLElement | null) {
+  const b = iconButton(ICON.file, `Open ${path}`, () => {
+    const d = diff(), r = d?.querySelector<HTMLElement>(':scope>.add[data-n]') ?? d?.querySelector<HTMLElement>(':scope>[data-n]')
+    openFileAt(path, r ? Number(r.dataset.n) : undefined)
+  })
+  b.addEventListener('click', e => e.preventDefault()) // in a <summary>: open the file, don't fold the diff
+  return b
 }

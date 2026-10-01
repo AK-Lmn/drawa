@@ -10,8 +10,9 @@ export interface Prefs {
   theme: 'system' | 'light' | 'dark' // lib/theme.ts, with a scheme for each mode
   lightScheme: string
   darkScheme: string
+  symbols: 'auto' | 'off' // lib/symbols.ts: code symbols from universal-ctags when it's installed, or never
 }
-const DEFAULTS: Prefs = { ui: 'full', theme: 'system', lightScheme: 'claude-light', darkScheme: 'claude-dark' }
+const DEFAULTS: Prefs = { ui: 'full', theme: 'system', lightScheme: 'claude-light', darkScheme: 'claude-dark', symbols: 'auto' }
 const KEY = 'drawa:prefs'
 const read = (key: string) => { try { return JSON.parse(localStorage.getItem(key) ?? 'null') } catch { return null } }
 

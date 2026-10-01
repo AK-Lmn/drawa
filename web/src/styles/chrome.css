@@ -53,6 +53,7 @@
 #settings input:focus{border-color:var(--focus)}
 #settings .preview{margin:8px 0 0;padding:10px;border-radius:var(--r-box);background:var(--rail);font:15px var(--sans);color:var(--ink)}
 #settings .where{margin:4px 0 0;font-size:11.5px;line-height:1.4;color:var(--muted)}
+#settings .where code{font:10.5px var(--mono);padding:1px 4px;border-radius:var(--r-tag);background:var(--hover);color:var(--ink)}
 #settings .preview code{font:13px var(--mono);padding:1px 5px;border-radius:var(--r-tag);background:var(--hover)}
 
 #nav{right:12px;bottom:12px;display:flex;flex-direction:column;gap:6px;padding:6px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow)}
@@ -89,9 +90,9 @@
 .finder.peeking{width:min(980px,calc(100vw - 24px))}
 .finder-b{flex:1;min-height:0;display:flex}
 .finder-list{flex:1;min-width:0;min-height:0;overflow:auto;padding:4px}
-.finder-peek{display:none;flex:1.3;min-width:0;overflow:auto;border-left:1px solid var(--line);background:var(--bg)}
+.finder-peek{display:none;position:relative;flex:1.3;min-width:0;overflow:auto;border-left:1px solid var(--line);background:var(--bg)}
 .finder.peeking .finder-peek{display:block}
-.finder-peek .src{font-size:11.5px;line-height:18px}
+.finder-peek .src{--lh:18px;font-size:11.5px;line-height:var(--lh)}
 .finder-peek .mdview{padding:14px 18px}
 .finder-img{display:block;max-width:100%;max-height:100%;margin:auto;padding:12px;object-fit:contain}
 @media (max-width:720px){.finder.peeking .finder-peek{display:none}}

@@ -4,7 +4,7 @@
 import { make, ICON, iconButton, button, confirmBox, project } from '../lib/dom'
 import { api, post, q } from '../lib/api'
 import { changed } from '../canvas/canvas'
-import { unified } from '../panels/diff'
+import { unified, openable, openFileButton } from '../panels/diff'
 import { writer, setWriter, who, installed, blurb, chooser } from '../lib/agents'
 import { ghStrip, type Strip } from './gitgh'
 
@@ -143,7 +143,10 @@ function row(v: RepoView, f: GitFile, isStaged: boolean, host: Host) {
   const stat = make('span', 's')
   if (a || d) stat.append(make('span', 'a', `+${a}`), ' ', make('span', 'r', `−${d}`))
   const act = iconButton(isStaged ? '<svg viewBox="0 0 16 16"><path d="M3.5 8h9"/></svg>' : ICON.plus, isStaged ? 'Unstage' : 'Stage', () => op(v, host, isStaged ? 'unstage' : 'stage', [f.path]))
-  r.append(name, stat, act)
+  // a deleted file has nothing on disk to open; an untracked folder isn't a file. Paths are the project's: a nested
+  // repo's open as they are
+  const opens = !folder && word !== 'deleted'
+  r.append(name, stat, ...(opens ? [openFileButton(f.path, () => wrap.querySelector('.diff'))] : []), act)
   wrap.append(r)
   const toggle = async () => {
     const open = wrap.querySelector('.diff')
@@ -153,7 +156,8 @@ function row(v: RepoView, f: GitFile, isStaged: boolean, host: Host) {
     host.open.add(key)
     try {
       const { diff } = await api<{ diff: string }>(`git/diff?repo=${q(v.dir)}&path=${q(f.path)}&staged=${isStaged ? 1 : 0}`)
-      wrap.append(unified(diff))
+      const d = wrap.appendChild(unified(diff))
+      if (opens) openable(d, f.path) // its new side is the file as staged or as it is: line numbers that match it
     } catch (e) { // not an empty open row: closed again, and why
       wrap.classList.remove('open')
       name.setAttribute('aria-expanded', 'false')
