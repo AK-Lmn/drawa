@@ -7,7 +7,7 @@ import { enhanceMarked } from '../lib/markdown'
 import { $, make, ping, reducedMotion } from '../lib/dom'
 import { command, commands, MOD } from '../lib/keys'
 import { items, centerOn, front, onCanvas, hidden } from './canvas'
-import { refIcon, kindName } from './refs'
+import { refIcon, kindName, refStatus } from './refs'
 import { titleOf, expand, focusInput } from './window'
 
 const box = document.body.appendChild(make('div', 'finder'))
@@ -131,9 +131,11 @@ function draw() {
     row.setAttribute('role', 'option')
     row.setAttribute('aria-selected', String(i === sel))
     row.dataset.kind = h.kind
+    const status = h.el && refStatus(h.el)
+    if (status) row.dataset.state = h.el!.dataset.state
     const main = make('span', 'fr-main')
     main.append(make('b', '', h.title || '(untitled)'), ...(h.excerpt ? [make('small', '', h.excerpt)] : []))
-    row.append(make('i', 'fr-g', h.run ? '›' : refIcon(h.kind)), main, make('span', 'fr-k', h.run ? h.key ?? '' : kindName(h.kind)))
+    row.append(make('i', 'fr-g', h.run ? '›' : refIcon(h.kind)), main, make('span', 'fr-k', h.run ? h.key ?? '' : status || kindName(h.kind)))
     row.onmousedown = e => { e.preventDefault(); pick(h) }
     // mousemove, not mouseenter: a redraw puts a new row under a resting pointer, which would take the highlight back from the arrow keys
     row.onmousemove = () => {

@@ -145,10 +145,13 @@ persist('cards',
 persist('focus', () => cur?.sid ?? undefined)
 // a deleted selection closes cards without the × button's own confirm (its delete confirm covers them), and says what that means
 removable('session', el => { const S = cards.find(s => s.card === el); if (S) closeSession(S) }, 'Sessions are closed, stopping any that are working; their conversations stay in History.')
+
+const STATUS: Record<string, string> = { asking: 'Needs you', busy: 'Working', done: 'Done' }
 // drop a card on another card's message box: that conversation goes along as context (its recent part, as text)
 referable('session', {
   icon: '◆',
   label: el => cards.find(s => s.card === el)?.title ?? 'session',
+  status: el => STATUS[el.dataset.state ?? ''],
   content: (el, label) => {
     const S = cards.find(s => s.card === el)
     const lines = [...(S?.log.children ?? [])].flatMap(r => {

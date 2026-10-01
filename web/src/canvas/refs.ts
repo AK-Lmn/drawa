@@ -16,6 +16,8 @@ interface Referable {
   name?: string
   /** What a chip and the @ menu call it (default: the window's title). */
   label?: (el: HTMLElement) => string
+  /** What the item is doing */
+  status?: (el: HTMLElement) => string | undefined
   content: (el: HTMLElement, label: string) => Promise<Content> | Content
 }
 const kinds = new Map<string, Referable>()
@@ -24,6 +26,7 @@ const kinds = new Map<string, Referable>()
 export const referable = (kind: string, r: Referable) => { kinds.set(kind, r) }
 export const refIcon = (kind: string) => kinds.get(kind)?.icon ?? '•'
 export const kindName = (kind: string) => kinds.get(kind)?.name ?? kind
+export const refStatus = (el: HTMLElement) => kinds.get(el.dataset.kind ?? '')?.status?.(el)
 
 export function refOf(el: HTMLElement): Ref | null {
   const kind = el.dataset.kind, r = kind ? kinds.get(kind) : undefined
