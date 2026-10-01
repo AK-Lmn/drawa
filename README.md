@@ -239,7 +239,7 @@ To report a vulnerability, see [SECURITY.md](SECURITY.md): please open a [privat
 
 ## Contributing
 
-Issues and pull requests are welcome. Maintainers cut the releases; a merged pull request ships in the next one. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and an architecture overview, and [CLAUDE.md](CLAUDE.md) for the conventions the codebase follows. Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+Questions, ideas and things you built with Drawa go to [Discussions](https://github.com/HimalayanNomads/drawa/discussions). Issues and pull requests are welcome. Maintainers cut the releases; a merged pull request ships in the next one. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and an architecture overview, and [CLAUDE.md](CLAUDE.md) for the conventions the codebase follows. Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 

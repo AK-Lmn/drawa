@@ -8,6 +8,7 @@ Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT
 
 You can contribute in several ways:
 
+- Asking and answering questions, and talking ideas through, in [Discussions](https://github.com/HimalayanNomads/drawa/discussions)
 - [Reporting bugs](#reporting-bugs)
 - [Suggesting features](#suggesting-features)
 - [Suggesting enhancements and improvements](#suggesting-enhancements-and-improvements)

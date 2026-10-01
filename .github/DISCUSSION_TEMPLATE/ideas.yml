@@ -1,0 +1,22 @@
+body:
+  - type: markdown
+    attributes:
+      value: Ideas start here so others can weigh in. Once one is shaped, it moves to a [feature request](https://github.com/HimalayanNomads/drawa/issues/new?template=feature_request.yml).
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's the problem?
+      description: What you were doing when you wished Drawa did something else.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: How it could work. Sketches and screenshots help.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do today instead
