@@ -128,7 +128,13 @@ func createPr(b map[string]any) map[string]any {
 		}
 		return map[string]any{"ok": false, "out": out}
 	}
-	args := []string{"pr", "create", "--title=" + title, "--base=" + base, "--body-file", "-"}
+	// --head: the branch just pushed. gh would look for it on a remote named like the repo, which a renamed repo's
+	// remote isn't
+	_, branch := gitx.GitOpts(gitx.Opts{Repo: repo}, "branch", "--show-current")
+	if _, err := BranchArg(branch); err != nil {
+		return fail(err)
+	}
+	args := []string{"pr", "create", "--title=" + title, "--base=" + base, "--head=" + branch, "--body-file", "-"}
 	if truthy(b["draft"]) {
 		args = append(args, "--draft")
 	}
