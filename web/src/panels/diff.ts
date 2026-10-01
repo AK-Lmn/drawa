@@ -1,8 +1,10 @@
-// A diff block for every Edit / MultiEdit / Write. Blocks live on their file's node; the inspector shows them.
+// A diff block for every Edit / MultiEdit / Write. Blocks live on their file's node; the inspector shows them. Names in
+// them lead to their definitions (defs.ts).
 import { diffLines } from 'diff'
 import { make } from '../lib/dom'
 import { api, q } from '../lib/api'
 import type { Session } from '../session/session'
+import { definable, defField } from './defs'
 
 export type Change = HTMLDivElement & { file: string; add: number; del: number }
 const MAX_LINES = 600 // ponytail: per-change cap; huge writes are unreadable as a diff anyway
@@ -39,7 +41,7 @@ export function change(S: Session, tool: string, file: string, inp: Record<strin
   c.add = add
   c.del = del
   stat.append(make('span', 'a', `+${add}`), ' ', make('span', 'r', `−${del}`))
-  h.append(who, stat, make('span', 'state', 'pending'))
+  h.append(who, stat, defField(), make('span', 'state', 'pending'))
   // click the header to fold the diff down to this one line
   h.tabIndex = 0
   h.setAttribute('role', 'button')
@@ -48,6 +50,7 @@ export function change(S: Session, tool: string, file: string, inp: Record<strin
   h.onclick = fold
   h.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fold() } }
   c.append(h, body)
+  definable(c) // on the change, not its rows: inFile swaps the rows for the file's
   return c
 }
 

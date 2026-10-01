@@ -144,8 +144,14 @@ func projectFiles() ([]string, []string) {
 	return files, low
 }
 
-// spread: query letters in order inside text -> how spread out the tightest left-anchored match is (-1 if none).
-func spread(q, text string) int {
+// List is every file in the project, as @ search sees it (code symbols are read from these, see internal/symbols).
+func List() []string {
+	files, _ := projectFiles()
+	return files
+}
+
+// Spread: query letters in order inside text -> how spread out the tightest left-anchored match is (-1 if none).
+func Spread(q, text string) int {
 	best := -1
 	starts := 0
 	first, size := utf8.DecodeRuneInString(q)
@@ -213,9 +219,9 @@ func Find(q string, limit int) []string {
 			s = float64(idx) / 100
 		} else if strings.Contains(l, q) {
 			s = 10
-		} else if g := spread(q, name); g >= 0 {
+		} else if g := Spread(q, name); g >= 0 {
 			s = float64(20 + g)
-		} else if g := spread(q, l); g >= 0 {
+		} else if g := Spread(q, l); g >= 0 {
 			s = float64(40 + g)
 		} else {
 			continue

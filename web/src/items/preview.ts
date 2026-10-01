@@ -1,8 +1,9 @@
 // File previews: a project file in a window, opened from Ctrl+K. Code is highlighted, Markdown rendered, pictures
 // shown. Only the path is saved: the file is read from disk when the window opens (again after a reload, or with
-// the reload button), so it shows the file as it is without filling localStorage. One window per file.
+// the reload button), so it shows the file as it is without filling localStorage. One window per file; opened at a
+// line (a code symbol), it marks that line until the page reloads.
 import { api, q } from '../lib/api'
-import { make, iconButton, ICON } from '../lib/dom'
+import { make, iconButton, ICON, revealIn } from '../lib/dom'
 import { enhanceMarked } from '../lib/markdown'
 import { persist, each } from '../lib/store'
 import { items, savedRect, freeSpot, viewCenter, changed, type Rect } from '../canvas/canvas'
@@ -26,12 +27,16 @@ referable('preview', {
   content: el => ({ text: `File: ${el.dataset.path} (read it if you need its contents)` }),
 })
 
-/** A text file as shown: Markdown rendered, anything else as code. `lines`: only the start (Ctrl+K's preview). */
-async function textView(path: string, lines?: number) {
+/** A text file as shown: Markdown rendered, anything else as code. `lines`: only that many (Ctrl+K's preview), from
+ *  the start or from a little above `at`, a line to mark (shown as source then, even for Markdown). */
+async function textView(path: string, lines?: number, at?: number) {
   try {
-    let { text } = await api<{ text: string | null }>('file?path=' + q(path))
-    if (text != null && lines) text = text.split('\n', lines).join('\n')
-    return text != null && isMarkdown(path) ? mdView(path, text) : await sourceView(path, text)
+    let { text } = await api<{ text: string | null }>('file?path=' + q(path)), first = 1
+    if (text != null && lines) {
+      first = Math.max(1, (at ?? 1) - 20)
+      text = text.split('\n', first - 1 + lines).slice(first - 1).join('\n')
+    }
+    return text != null && isMarkdown(path) && !at ? mdView(path, text) : await sourceView(path, text, { first, at })
   } catch (e) {
     return make('p', 'none', (e as Error).message)
   }
@@ -55,7 +60,9 @@ function picture(el: HTMLElement, host: HTMLElement, again: boolean) {
   return img
 }
 
-export function preview(o: { path: string; title?: string; rect: Rect }) {
+const toLine = new WeakMap<HTMLElement, (line: number) => void>()
+
+export function preview(o: { path: string; title?: string; rect: Rect; line?: number }) {
   const { el, body } = makeWindow({
     kind: 'preview', cls: 'pvnode', title: o.title || o.path.split('/').pop()!, rect: o.rect, minW: 200, minH: 120,
     actions: [iconButton(ICON.reload, 'Read the file again', () => load(true)), removeButton('Remove from canvas')],
@@ -70,22 +77,25 @@ export function preview(o: { path: string; title?: string; rect: Rect }) {
   if (image) body.classList.add('inode-b')
   host.append(make('p', 'none', 'Reading…'))
   body.append(host)
-  let loads = 0 // only the newest read is shown, when the reload button is pressed while one is still coming
+  let loads = 0, at = o.line // only the newest read is shown, when the reload button is pressed while one is still coming
   const load = async (again = false) => {
-    const n = ++loads, view = image ? picture(el, host, again) : await textView(o.path)
-    if (n === loads) fill(host, view)
+    const n = ++loads, view = image ? picture(el, host, again) : await textView(o.path, undefined, at)
+    if (n !== loads) return
+    fill(host, view)
+    revealIn(host)
   }
   load()
+  toLine.set(el, line => { at = line; load() }) // read again: the line is where it is in the file now
   return el
 }
 
-fileOpener(path => {
+fileOpener((path, line) => {
   const open = items('preview').find(el => el.dataset.path === path)
-  if (open) return open // a file already open is flown to rather than opened twice
-  const c = viewCenter(), el = preview({ path, rect: freeSpot({ x: c.x - 260, y: c.y - 200, w: 520, h: 400 }) })
+  if (open) { if (line) toLine.get(open)?.(line); return open } // a file already open is flown to rather than opened twice
+  const c = viewCenter(), el = preview({ path, line, rect: freeSpot({ x: c.x - 260, y: c.y - 200, w: 520, h: 400 }) })
   changed()
   return el
-}, async path => IMAGE.test(path) ? Object.assign(make('img', 'finder-img'), { src: '/api/raw?path=' + q(path), alt: '' }) : textView(path, 200))
+}, async (path, line) => IMAGE.test(path) ? Object.assign(make('img', 'finder-img'), { src: '/api/raw?path=' + q(path), alt: '' }) : textView(path, 200, line))
 
 persist('previews',
   () => items('preview').map((el): Saved => ({ path: el.dataset.path!, title: winTitle(el), rect: savedRect(el) })),

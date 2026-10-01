@@ -102,14 +102,22 @@ export function showTab(which: 'changes' | 'viewer') {
 
 export const isMarkdown = (p: string) => /\.(md|markdown|mdx)$/i.test(p)
 
-/** A file's text as code with line numbers, highlighted by its extension. Also the preview window's body. */
-export async function sourceView(p: string, text: string | null) {
+/** A file's text as code with line numbers, highlighted by its extension. Also the preview window's body.
+ *  `first`: the number of the text's first line, when it's part of a file; `at`: a line to mark (revealIn finds it). */
+export async function sourceView(p: string, text: string | null, { first = 1, at }: { first?: number; at?: number } = {}) {
   const src = make('div', 'src'), ln = make('pre', 'ln'), pre = make('pre'), code = make('code', '', text ?? 'Binary file, not shown.')
   src.dataset.path = p // pinning a selection names the file and its lines (snippet.ts)
+  if (first > 1) src.dataset.first = String(first)
   const lines = text == null ? 1 : text.replace(/\n$/, '').split('\n').length
-  ln.textContent = Array.from({ length: lines }, (_, i) => i + 1).join('\n')
+  ln.textContent = Array.from({ length: lines }, (_, i) => i + first).join('\n')
   pre.append(code)
   src.append(ln, pre)
+  // a band behind the line, placed by CSS from its index: no layout read to draw it
+  if (at && text != null && at >= first && at < first + lines) {
+    const mark = src.appendChild(make('i', 'src-at'))
+    mark.style.setProperty('--at', String(at - first))
+    mark.dataset.reveal = ''
+  }
   const ext = p.split('.').pop()!
   if (text != null && text.length < 300_000) {
     const hljs = await highlighter()

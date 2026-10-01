@@ -4,6 +4,7 @@ import './lib/fonts' // applies the saved font choice right away
 import './lib/theme'
 import './lib/uimode' // full or minimal interface, from your settings file (lib/prefs.ts)
 import './lib/settings' // the toolbar's Settings panel
+import './lib/symbols' // code symbols for Ctrl+K and diffs; its Settings control asks the server whether ctags is there
 import './lib/tooltip' // the app's own tooltips for every title="…"
 import './lib/update' // checks GitHub for a newer release and offers to install it
 import { api } from './lib/api'

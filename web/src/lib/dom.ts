@@ -125,6 +125,15 @@ export function pathEl(cls: string, p: string) {
   return e
 }
 
+/** Scroll `scroller` so what in it is marked `data-reveal` (a line to show) sits a third of the way down. `scroller`
+ *  must be positioned. Offsets rather than screen rects, so it's right at any canvas zoom. */
+export function revealIn(scroller: HTMLElement) {
+  let top = 0, e = scroller.querySelector<HTMLElement>('[data-reveal]')
+  if (!e) return
+  for (; e && e !== scroller; e = e.offsetParent as HTMLElement | null) top += e.offsetTop // reads only: one layout
+  scroller.scrollTop = top - scroller.clientHeight / 3
+}
+
 /** A brief outline flash drawing the eye to an element. Web Animations: no forced layout, safe to call often. */
 let quietUntil = 0
 export const ping = (el: HTMLElement) => {

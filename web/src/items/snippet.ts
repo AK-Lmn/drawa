@@ -86,7 +86,7 @@ function selectionSource(node: Element, range: Range, text: string): Source | nu
   if (src) {
     if (node.closest('.ln')) return null
     const code = src.querySelector('pre:not(.ln) code')!, path = src.dataset.path!
-    const start = textBefore(code, range).split('\n').length, end = start + text.replace(/\n$/, '').split('\n').length - 1
+    const start = textBefore(code, range).split('\n').length + Number(src.dataset.first ?? 1) - 1, end = start + text.replace(/\n$/, '').split('\n').length - 1
     return { title: `${path}:${start}${end > start ? '-' + end : ''}`, text, type: 'code', lang: path.split('.').pop() ?? '', host: src.closest<HTMLElement>('.item') }
   }
   // a diff (inspector's Changes, the Git window): code from that file

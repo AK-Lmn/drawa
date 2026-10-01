@@ -42,6 +42,7 @@ Drawa runs entirely on your machine. It drives the agent CLIs you already have, 
 | [Codex](https://developers.openai.com/codex/cli) | Or: `codex` on `PATH` and logged in, for your ChatGPT plan or an OpenAI API key. See below. Tested with Codex 0.158.0. |
 | `git` | Optional. Powers the Git window and file history. |
 | [`gh`](https://cli.github.com) | Optional. Powers the GitHub window. |
+| [universal-ctags](https://github.com/universal-ctags/ctags) | Optional. Code symbols: `Ctrl+K` finds functions, classes and the like by name, and clicking a name in a diff shows where it's defined. `brew install universal-ctags` on a Mac. Turn it off in Settings. |
 | OS | macOS or Linux. Windows isn't supported yet. |
 
 ### Choosing an agent
@@ -217,7 +218,7 @@ Shortcuts follow Excalidraw's where the tool exists, and don't fire while you're
 | Area | Keys |
 |---|---|
 | **Canvas** | `V`/`1` select · `H` hand (hold `Space` to pan) · `Shift+1` fit all · `Shift+2` zoom to selection · `Shift+0` zoom 100% · `F` fit · `+`/`-` zoom in/out · arrows pan (`Shift`: bigger steps; with a selection they nudge it instead) |
-| **Items** | `N` new session · `C`/`Shift+C` next/previous session (`Enter` to type) · `T` sticky note · `S` scratchpad · `9` insert picture · `G` Git · `Shift+G` GitHub · `Shift+H` history & files · `Ctrl+K` find a window, file or command · `?` all shortcuts |
+| **Items** | `N` new session · `C`/`Shift+C` next/previous session (`Enter` to type) · `T` sticky note · `S` scratchpad · `9` insert picture · `G` Git · `Shift+G` GitHub · `Shift+H` history & files · `Ctrl+K` find a window, file, code symbol or command · `?` all shortcuts |
 | **Windows** | `W`/`Shift+W` next/previous window (selects it, so `Delete`, arrows and `Ctrl+G` act on it) · `M` collapse/expand · `Shift+F` full view · `F2` rename · `Shift+P` pin to the sidebar · `Shift+S` stick to the screen. They act on the selected window, else the one in front |
 | **Draw** | `D` toggle Draw mode · `P`/`7` pen · `A`/`5` arrow between items · `E`/`0` eraser · `T`/`8` text · `R`/`2` rectangle · `3` diamond · `O`/`4` ellipse · `L`/`6` line (`Shift` for square, circle, 45°) · `Ctrl+Z` undo · `Esc` stop |
 | **Selection** | `Ctrl/Cmd+A` select all · arrows nudge (`Shift`: 10px) · `Delete` remove · `Esc` clear · `Ctrl/Cmd+G` group the selected windows (groups in it merge; nothing selected: an empty group) · `Ctrl/Cmd+Shift+G` ungroup the selected groups |

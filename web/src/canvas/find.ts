@@ -1,11 +1,13 @@
 // Find a window: Ctrl/Cmd+K (or the toolbar's search button) lists everything on the canvas; type to filter by
-// title and content, Enter flies to it, brings it to the front and expands it if it was collapsed. Project files
-// matching the query are listed below the windows, the highlighted one previewed beside the list; picking one opens
-// it in a window (see fileOpener). Commands (lib/keys.ts entries with `run`) matching the query are listed above.
+// title and content, Enter flies to it, brings it to the front and expands it if it was collapsed. Code symbols
+// (lib/symbols.ts) and project files matching the query are listed below the windows, the highlighted one previewed
+// beside the list; picking one opens its file in a window (see fileOpener), at the symbol's line. Commands
+// (lib/keys.ts entries with `run`) matching the query are listed above.
 import { api, q as enc } from '../lib/api'
 import { enhanceMarked } from '../lib/markdown'
-import { $, make, ping, reducedMotion } from '../lib/dom'
+import { $, make, ping, reducedMotion, revealIn } from '../lib/dom'
 import { command, commands, MOD } from '../lib/keys'
+import { findSymbols, symbolsOn, type CodeSymbol } from '../lib/symbols'
 import { items, centerOn, front, onCanvas, hidden } from './canvas'
 import { refIcon, kindName, refStatus } from './refs'
 import { titleOf, expand, focusInput } from './window'
@@ -15,7 +17,6 @@ box.hidden = true
 box.setAttribute('role', 'dialog')
 box.setAttribute('aria-label', 'Find a window, file or command')
 const input = box.appendChild(make('input'))
-input.placeholder = 'Find a window, file or command'
 input.setAttribute('aria-label', 'Find a window, file or command')
 const body = box.appendChild(make('div', 'finder-b'))
 const list = body.appendChild(make('div', 'finder-list'))
@@ -35,7 +36,8 @@ function textOf(el: HTMLElement) {
   return parts.reverse().join('\n').slice(-TEXT)
 }
 
-interface Hit { el?: HTMLElement; path?: string; run?: () => void; key?: string; title: string; kind: string; excerpt: string; score: number }
+// `line` and `tag` (ctags' kind of definition): a code symbol
+interface Hit { el?: HTMLElement; path?: string; line?: number; tag?: string; run?: () => void; key?: string; title: string; kind: string; excerpt: string; score: number }
 interface Entry { el: HTMLElement; title: string; t: string; kind: string; body: string; b: string }
 let hits: Hit[] = [], sel = 0, index: Entry[] = []
 /** Read every window's title and text once, when the finder opens: typing then only filters this. */
@@ -48,47 +50,59 @@ function build() {
   })
 }
 
-let openFile: ((path: string) => HTMLElement) | null = null, peekFile: ((path: string) => Promise<HTMLElement>) | null = null
-/** List project files too: picking one calls `open`, which returns its window (an open one, or a new one); the
- *  highlighted one is shown beside the list with what `peek` draws. */
+let openFile: ((path: string, line?: number) => HTMLElement) | null = null, peekFile: ((path: string, line?: number) => Promise<HTMLElement>) | null = null
+/** List project files and code symbols too: picking one calls `open`, which returns its file's window (an open one,
+ *  or a new one) showing `line` when given; the highlighted one is shown beside the list with what `peek` draws. */
 export const fileOpener = (open: typeof openFile, peek: typeof peekFile) => { openFile = open; peekFile = peek }
 
 // the highlighted file's preview, kept while the finder is open so going back to a file is instant.
 // ponytail: kept unbounded until close (a few hundred files at most per open); an LRU if that grows.
 let peeked = ''
 const peeks = new Map<string, Promise<HTMLElement>>()
-const peekOf = (path: string) => { let v = peeks.get(path); if (!v) peeks.set(path, v = peekFile!(path)); return v }
+const peekOf = (path: string, line?: number) => {
+  const key = line ? `${path}:${line}` : path
+  let v = peeks.get(key)
+  if (!v) peeks.set(key, v = peekFile!(path, line))
+  return v
+}
 function peek() {
   box.classList.toggle('peeking', !!peekFile && !!input.value.trim()) // wide while searching, so neither the highlight nor typing resizes it
-  const path = hits[sel]?.path ?? ''
-  if (path === peeked) return
-  peeked = path
+  const h = hits[sel], path = h?.path ?? '', key = h?.line ? `${path}:${h.line}` : path
+  if (key === peeked) return
+  peeked = key
   if (!path || !peekFile) return void peekBox.replaceChildren()
   // the last preview stays until this one is drawn: no blank flash between files
-  peekOf(path).then(v => { if (peeked === path && !box.hidden) { peekBox.replaceChildren(v); enhanceMarked(peekBox) } }).catch(() => {})
+  peekOf(path, h.line).then(v => { if (peeked === key && !box.hidden) { peekBox.replaceChildren(v); enhanceMarked(peekBox); revealIn(peekBox) } }).catch(() => {})
 }
 
-// files matching the query: the server's fuzzy search (the same as @ in a message), asked once typing pauses
-// `pending` while this query's files are still being asked for; `pickFirst` when Enter came meanwhile with nothing to pick
-let found: string[] = [], fileQ = '', typing = 0, pending = false, pickFirst = false
+// files and symbols matching the query: the server's fuzzy searches (files: the same as @ in a message), asked once
+// typing pauses. `pending`: how many of this query's answers are still to come; `pickFirst` when Enter came meanwhile
+// with nothing to pick
+let found: Hit[] = [], syms: Hit[] = [], fileQ = '', typing = 0, pending = 0, pickFirst = false
 function findFiles() {
   clearTimeout(typing)
   const q = fileQ = input.value.trim()
-  found = [] // the last query's files aren't this one's: none are pickable until the answer comes
-  pending = !!q && !!openFile
+  found = []; syms = [] // the last query's aren't this one's: none are pickable until the answers come
+  const withSyms = symbolsOn()
+  pending = q && openFile ? (withSyms ? 2 : 1) : 0
   if (!pending) return
-  const answer = (list: string[]) => {
+  const answer = (set: (got: Hit[]) => void, got: Hit[]) => {
     if (fileQ !== q || box.hidden) return
-    found = list; pending = false; draw()
-    if (pickFirst) { pickFirst = false; if (hits[0]) pick(hits[0]); return }
-    if (peekFile) list.slice(0, 3).forEach(peekOf)
+    set(got); pending--; draw()
+    if (pickFirst && !pending) { pickFirst = false; if (hits[0]) pick(hits[0]); return }
+    if (peekFile) got.slice(0, 3).forEach(h => peekOf(h.path!, h.line))
   }
-  typing = setTimeout(() => api<string[]>('files?q=' + enc(q)).then(answer, () => answer([])), 120)
+  typing = setTimeout(() => {
+    api<string[]>('files?q=' + enc(q)).then(l => answer(h => found = h, l.map(fileHit)), () => answer(h => found = h, []))
+    if (withSyms) findSymbols(q).then(l => answer(h => syms = h, l.map(symHit)))
+  }, 120)
 }
 const fileHit = (path: string): Hit => {
   const cut = path.lastIndexOf('/')
   return { path, title: path.slice(cut + 1), kind: 'preview', excerpt: path.slice(0, cut + 1), score: 0 }
 }
+const symHit = (s: CodeSymbol): Hit =>
+  ({ path: s.path, line: s.line, tag: s.kind, title: s.name, kind: 'preview', excerpt: `${s.path}:${s.line}${s.scope ? ` · ${s.scope}` : ''}`, score: 0 })
 
 /** Commands whose label has every word of the query; none while the query is empty (that lists the windows). */
 function findCommands(q: string): Hit[] {
@@ -97,7 +111,7 @@ function findCommands(q: string): Hit[] {
   return commands().filter(c => c.run && words.every(w => c.label.toLowerCase().includes(w)))
     .map(c => ({ run: c.run, key: c.keys?.[0]?.replace(/Ctrl/g, MOD), title: c.label, kind: '', excerpt: '', score: 0 }))
 }
-const section = (h?: Hit) => !h ? '' : h.run ? 'Commands' : h.path ? 'Files' : 'Windows'
+const section = (h?: Hit) => !h ? '' : h.run ? 'Commands' : h.line ? 'Symbols' : h.path ? 'Files' : 'Windows'
 
 function search(q: string): Hit[] {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean)
@@ -122,7 +136,7 @@ function search(q: string): Hit[] {
 }
 
 function draw() {
-  hits = [...findCommands(input.value), ...search(input.value).slice(0, 50), ...found.map(fileHit)]
+  hits = [...findCommands(input.value), ...search(input.value).slice(0, 50), ...syms, ...found]
   sel = Math.min(sel, Math.max(0, hits.length - 1))
   list.replaceChildren(...(hits.length ? hits.flatMap((h, i) => {
     const row = make('button', 'finder-row' + (i === sel ? ' on' : ''))
@@ -135,7 +149,7 @@ function draw() {
     if (status) row.dataset.state = h.el!.dataset.state
     const main = make('span', 'fr-main')
     main.append(make('b', '', h.title || '(untitled)'), ...(h.excerpt ? [make('small', '', h.excerpt)] : []))
-    row.append(make('i', 'fr-g', h.run ? '›' : refIcon(h.kind)), main, make('span', 'fr-k', h.run ? h.key ?? '' : status || kindName(h.kind)))
+    row.append(make('i', 'fr-g', h.run ? '›' : refIcon(h.kind)), main, make('span', 'fr-k', h.run ? h.key ?? '' : h.tag ?? (status || kindName(h.kind))))
     row.onmousedown = e => { e.preventDefault(); pick(h) }
     // mousemove, not mouseenter: a redraw puts a new row under a resting pointer, which would take the highlight back from the arrow keys
     row.onmousemove = () => {
@@ -145,7 +159,7 @@ function draw() {
       row.classList.add('on'); row.setAttribute('aria-selected', 'true'); input.setAttribute('aria-activedescendant', row.id)
       sel = i; peek()
     }
-    // a header where a section starts: commands, then windows (unnamed when first), then files
+    // a header where a section starts: commands, then windows (unnamed when first), then symbols, then files
     const sec = section(h)
     if (sec === section(hits[i - 1]) || (sec === 'Windows' && !i)) return [row]
     const head = make('p', 'finder-sec', sec)
@@ -160,8 +174,16 @@ function draw() {
 
 const pick = (h: Hit) => {
   if (h.run) { close(false); h.run(); return }
-  const el = h.el ?? openFile?.(h.path!)
+  const el = h.el ?? openFile?.(h.path!, h.line)
   if (el) go(el)
+}
+
+/** Open a project file in its window at `line` and fly to it (a diff's go to definition); false when files can't be
+ *  opened. */
+export function openFileAt(path: string, line?: number) {
+  const el = openFile?.(path, line)
+  if (el) go(el)
+  return !!el
 }
 
 /** Fly to a window: expand it if collapsed, bring it forward, and put the cursor in it when it takes typing. */
@@ -179,6 +201,7 @@ function openFinder() {
   if (box.hidden) from = document.activeElement as HTMLElement | null
   box.hidden = false
   input.value = ''
+  input.placeholder = symbolsOn() ? 'Find a window, file, symbol or command' : 'Find a window, file or command'
   sel = 0
   build()
   draw()
@@ -187,7 +210,7 @@ function openFinder() {
 function close(restore = true) {
   const back = from
   from = null // first: hiding the focused input blurs it, which calls close again
-  box.hidden = true; index = []; found = []; pending = pickFirst = false; peeked = ''; peeks.clear(); clearTimeout(typing); peekBox.replaceChildren() // don't hold on to big texts
+  box.hidden = true; index = []; found = []; syms = []; pending = 0; pickFirst = false; peeked = ''; peeks.clear(); clearTimeout(typing); peekBox.replaceChildren() // don't hold on to big texts
   if (restore && back?.isConnected) back.focus({ preventScroll: true })
 }
 

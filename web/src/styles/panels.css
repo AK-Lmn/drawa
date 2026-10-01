@@ -77,9 +77,28 @@
 .diff .sep{display:block;width:auto;height:auto;text-align:center;color:var(--muted);background:var(--hover)}
 .diff .sep::before{content:none}
 
+/* go to definition (panels/defs.ts): the name under the pointer, the header's box, and the float with the answer */
+::highlight(def-name){text-decoration:underline;text-decoration-color:var(--accent-text);text-underline-offset:3px}
+.diff>div.def-on{cursor:pointer}
+.chg .def-q{display:none;flex:0 1 150px;min-width:70px;height:24px;padding:0 8px;border:1px solid var(--field-edge);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:12px var(--mono);cursor:text;outline:none}
+:root[data-symbols=on] .chg .def-q{display:block}
+.chg .def-q:focus{border-color:var(--focus)}
+.chg .def-q[aria-invalid=true]{border-color:var(--danger)}
+.defs{z-index:var(--z-menu);display:flex;flex-direction:column;width:min(520px,calc(100vw - 16px));max-height:min(420px,calc(100vh - 16px));background:var(--bg);border:1px solid var(--line-2);border-radius:var(--r-box);box-shadow:var(--shadow-lift);overflow:hidden;animation:enter .15s var(--ease)}
+.defs-h{flex:none;display:flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;border-bottom:1px solid var(--line)}
+.defs-h b{font:500 13px var(--mono);color:var(--ink)}
+.defs-h span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--muted)}
+.defs-h .defs-back{height:26px;padding:0 8px;font-size:12px}
+.defs-list{min-height:0;overflow:auto;padding:4px}
+.defs-list .finder-row:focus-visible{background:var(--sel);outline-offset:-2px}
+.defs-code{position:relative;min-height:0;overflow:auto}
+.defs-f{flex:none;display:flex;align-items:center;gap:10px;padding:8px 8px 8px 12px;border-top:1px solid var(--line)}
+.defs-f span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:12px var(--mono);color:var(--muted)}
+
 /* the file itself */
 .vhead{display:flex;align-items:center;justify-content:flex-end;gap:8px;height:44px;padding:0 8px;position:sticky;top:0;z-index:var(--z-sticky);background:var(--bg);border-bottom:1px solid var(--line)}
-.src{display:grid;grid-template-columns:auto 1fr;font:12px/19px var(--mono)}
+.src{--lh:19px;position:relative;isolation:isolate;display:grid;grid-template-columns:auto 1fr;font:12px/var(--lh) var(--mono)}
+.src-at{position:absolute;left:0;right:0;top:calc(10px + var(--at) * var(--lh));height:var(--lh);z-index:var(--z-under);background:var(--sel);pointer-events:none}
 .src pre{margin:0;padding:10px 0;font:inherit}
 .src .ln{padding:10px 12px 10px 14px;text-align:right;color:var(--muted);opacity:.7;user-select:none;border-right:1px solid var(--line)}
 .src code{display:block;padding:0 14px;font:inherit;overflow-x:auto}
