@@ -28,11 +28,24 @@ body:
       description: Output of `drawa --version`. A source build prints `dev`; give the commit instead (`git rev-parse --short HEAD`).
     validations:
       required: true
-  - type: input
-    id: claude
+  - type: dropdown
+    id: agent
     attributes:
-      label: Claude Code version
-      description: Output of `claude --version`.
+      label: Agent
+      description: Which coding agents the problem shows up with.
+      multiple: true
+      options:
+        - Claude Code
+        - OpenCode
+        - Codex
+        - Not about an agent
+    validations:
+      required: true
+  - type: input
+    id: agent-version
+    attributes:
+      label: Agent version
+      description: Output of `claude --version`, `opencode --version` or `codex --version`. For OpenCode, add the provider and model.
   - type: input
     id: env
     attributes:
