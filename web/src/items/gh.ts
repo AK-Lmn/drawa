@@ -13,7 +13,7 @@ import { who, lastAgent } from '../lib/agents'
 export interface Check { name: string; state: 'pass' | 'fail' | 'pending' | 'skip'; url: string }
 export interface Note { author: string; body: string; when: string; state?: string }
 export interface PrRow { number: number; title: string; author: string; head: string; base: string; draft: boolean; review: string; updated: string; state: string; labels: string[]; checks: Check[] }
-export interface Pr extends PrRow { url: string; body: string; additions: number; deletions: number; files: number; mergeable: string; created: string; comments: Note[]; reviews: Note[]; inline: Inline[]; inline_error?: string; diff: string; diff_truncated?: boolean }
+export interface Pr extends PrRow { headOid: string; url: string; body: string; additions: number; deletions: number; files: number; mergeable: string; created: string; comments: Note[]; reviews: Note[]; inline: Inline[]; inline_error?: string; diff: string; diff_truncated?: boolean }
 export type Inline = Note & { path: string; line: number; side: 'LEFT' | 'RIGHT'; outdated: boolean; hunk: string }
 export interface IssueRow { number: number; title: string; author: string; updated: string; state: string; labels: string[] }
 export interface Issue extends IssueRow { body: string; url: string; created: string; comments: Note[]; assignees: string[] }

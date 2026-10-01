@@ -29,6 +29,7 @@ export const ICON = {
   more: svg('<circle cx="3.5" cy="8" r=".9"/><circle cx="8" cy="8" r=".9"/><circle cx="12.5" cy="8" r=".9"/>'),
   reload: svg('<path d="M13 8a5 5 0 1 1-1.46-3.54M13.5 2.5v3h-3"/>'),
   open: svg('<path d="M4 6.5 8 10.5l4-4"/>'),
+  file: svg('<path d="M9 2.5H4.5v11h7V5zM9 2.5V5h2.5M6.5 8.5h3M6.5 10.5h3"/>'), // open a file in its window
   sun: svg('<circle cx="8" cy="8" r="2.8"/><path d="M8 1.8v1.4M8 12.8v1.4M1.8 8h1.4M12.8 8h1.4M3.6 3.6l1 1M11.4 11.4l1 1M3.6 12.4l1-1M11.4 4.6l1-1"/>'),
   moon: svg('<path d="M13 9.5A5.5 5.5 0 0 1 6.5 3a5.5 5.5 0 1 0 6.5 6.5z"/>'),
   sparkle: svg('<path d="M8 1.5c.4 3.3 1.8 5.4 5.5 6.5-3.7 1.1-5.1 3.2-5.5 6.5-.4-3.3-1.8-5.4-5.5-6.5 3.7-1.1 5.1-3.2 5.5-6.5z"/><path d="M13 1.8v2.4M11.8 3h2.4"/>'),

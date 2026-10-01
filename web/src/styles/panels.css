@@ -76,6 +76,15 @@
 .diff .del{background:var(--del-bg);color:var(--ink)}.diff .del::before{color:var(--del)}
 .diff .sep{display:block;width:auto;height:auto;text-align:center;color:var(--muted);background:var(--hover)}
 .diff .sep::before{content:none}
+/* unified diffs (panels/diff.ts unified()): the new file's line numbers in a gutter before the +/− column */
+.diff.num>div[data-s]{grid-template-columns:var(--ln) 22px max-content}
+.diff.num>div[data-s]::before{content:attr(data-n);grid-column:1;padding-right:4px;text-align:right;color:var(--muted);border-right:1px solid var(--line)}
+.diff.num>div[data-s]::after{content:attr(data-s);grid-column:2;grid-row:1;text-align:center;color:var(--muted)}
+.diff.num>div.add::after{color:var(--add)}
+.diff.num>div.del::after{color:var(--del)}
+.diff.num .hunk{padding-left:calc(var(--ln) + 22px)}
+.diff.opens>div[data-n]::before{cursor:pointer}
+.diff.opens>div[data-n]:hover::before{color:var(--accent-text);text-decoration:underline}
 
 /* go to definition (panels/defs.ts): the name under the pointer, the header's box, and the float with the answer */
 ::highlight(def-name){text-decoration:underline;text-decoration-color:var(--accent-text);text-underline-offset:3px}

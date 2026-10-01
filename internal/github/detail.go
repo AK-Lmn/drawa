@@ -24,7 +24,7 @@ func Pr(repo, n string) (map[string]any, error) {
 	wg.Add(3)
 	go func() {
 		defer wg.Done()
-		fields := PRList + ",url,body,additions,deletions,changedFiles,reviews,comments,mergeable,createdAt"
+		fields := PRList + ",url,body,additions,deletions,changedFiles,reviews,comments,mergeable,createdAt,headRefOid"
 		viewErr = GhJSON(repo, 0, "", &p, "pr", "view", n, "--json", fields)
 	}()
 	go func() {
@@ -99,6 +99,7 @@ func Pr(repo, n string) (map[string]any, error) {
 	row["files"] = p["changedFiles"]
 	row["mergeable"] = p["mergeable"]
 	row["created"] = p["createdAt"]
+	row["headOid"] = s(p["headRefOid"]) // its newest commit: the page opens its files from disk only when HEAD is this one
 	row["comments"] = gitx.NonNil(comments)
 	row["reviews"] = gitx.NonNil(reviews)
 	row["inline"] = gitx.NonNil(inlineOut)
