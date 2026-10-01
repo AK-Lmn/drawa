@@ -13,6 +13,17 @@ body:
       placeholder: Session cards, file tree, Git window, minimap...
     validations:
       required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent
+      description: Which coding agents this is about.
+      multiple: true
+      options:
+        - Claude Code
+        - OpenCode
+        - Codex
+        - Not about an agent
   - type: textarea
     id: current
     attributes:

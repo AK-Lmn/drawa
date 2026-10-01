@@ -12,6 +12,17 @@ body:
       description: What were you trying to do, and what got in the way?
     validations:
       required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent
+      description: Which coding agents this is about.
+      multiple: true
+      options:
+        - Claude Code
+        - OpenCode
+        - Codex
+        - Not about an agent
   - type: textarea
     id: solution
     attributes:
