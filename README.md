@@ -158,7 +158,7 @@ It also prints a QR code of the Network link, so a phone can open it with its ca
   <img src="docs/readme/diagram-light.png" alt="A Mermaid diagram Claude drew on the canvas, in full view: how a window, its reference chip and its arrows relate">
 </picture>
 
-- **Git and GitHub built in.** Browse status and history. Open pull requests and issues through `gh`, and send a PR, its failing checks or its reviews straight to a session.
+- **Git and GitHub built in.** Browse status and history, commit and push. Repos in subfolders (a folder of cloned repos, or repos inside your project) get a group each in the Git window, with their own pull request, and the GitHub window switches between them. Open pull requests and issues through `gh`, and send a PR, its failing checks or its reviews straight to a session.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/readme/github-dark.png">

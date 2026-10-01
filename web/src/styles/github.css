@@ -3,6 +3,10 @@
 .ghnote{margin:0;padding:12px;color:var(--muted);font-size:12.5px}.ghnote.bad{color:var(--danger)}
 .ghbar{position:sticky;top:0;z-index:var(--z-sticky);display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--bg)}
 .ghbar .btn{height:28px;padding:0 10px;font-size:12.5px}
+.ghbar:has(>.ghrepo){flex-wrap:wrap}
+.ghrepo{flex:1 0 100%;display:flex;align-items:center;gap:8px;min-width:0;font-size:12px;color:var(--muted)}
+.ghrepo .xsel{min-width:0;max-width:100%;font-family:var(--mono)}
+.ggroup>.ghstrip{padding-left:28px;border-bottom:0;background:none}
 .ghbar .spacer,.ghacts .spacer,.ghsub .spacer{flex:1}
 .ghrow{display:grid;gap:3px;width:100%;padding:8px 12px;border-bottom:1px solid var(--line);text-align:left}
 .ghrow:hover{background:var(--hover)}

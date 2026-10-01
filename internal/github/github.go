@@ -26,12 +26,16 @@ func errf(format string, a ...any) *Error {
 
 var ghEnv = append(os.Environ(), "GH_PROMPT_DISABLED=1", "NO_COLOR=1", "GH_NO_UPDATE_NOTIFIER=1", "GH_PAGER=")
 
-// Gh runs gh in the project; returns its output or a *Error with gh's own message.
-func Gh(timeout time.Duration, stdin string, args ...string) (string, error) {
+// Gh runs gh in repo ("" the project, else one of its nested repos: gh then reads that repo's remote, and checks out or
+// pushes there); returns its output or a *Error with gh's own message.
+func Gh(repo string, timeout time.Duration, stdin string, args ...string) (string, error) {
+	if err := gitx.Check(repo); err != nil {
+		return "", &Error{err.Error()}
+	}
 	if timeout == 0 {
 		timeout = 60 * time.Second
 	}
-	r, err := procx.RunEnv(timeout, stdin, ghEnv, append([]string{"gh"}, args...)...)
+	r, err := procx.RunEnvIn(gitx.Path(repo), timeout, stdin, ghEnv, append([]string{"gh"}, args...)...)
 	if err != nil {
 		var execErr *exec.Error
 		if errors.As(err, &execErr) {
@@ -56,8 +60,8 @@ func Gh(timeout time.Duration, stdin string, args ...string) (string, error) {
 	return r.Stdout, nil
 }
 
-func GhJSON(timeout time.Duration, stdin string, v any, args ...string) error {
-	out, err := Gh(timeout, stdin, args...)
+func GhJSON(repo string, timeout time.Duration, stdin string, v any, args ...string) error {
+	out, err := Gh(repo, timeout, stdin, args...)
 	if err != nil {
 		return err
 	}
@@ -188,21 +192,22 @@ func orEmpty(v any) any {
 
 var repoCache = struct {
 	sync.Mutex
-	val map[string]any
-}{}
+	val map[string]map[string]any
+}{val: map[string]map[string]any{}}
 
-// Repo is the repo's name, url and default branch: asked once (a slow call); an error isn't cached, so it's retried.
-func Repo() (map[string]any, error) {
+// Repo is the repo's name, url and default branch: asked once per repo (a slow call); an error isn't cached, so it's
+// retried.
+func Repo(repo string) (map[string]any, error) {
 	repoCache.Lock()
 	defer repoCache.Unlock()
-	if repoCache.val != nil {
-		return repoCache.val, nil
+	if v := repoCache.val[repo]; v != nil {
+		return v, nil
 	}
 	var v map[string]any
-	if err := GhJSON(0, "", &v, "repo", "view", "--json", "nameWithOwner,url,defaultBranchRef"); err != nil {
+	if err := GhJSON(repo, 0, "", &v, "repo", "view", "--json", "nameWithOwner,url,defaultBranchRef"); err != nil {
 		return nil, err
 	}
-	repoCache.val = v
+	repoCache.val[repo] = v
 	return v, nil
 }
 
@@ -212,15 +217,15 @@ var meCache = struct {
 }{}
 
 // Me is the login gh acts as and the repo it acts on: what every confirm names before something is published.
-func Me() (map[string]any, error) {
-	repo, err := Repo()
+func Me(at string) (map[string]any, error) {
+	repo, err := Repo(at)
 	if err != nil {
 		return nil, err
 	}
 	meCache.Lock()
 	defer meCache.Unlock()
 	if meCache.login == "" {
-		out, err := Gh(0, "", "api", "user", "--jq", ".login")
+		out, err := Gh(at, 0, "", "api", "user", "--jq", ".login")
 		if err != nil {
 			return nil, err
 		}
@@ -230,15 +235,18 @@ func Me() (map[string]any, error) {
 }
 
 // State is the repo on GitHub, and the pull request for the branch you're on (if any).
-func State() map[string]any {
-	_, branch := gitx.Git("branch", "--show-current") // empty on detached HEAD: no pull request to look for
-	repo, err := Repo()
+func State(at string) map[string]any {
+	ok, branch := gitx.GitOpts(gitx.Opts{Repo: at}, "branch", "--show-current") // empty on detached HEAD: no pull request to look for
+	if !ok {
+		branch = ""
+	}
+	repo, err := Repo(at)
 	if err != nil {
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
 	var prs []map[string]any
 	if branch != "" {
-		if err := GhJSON(0, "", &prs, "pr", "list", "--head", branch, "--state", "all", "--limit", "1", "--json", PRList+",url"); err != nil {
+		if err := GhJSON(at, 0, "", &prs, "pr", "list", "--head", branch, "--state", "all", "--limit", "1", "--json", PRList+",url"); err != nil {
 			return map[string]any{"ok": false, "error": err.Error()}
 		}
 	}

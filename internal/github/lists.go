@@ -46,9 +46,9 @@ func (l List) args(kind string, states ...string) []string {
 	return args
 }
 
-func Prs(l List) ([]map[string]any, error) {
+func Prs(repo string, l List) ([]map[string]any, error) {
 	var raw []map[string]any
-	if err := GhJSON(0, "", &raw, append(l.args("pr", "open", "closed", "merged", "all"), "--json", PRList)...); err != nil {
+	if err := GhJSON(repo, 0, "", &raw, append(l.args("pr", "open", "closed", "merged", "all"), "--json", PRList)...); err != nil {
 		return nil, err
 	}
 	out := make([]map[string]any, len(raw))
@@ -58,9 +58,9 @@ func Prs(l List) ([]map[string]any, error) {
 	return out, nil
 }
 
-func Issues(l List) ([]map[string]any, error) {
+func Issues(repo string, l List) ([]map[string]any, error) {
 	var raw []map[string]any
-	if err := GhJSON(0, "", &raw, append(l.args("issue", "open", "closed", "all"), "--json", "number,title,author,labels,updatedAt,state")...); err != nil {
+	if err := GhJSON(repo, 0, "", &raw, append(l.args("issue", "open", "closed", "all"), "--json", "number,title,author,labels,updatedAt,state")...); err != nil {
 		return nil, err
 	}
 	out := make([]map[string]any, len(raw))
@@ -71,9 +71,9 @@ func Issues(l List) ([]map[string]any, error) {
 }
 
 // Labels are the repo's labels, for the new issue form and label editing.
-func Labels() ([]map[string]any, error) {
+func Labels(repo string) ([]map[string]any, error) {
 	var raw []map[string]any
-	if err := GhJSON(0, "", &raw, "label", "list", "--limit", "200", "--json", "name,color,description"); err != nil {
+	if err := GhJSON(repo, 0, "", &raw, "label", "list", "--limit", "200", "--json", "name,color,description"); err != nil {
 		return nil, err
 	}
 	return raw, nil

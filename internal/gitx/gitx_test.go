@@ -67,7 +67,7 @@ func TestStatusInSubfolder(t *testing.T) {
 	prefixCache.ok = false
 	t.Cleanup(func() { config.Root = saved; prefixCache.ok = false })
 
-	st := gitStatus()
+	st := gitStatus("")
 	got := map[string]map[string]any{}
 	for _, f := range st["files"].([]map[string]any) {
 		got[f["path"].(string)] = f
@@ -92,7 +92,7 @@ func TestStatusInSubfolder(t *testing.T) {
 	if !strings.Contains(staged, "sub/a.txt") || slices.Contains(strings.Split(staged, "\n"), "top.txt") {
 		t.Fatalf("staged = %q", staged)
 	}
-	d, err := GitDiff("a.txt", true)
+	d, err := GitDiff("", "a.txt", true)
 	if err != nil || d["diff"] == "" {
 		t.Fatalf("diff = %v %v", d, err)
 	}
@@ -125,7 +125,7 @@ func TestCommandOverrides(t *testing.T) {
 		{false, false, false, false}, {true, true, true, false}, {true, false, true, true},
 	} {
 		config.Cloned, config.Trusted = c.cloned, c.trusted
-		env, argv := command([]string{"diff", "--cached"})
+		env, argv := command("", []string{"diff", "--cached"})
 		if has(env, "GIT_TERMINAL_PROMPT=0") != c.prompt || has(argv, "credential.interactive=false") != c.prompt {
 			t.Errorf("%+v: prompt overrides env=%v argv=%v", c, env, argv)
 		}
@@ -135,6 +135,9 @@ func TestCommandOverrides(t *testing.T) {
 		}
 		if !has(env, "GIT_LITERAL_PATHSPECS=1") || argv[0] != "git" || argv[len(argv)-1] != "--cached" {
 			t.Errorf("%+v: env=%v argv=%v", c, env, argv)
+		}
+		if _, argv := command("web", []string{"status"}); argv[1] != "-C" || !has(argv, "core.fsmonitor=false") {
+			t.Errorf("%+v: nested argv=%v", c, argv)
 		}
 	}
 }
@@ -166,8 +169,8 @@ func TestUntrustedRunsNoRepoCommands(t *testing.T) {
 	os.WriteFile(filepath.Join(repo, "f"), []byte("b\n"), 0o644)
 	run := func() bool {
 		os.Remove(marker)
-		gitStatus()
-		GitDiff("f", false)
+		gitStatus("")
+		GitDiff("", "f", false)
 		_, err := os.Stat(marker)
 		return err == nil
 	}
@@ -178,5 +181,74 @@ func TestUntrustedRunsNoRepoCommands(t *testing.T) {
 	config.Trusted = false
 	if run() {
 		t.Fatal("untrusted clone ran a command from .git/config")
+	}
+}
+
+// Repos in subfolders: found (not inside hidden or dependency folders), listed with paths relative to Root, left out of
+// Root's own untracked rows, and their ops run in them and only on their own files.
+func TestNestedRepos(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	root, _ := filepath.EvalSymlinks(t.TempDir())
+	run := func(dir string, args ...string) {
+		cmd := exec.Command("git", append([]string{"-c", "user.email=a@b", "-c", "user.name=a"}, args...)...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	write := func(p, s string) { os.MkdirAll(filepath.Dir(p), 0o755); os.WriteFile(p, []byte(s), 0o644) }
+	for _, d := range []string{"", "apps/api", "web", "node_modules/dep", ".cache/x"} {
+		dir := filepath.Join(root, d)
+		write(filepath.Join(dir, "a.txt"), "a\n")
+		run(dir, "init", "-q")
+		run(dir, "add", ".")
+		run(dir, "commit", "-qm", "init")
+	}
+	write(filepath.Join(root, "apps", "api", "a.txt"), "a\nb\n")
+	write(filepath.Join(root, "web", "new.txt"), "n\n")
+
+	saved := config.Root
+	config.Root = root
+	prefixCache.ok, nestedCache.list, stateCache.state = false, nil, nil
+	t.Cleanup(func() { config.Root = saved; prefixCache.ok, nestedCache.list, stateCache.state = false, nil, nil })
+
+	if got, want := Nested(), []string{"apps/api", "web"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("Nested = %v, want %v", got, want)
+	}
+	st := allStatus()
+	for _, f := range st["files"].([]map[string]any) {
+		if f["path"] == "web/" {
+			t.Fatalf("root lists the nested repo web/: %v", st["files"])
+		}
+	}
+	nested := st["nested"].([]map[string]any)
+	if len(nested) != 2 || nested[0]["dir"] != "apps/api" || nested[0]["repo"] != true {
+		t.Fatalf("nested = %v", nested)
+	}
+	files := nested[0]["files"].([]map[string]any)
+	if len(files) != 1 || files[0]["path"] != "apps/api/a.txt" || !reflect.DeepEqual(files[0]["unstaged"], []int{1, 0}) {
+		t.Fatalf("apps/api files = %v", files)
+	}
+	if d, err := GitDiff("apps/api", "apps/api/a.txt", false); err != nil || !strings.Contains(d["diff"].(string), "+b") {
+		t.Fatalf("diff = %v %v", d, err)
+	}
+	if r, err := GitOp(map[string]any{"op": "stage", "repo": "web", "paths": []any{"web/new.txt"}}); err != nil || r["ok"] != true {
+		t.Fatalf("stage in web: %v %v", r, err)
+	}
+	if _, staged := GitOpts(Opts{Repo: "web"}, "diff", "--cached", "--name-only"); staged != "new.txt" {
+		t.Fatalf("web staged = %q", staged)
+	}
+	if _, err := GitOp(map[string]any{"op": "stage", "repo": "web", "paths": []any{"apps/api/a.txt"}}); err == nil {
+		t.Fatal("staged another repo's file")
+	}
+	for _, repo := range []string{"node_modules/dep", "apps", "../x"} {
+		if _, err := GitOp(map[string]any{"op": "stage", "repo": repo}); err == nil {
+			t.Fatalf("ran in %q", repo)
+		}
+	}
+	if _, err := GitOp(map[string]any{"op": "init", "repo": "web"}); err == nil {
+		t.Fatal("init in a nested repo")
 	}
 }

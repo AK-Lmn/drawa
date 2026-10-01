@@ -1,9 +1,9 @@
 // GitHub Actions in the GitHub window: a pull request's checks (logs, re-run failed jobs), the Actions tab (recent
 // workflow runs, re-run), and polling while something is still running.
 import { make, button, extLink, ago } from '../lib/dom'
-import { api, q } from '../lib/api'
+import { q } from '../lib/api'
 import { watched } from '../canvas/canvas'
-import { dot, publish, type Check, type Run } from './gh'
+import { dot, publish, ghGet, type Check, type Run } from './gh'
 import { win, still, topBar, pages, https, type View } from './github'
 
 const POLL = 20_000
@@ -48,7 +48,7 @@ export function checkList(checks: Check[]) {
       r.append(button('Show log', '', async () => {
         pre.textContent = 'Loading…'
         r.after(pre)
-        pre.textContent = await api<{ log: string }>(`gh/log?url=${q(c.url)}`).then(x => x.log || '(empty)', e => (e as Error).message)
+        pre.textContent = await ghGet<{ log: string }>(`gh/log?url=${q(c.url)}`).then(x => x.log || '(empty)', e => (e as Error).message)
       }))
       if (!offered.has(run)) { offered.add(run); r.append(rerunButton(run, true, c.name.split(' / ')[0])) }
     }
@@ -61,7 +61,7 @@ export function runList() {
   const w = win!, v = w.view, rows = make('div', 'ghlist')
   w.body.replaceChildren(topBar(), rows)
   let shown: Run[] = []
-  const get = (limit: number) => api<Run[]>(`gh/runs?limit=${limit}`).then(r => (shown = r.slice(0, limit), r))
+  const get = (limit: number) => ghGet<Run[]>(`gh/runs?limit=${limit}`).then(r => (shown = r.slice(0, limit), r))
   pages(rows, get, runRow, 'No workflow runs in this repo yet.').then(() =>
     // running ones settle on their own: redraw the list while any still runs (keeping how far you loaded)
     whilePending(v, () => shown.some(r => r.state === 'pending'), () => pages(rows, get, runRow, '')))

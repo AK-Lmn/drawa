@@ -68,3 +68,19 @@ func TestListArgs(t *testing.T) {
 		t.Fatalf("args = %q", got)
 	}
 }
+
+// gh runs only in the project or a repo found in its subfolders: any other folder the page names is refused before gh
+// starts (no gh needed to pass).
+func TestGhOnlyInKnownRepos(t *testing.T) {
+	for _, repo := range []string{"../elsewhere", "/tmp", "no/such/repo"} {
+		if _, err := Gh(repo, 0, "", "repo", "view"); err == nil || !strings.Contains(err.Error(), "not a repository") {
+			t.Errorf("Gh in %q: %v", repo, err)
+		}
+		if r := Op(map[string]any{"op": "comment", "repo": repo, "n": 1, "body": "x"}); r["ok"] != false {
+			t.Errorf("Op in %q: %v", repo, r)
+		}
+		if st := State(repo); st["ok"] != false {
+			t.Errorf("State in %q: %v", repo, st)
+		}
+	}
+}
