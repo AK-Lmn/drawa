@@ -1,7 +1,7 @@
 // Session cards: each is a live Claude process on the server. You can type any time (messages queue while Claude
 // or its agents work, like the terminal); output streams in continuously (stream.ts). Every tool call also lands on
 // the graph. This module owns the card itself: creating, focusing, closing, and its header / status.
-import { make, ICON, iconButton, project, ping, uuid, perFrame, EDITABLE, confirmBox } from '../lib/dom'
+import { make, ICON, iconButton, copyButton, project, ping, uuid, perFrame, EDITABLE, confirmBox } from '../lib/dom'
 import { api, post } from '../lib/api'
 import { persist, save, saveSoon, each } from '../lib/store'
 import { front, savedRect, nextColumn, centerOn, fit, byIds, type Rect, onCanvas } from '../canvas/canvas'
@@ -20,7 +20,7 @@ import { attach } from './live'
 import { setMode, lastMode } from './mode'
 import { setModel, setEffort, renderInfo, seedInfo, lastModel, lastEffort } from './gen'
 import { loadSessions, resume, sessionPath } from './history'
-import { lastAgent, modesOf, installed, title, who } from '../lib/agents'
+import { lastAgent, modesOf, installed, title, who, copySidTip } from '../lib/agents'
 import { sendCombo, onSendKey } from '../lib/sendkey'
 import { hasDraft, keepImages } from './drafts'
 
@@ -210,7 +210,11 @@ function emptyState(S: Session) {
 export function newSession(opts: { rect?: Rect; cid?: string; backend?: string } = {}) {
   const r = opts.rect ?? nextColumn(Math.max(340, Math.min(460, innerWidth - 32)), 600) // phones: fits the screen
   const close = iconButton(ICON.x, 'Close session', () => askClose(S), 'closebtn')
-  const { el: card, head, title, body } = makeWindow({ kind: 'session', cls: 'card', title: 'New session', rect: r, minW: 340, minH: 300, actions: [close] })
+  // Claude Code's own resume list hides -p sessions, so this is how you open a card's session in a terminal
+  const sidBtn = copyButton(() => S.sid ?? '', 'Copy session ID')
+  sidBtn.classList.add('sidbtn')
+  sidBtn.hidden = true
+  const { el: card, head, title, body } = makeWindow({ kind: 'session', cls: 'card', title: 'New session', rect: r, minW: 340, minH: 300, actions: [sidBtn, close] })
   head.prepend(make('span', 'dot'))
   const ctx = make('span', 'ctx') // a span, not a button: the tab's buttons are the window controls at its end
   ctx.tabIndex = 0
@@ -377,6 +381,9 @@ export function renderCard(S: Session) {
   ctx.dataset.level = pct >= 80 ? 'high' : pct >= 60 ? 'mid' : ''
   ctx.textContent = `${pct}%`
   ctx.title = `Context: ${S.ctx.used.toLocaleString()} of ${S.ctx.max.toLocaleString()} tokens used. Click to write /compact (summarizes the conversation to free space).`
+  const sidBtn = S.card.querySelector<HTMLElement>('.win-h .sidbtn')!
+  sidBtn.hidden = !S.sid
+  if (S.sid) sidBtn.title = copySidTip(S.backend, S.sid)
   renderInfo(S)
   S.log.classList.toggle('busy', S.pending > 0)
   S.log.setAttribute('aria-busy', String(S.pending > 0))

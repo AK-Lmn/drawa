@@ -30,7 +30,7 @@ var modes = map[string]bool{"default": true, "acceptEdits": true, "plan": true, 
 func init() {
 	live.Register("codex", live.Kind{
 		Bin: "codex", Label: "codex (Codex CLI)", Install: "install it: https://developers.openai.com/codex/cli", Title: "Codex",
-		Blurb: "Your ChatGPT plan or OpenAI API key",
+		Blurb: "Your ChatGPT plan or OpenAI API key", Resume: "codex resume",
 		Modes: modes, SidOK: config.UUIDRe.MatchString,
 		Spawn: spawn, Meta: models, History: history{}, OneShot: oneShot, Warn: versionWarning,
 	})

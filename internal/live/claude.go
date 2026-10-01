@@ -35,7 +35,7 @@ var claudeArgv = []string{
 func init() {
 	Register("claude", Kind{
 		Bin: "claude", Label: "claude (Claude Code CLI)", Install: "install it: https://claude.com/claude-code", Title: "Claude Code",
-		Blurb: "Your Claude subscription, through the claude CLI",
+		Blurb: "Your Claude subscription, through the claude CLI", Resume: "claude --resume",
 		Modes: config.Modes, SidOK: config.UUIDRe.MatchString, Unsend: true,
 		Spawn: spawnClaude, Meta: claudeMeta, History: claudeHistory{}, OneShot: claudeOneShot,
 	})

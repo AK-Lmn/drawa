@@ -70,6 +70,7 @@ type Kind struct {
 	Bin, Label, Install string          // the executable, how preflight names it, where to get it
 	Title               string          // what the page calls it ("Claude Code")
 	Blurb               string          // one line on what picking it means, for menus
+	Resume              string          // the terminal command that opens a session, followed by its id ("claude --resume")
 	Modes               map[string]bool // the Drawa permission modes it accepts
 	Unsend              bool            // its Backend is an Unsender: queued messages can be deleted or edited
 	SidOK               func(sid string) bool

@@ -5,7 +5,7 @@ import { api } from './api'
 import { make } from './dom'
 import { enhance } from './select'
 
-export interface Agent { name: string; title: string; blurb?: string; installed: boolean; install: string; modes: string[]; canWrite: boolean; canUnsend?: boolean }
+export interface Agent { name: string; title: string; blurb?: string; installed: boolean; install: string; modes: string[]; canWrite: boolean; canUnsend?: boolean; resume?: string }
 export interface Model { value: string; displayName: string; description: string }
 export interface Meta { models: Model[]; commands: { name: string; description: string; argumentHint?: string }[] }
 
@@ -19,6 +19,11 @@ export const title = (name: string) => agents.find(a => a.name === name)?.title 
 export const blurb = (name: string) => agents.find(a => a.name === name)?.blurb ?? ''
 /** How copy refers to it: "Claude is working", "OpenCode is working". */
 export const who = (name: string) => title(name).replace(/ Code$/, '')
+/** The copy button's tip for a session's id: how to open it in a terminal, when the agent says how. */
+export function copySidTip(name: string, id: string) {
+  const cmd = agents.find(a => a.name === name)?.resume ?? (name === 'claude' ? 'claude --resume' : '')
+  return cmd ? `Copy session ID (open it with ${cmd} ${id})` : `Copy session ID (${id})`
+}
 export const installed = () => agents.filter(a => a.installed)
 /** Whether a queued message can still be taken back (deleted, or edited) until the agent reads it. */
 export const canUnsend = (name: string) => !!agents.find(a => a.name === name)?.canUnsend
