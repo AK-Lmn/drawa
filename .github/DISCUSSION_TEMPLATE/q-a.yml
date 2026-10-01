@@ -23,7 +23,7 @@ body:
     id: version
     attributes:
       label: Drawa version
-      description: Output of `drawa --version`.
+      description: Output of `drawa --version`. A source build prints `dev`; give the commit instead (`git rev-parse --short HEAD`).
   - type: input
     id: env
     attributes:
