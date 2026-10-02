@@ -34,7 +34,7 @@ function step(dir: 1 | -1) {
 }
 
 const collapse = () => activeWin()?.querySelector<HTMLElement>(':scope > .win-h .minbtn')?.click()
-const full = () => { if (anyFull()) return exitFull(); const el = activeWin(); if (el) toggleFull(el) }
+const full = () => { if (anyFull()) return exitFull(true); const el = activeWin(); if (el) toggleFull(el) }
 const renameActive = () => { const el = activeWin(); if (el) rename(el) }
 const pin = () => { const el = activeWin(); if (el) toggleDock(el) }
 const stick = () => { const el = activeWin(); if (el) toggleFloat(el) }
