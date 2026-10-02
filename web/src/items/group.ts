@@ -3,7 +3,7 @@
 // frozen while anything is dragged), and never overlaps another group (groupgeom.ts settles that). A window joins
 // by being dropped into a frame, and leaves by being dropped outside it or through its tab's Remove from group button.
 // Drawings on the canvas belong to groups too (groupink.ts).
-import { make, ICON, iconButton, confirmBox, uuid, perFrame, toast } from '../lib/dom'
+import { make, ICON, iconButton, button, confirmBox, notice, uuid, perFrame, toast } from '../lib/dom'
 import { persist, each } from '../lib/store'
 import { world, toWorld, items, byIds, rect, liveRect, savedRect, place, changed, onChange, onCanvas, moveWith, movesWith, viewCenter, parked, onGone, draggable, nearestFree, spawnIn, type Rect } from '../canvas/canvas'
 import { makeWindow, winTitle, titleOf, removeUndoably } from '../canvas/window'
@@ -146,17 +146,14 @@ onSelect(outlinesSoon)
 
 /** Add a window to a group (out of any other: a window is in at most one). */
 export function join(el: HTMLElement, g: HTMLElement) {
-  if (groupOf(el) === g) return // (leaving first would empty a one-window group and take its frame away)
+  if (groupOf(el) === g) return
   leave(el)
   setIds(g, [...ids(g), el.dataset.id!])
 }
-/** Take a window out of its group; the last one out takes the frame with it (no empty frame left behind), with Undo
- *  bringing the frame back with the window in it. ponytail: a window that joins another group before that Undo is
- *  listed by both; the later one wins groupOf. */
+/** Take a window out of its group; the last one out leaves the frame empty (delete it with its ×). */
 function leave(el: HTMLElement) {
   const g = groupOf(el)
   if (!g) return
-  if (ids(g).length === 1 && !inkIds(g).length) { removeUndoably(g); return } // (still listed: Undo puts it back in)
   setIds(g, ids(g).filter(id => id !== el.dataset.id))
 }
 
@@ -272,7 +269,7 @@ removable('group', g => removeUndoably(g), 'A group\'s windows stay unless they 
 export const inside = (r: Rect, x: number, y: number) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h
 
 // after a drag: a group pushes others aside; a window that's in no group joins the one its center landed in
-document.addEventListener('moved', async ev => {
+document.addEventListener('moved', ev => {
   const el = ev.target as HTMLElement
   if (!el.classList?.contains('item') || !onCanvas(el)) return // a pinned window moved on screen: still in its group
   const moving = movesWith(el), moved = moving.filter(isGroup)
@@ -280,16 +277,22 @@ document.addEventListener('moved', async ev => {
   if (isGroup(el)) return
   if (moving.length > 1) { moving.forEach(m => dropIn(m)); return } // a selection: its loose windows join where they land; none leave
   const from = groupOf(el)
-  // a member dropped with its center outside the frame (still its pre-drag shape: it doesn't refit mid-drag): ask
-  // whether it steps out or the frame grows to wrap it (it already has, behind the dialog)
+  // a member dropped with its center outside the frame (still its pre-drag shape: it doesn't refit mid-drag) steps
+  // out at once; the notice offers to keep it in, which puts it back and lets the frame grow round it
   if (from && !inside(styleRect(from), ...center(el))) {
-    if (!await confirmBox(`Move "${titleOf(el)}" out of "${winTitle(from)}"?`, 'Or keep it in the group, which grows to fit it.', 'Move out', 'Expand group')) return
-    if (groupOf(el) !== from) return
     leave(el)
     redraw()
     changed()
+    const n = notice(`Moved out of "${winTitle(from)}"`, button('Keep in group', '', () => {
+      n.remove()
+      if (!from.isConnected || groupOf(el)) return
+      join(el, from)
+      redraw()
+      changed()
+    }))
+    setTimeout(() => n.remove(), 8000)
   }
-  dropIn(el, from) // (not back into the one it left: that frame grew round it while the question showed)
+  dropIn(el, from) // (not back into the one it left: Keep in group does that)
 })
 
 /** A window in no group joins the one it was dropped on, at a spot of its own among the others: where it was dropped
@@ -337,10 +340,8 @@ function takeOut(m: HTMLElement) {
   const f = styleRect(g), r = sizeOf(m)
   leave(m)
   if (onCanvas(m)) { const p = nearestFree({ ...r, x: f.x + f.w + GAP }); place(m, p.x, p.y) } // not on top of another window
-  if (g.isConnected) { // (the last one out took the frame away)
-    const ms = members(g), to = compact(ms.map(sizeOf), inner(f, PAD, tabH()), GAP)
-    ms.forEach((el, i) => place(el, to[i].x, to[i].y))
-  }
+  const ms = members(g), to = compact(ms.map(sizeOf), inner(f, PAD, tabH()), GAP)
+  ms.forEach((el, i) => place(el, to[i].x, to[i].y))
   redraw()
   changed() // the frame fits the windows left, then settles
 }
@@ -389,7 +390,6 @@ function gone(el: HTMLElement) {
   const g = groupOf(el)
   if (!g || g === el) return
   setIds(g, ids(g).filter(id => id !== el.dataset.id))
-  if (empty(g)) ungroup(g) // (its drawings keep it)
 }
 const isEl = (n: Node): n is HTMLElement => n instanceof HTMLElement && !!n.dataset.id
 new MutationObserver(recs => {
