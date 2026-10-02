@@ -115,6 +115,7 @@ export function selectionAction(label: string, tip: string, fn: () => void, when
   b.title = tip
   bar.insertBefore(b, del)
   actions.push({ b, when })
+  return b
 }
 
 // the box round a selection of two or more (like a drawing app's group selection): screen px, so its line stays

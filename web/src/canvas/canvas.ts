@@ -136,13 +136,16 @@ export const savedRect = (el: HTMLElement): Rect => {
 
 let z = 10 // stacking inside #world only
 export const front = (el: HTMLElement) => { if (el.style.zIndex !== String(z)) { el.style.zIndex = String(++z); saveSoon() } }
+/** Stack these bottom to top (canvas/layers.ts reorders the whole stack). */
+export const restack = (order: HTMLElement[]) => { z = 10; for (const el of order) el.style.zIndex = String(++z); saveSoon() }
 // which one is on top survives a reload: ids bottom to top, raised in that order once the items exist. Layouts from
 // before (no key) stack in load order, as they always did. ponytail: an item that shows up later (a card rebuilt
 // from its process) lands on top.
 persist('z', () => items().filter(el => el.style.zIndex).sort((a, b) => +a.style.zIndex - +b.style.zIndex).map(el => el.dataset.id!),
   (ids: string[]) => { const found = byIds(); each(ids, id => { const el = found.get(id); if (el) front(el) }) }, 2)
 // a press anywhere on an item (not only its tab) brings it to the front: overlapping windows swap as you click them
-world.addEventListener('pointerdown', e => { const el = (e.target as Element).closest<HTMLElement>('#world > .item'); if (el) front(el) }, true)
+// (not a right-click: that opens the tab's layer menu, which would act on it already raised)
+world.addEventListener('pointerdown', e => { if (e.button === 2) return; const el = (e.target as Element).closest<HTMLElement>('#world > .item'); if (el) front(el) }, true)
 
 /** Asked while an item is dragged (final=false, to highlight a target) and when it's released (final=true).
  *  Return true if the pointer is over something that takes the item: on release it then snaps back to where it was. */

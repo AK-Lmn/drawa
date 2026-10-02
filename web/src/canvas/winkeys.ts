@@ -11,7 +11,7 @@ import { drawing } from './ink'
 
 const shown = () => items().filter(el => !hidden(el))
 /** The window the keys act on: the one selected item, else the frontmost. */
-function active(): HTMLElement | undefined {
+export function active(): HTMLElement | undefined {
   const s = selected()
   if (s.length === 1) return s[0]
   return shown().reduce<HTMLElement | undefined>((a, el) => (!a || +el.style.zIndex > +a.style.zIndex ? el : a), undefined)

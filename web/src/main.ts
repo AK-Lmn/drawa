@@ -34,6 +34,7 @@ import './items/group' // Ctrl+G groups the selected windows into a frame
 import './items/preview' // Ctrl+K opens project files in windows
 import './canvas/find'
 import './canvas/winkeys' // W steps through windows, M collapses, Shift+F full view...
+import './canvas/layers' // bring forward / send back: the tab's right-click menu, the selection bar, Ctrl+] / Ctrl+[
 import { openGit } from './items/git'
 import { openGitHub } from './items/github'
 import { tree, closeInspector, showTab } from './panels/files'
