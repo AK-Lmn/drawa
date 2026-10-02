@@ -71,7 +71,7 @@ Neither OpenCode nor Codex has an agent-specific process limit: set `DRAWA_MAX_L
 <details>
 <summary><b>How the permission modes map onto Codex</b></summary>
 
-**Read only** asks before edits and before any command Codex doesn't consider safe. **Plan only** never asks, nothing it runs can write, and it doesn't hand you a plan to approve: it answers in the chat. **Allow edits** approves file changes inside the project only (not in `.git`, `.codex`, `.agents` or `.claude`, and not renames out of it). **Always allow** covers a command or edit until the card's Codex process closes (after 30 idle minutes, or to stay under `DRAWA_MAX_LIVE`; it asks again after resuming), and Drawa doesn't save Codex's permanent command rules; canvas changes ask each time. A mode change applies from the next turn (a message sent mid-turn joins the running one), except that leaving **Allow everything** stops a running turn, since it can't lose full access mid-turn.
+**Ask first** asks before edits and before any command Codex doesn't consider safe. **Plan only** never asks, nothing it runs can write, and it doesn't hand you a plan to approve: it answers in the chat. **Allow edits** approves file changes inside the project only (not in `.git`, `.codex`, `.agents` or `.claude`, and not renames out of it). **Always allow** covers a command or edit until the card's Codex process closes (after 30 idle minutes, or to stay under `DRAWA_MAX_LIVE`; it asks again after resuming), and Drawa doesn't save Codex's permanent command rules; canvas changes ask each time. A mode change applies from the next turn (a message sent mid-turn joins the running one), except that leaving **Allow everything** stops a running turn, since it can't lose full access mid-turn.
 
 </details>
 
