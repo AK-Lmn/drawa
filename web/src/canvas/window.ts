@@ -78,6 +78,8 @@ export function removeUndoably(el: HTMLElement, also?: (el: HTMLElement) => void
   clearTimeout(undo.timer)
   undo.timer = setTimeout(() => settle(false), 8000)
 }
+/** Whether `el` was deleted and Undo can still bring it back. */
+export const undoable = (el: HTMLElement) => !!undo?.items.some(it => it.el === el)
 function settle(back: boolean) {
   if (!undo) return
   const { toast, timer, items } = undo

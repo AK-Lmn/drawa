@@ -6,7 +6,7 @@
 import { make, ICON, iconButton, button, confirmBox, notice, uuid, perFrame } from '../lib/dom'
 import { persist, each } from '../lib/store'
 import { world, toWorld, items, byIds, rect, liveRect, savedRect, place, changed, onChange, onCanvas, moveWith, movesWith, viewCenter, parked, onGone, draggable, nearestFree, spawnIn, type Rect } from '../canvas/canvas'
-import { makeWindow, winTitle, titleOf, removeUndoably } from '../canvas/window'
+import { makeWindow, winTitle, titleOf, removeUndoably, undoable } from '../canvas/window'
 import { referable } from '../canvas/refs'
 import { setToggle } from '../canvas/dock'
 import { redraw, forget } from '../canvas/graph'
@@ -150,12 +150,18 @@ export function join(el: HTMLElement, g: HTMLElement) {
   leave(el)
   setIds(g, [...ids(g), el.dataset.id!])
 }
-/** Take a window out of its group; the last one out leaves the frame empty (delete it with its ×). */
+/** Take a window out of its group; the last one out takes the frame with it (no empty frame is kept), with Undo
+ *  bringing the frame back with the window in it. Returns whether the frame went. ponytail: a window that joins another
+ *  group before that Undo is listed by both; the later one wins groupOf. */
 function leave(el: HTMLElement) {
   const g = groupOf(el)
-  if (!g) return
+  if (!g) return false
+  if (lastOne(g, el)) { removeUndoably(g); return true } // (still listed: Undo puts it back in)
   setIds(g, ids(g).filter(id => id !== el.dataset.id))
+  return false
 }
+/** Nothing but `el` keeps `g` (no other window on the page, no drawing). */
+const lastOne = (g: HTMLElement, el: HTMLElement) => !groupInk(g).length && members(g).every(m => m === el)
 
 /** Take the frame away and leave the windows where they are. */
 export function ungroup(g: HTMLElement) {
@@ -278,21 +284,25 @@ document.addEventListener('moved', ev => {
   if (moving.length > 1) { moving.forEach(m => dropIn(m)); return } // a selection: its loose windows join where they land; none leave
   const from = groupOf(el)
   // a member dropped with its center outside the frame (still its pre-drag shape: it doesn't refit mid-drag) steps
-  // out at once; the notice offers to keep it in, which puts it back and lets the frame grow round it
+  // out at once; its Undo puts it back and lets the frame grow round it
   if (from && !inside(styleRect(from), ...center(el))) {
-    leave(el)
+    const went = leave(el) // the frame's own Undo puts the window back in: one Undo, not two
     redraw()
     changed()
-    const n = notice(`Moved out of "${winTitle(from)}"`, button('Keep in group', '', () => {
-      n.remove()
-      if (!from.isConnected || !el.isConnected || groupOf(el)) return
-      join(el, from)
-      redraw()
-      changed()
-    }))
-    setTimeout(() => n.remove(), 8000)
+    if (!went) {
+      const n = notice('') // looks like the delete Undo (canvas/window.ts)
+      n.classList.add('undo')
+      n.replaceChildren(make('span', '', `Moved out of "${winTitle(from)}"`), button('Undo', '', () => {
+        n.remove()
+        if (!from.isConnected || !el.isConnected || groupOf(el)) return
+        join(el, from)
+        redraw()
+        changed()
+      }))
+      setTimeout(() => n.remove(), 8000)
+    }
   }
-  dropIn(el, from) // (not back into the one it left: Keep in group does that)
+  dropIn(el, from) // (not back into the one it left: Undo does that)
 })
 
 /** A window in no group joins the one it was dropped on, at a spot of its own among the others: where it was dropped
@@ -340,9 +350,9 @@ function takeOut(m: HTMLElement) {
   const g = groupOf(m)
   if (!g) return
   const f = styleRect(g), r = sizeOf(m)
-  leave(m)
+  const went = leave(m)
   if (onCanvas(m)) { const p = nearestFree({ ...r, x: f.x + f.w + GAP }); place(m, p.x, p.y) } // not on top of another window
-  const ms = members(g), to = compact(ms.map(sizeOf), inner(f, PAD, tabH()), GAP)
+  const ms = went ? [] : members(g), to = compact(ms.map(sizeOf), inner(f, PAD, tabH()), GAP)
   ms.forEach((el, i) => place(el, to[i].x, to[i].y))
   redraw()
   changed() // the frame fits the windows left, then settles
@@ -391,7 +401,14 @@ function release(g: HTMLElement) {
 function gone(el: HTMLElement) {
   const g = groupOf(el)
   if (!g || g === el) return
-  setIds(g, ids(g).filter(id => id !== el.dataset.id))
+  if (lastOne(g, el)) removeUndoably(g) // removed some other way than its ×: the frame still doesn't stay empty
+  else setIds(g, ids(g).filter(id => id !== el.dataset.id))
+}
+/** A last window deleted with its × (Undo still showing): the frame goes in the same Undo, keeping it listed. A window
+ *  parked for another reason (a finished sub-agent's) leaves its frame be. */
+function deleting(el: HTMLElement) {
+  const g = groupOf(el)
+  if (g && g !== el && undoable(el) && lastOne(g, el)) removeUndoably(g)
 }
 const isEl = (n: Node): n is HTMLElement => n instanceof HTMLElement && !!n.dataset.id
 new MutationObserver(recs => {
@@ -399,6 +416,7 @@ new MutationObserver(recs => {
   if ([...out, ...added].some(isGroup)) index = null // a frame parked or back: who's in which group changed
   out.filter(n => !n.isConnected && parked(n) && isGroup(n)).forEach(release)
   out.filter(n => !n.isConnected && !parked(n)).forEach(gone)
+  out.filter(n => !n.isConnected && parked(n) && !isGroup(n)).forEach(deleting)
   added.filter(n => n.isConnected).forEach(arrived)
 }).observe(world, { childList: true })
 onGone(gone)
