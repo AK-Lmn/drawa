@@ -254,7 +254,8 @@
 .win.group .win-x{display:none} /* no sidebar, float or full view: a group lives on the canvas; its pin locks it in place */
 .win.group[data-locked]>.win-h{cursor:default}
 .win.group[data-locked]>.grip{display:none} /* locked: no resizing either (it would rescale its windows) */
-#stage:not(.hand) .win.group:not([data-locked]){cursor:move} /* its empty space drags it */
+#stage:not(.hand) .win.group:not([data-locked]){cursor:grab} /* its empty space drags it, like a tab */
+#stage:not(.hand) .win.group.dragging{cursor:grabbing}
 #stage.hand .win.group,.win.group[data-locked]{cursor:grab} /* or pans (canvas/nav.ts) */
 .win.group.min>.win-h .t::after{content:" · " attr(data-count);color:var(--ink-2)} /* collapsed: how many windows it holds */
 .win.group .gghost{position:absolute;box-sizing:border-box;padding:8px 10px;border:1px dashed var(--line-2);border-radius:var(--r-box);color:var(--ink-2);font:500 12px/1.4 var(--sans);overflow:hidden} /* a pinned window's spot */

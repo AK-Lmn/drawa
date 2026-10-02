@@ -100,6 +100,8 @@ export function group(o: { id?: string; title?: string; members?: string[]; ink?
   }, true)
   // dragging its empty space drags the group (Shift+drag: a selection box; Hand mode or locked: pans, canvas/nav.ts)
   draggable(el, el, redraw, undefined, e => e.target === el && !e.shiftKey && !handDrag() && !el.dataset.locked)
+  // a press on its empty space never starts a text selection: a double-click or a drag there selected the windows' text
+  el.addEventListener('mousedown', e => { if (e.target === el) e.preventDefault() })
   return el
 }
 /** data-locked: the canvas leaves it where it is (movesWith skips it); here, its tab doesn't drag and nothing pushes it. */
