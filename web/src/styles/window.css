@@ -3,6 +3,7 @@
    --edge is the outline color for tab, shoulder and body together; states only change --edge and the tab's top line: no blurred shadows on canvas windows (paint on every pan and zoom frame). */
 .win{display:flex;flex-direction:column;--edge:var(--line);cursor:auto}
 .win.focus{--edge:var(--line-2)}
+.win-h:has(.win-x .copybtn){max-width:calc(100% - var(--r-tab) - 122px)} /* one more button in the strip */
 
 .win-h{position:relative;z-index:var(--z-sticky);display:flex;align-items:center;gap:4px;align-self:flex-start;flex:none;
   min-width:min(180px,100%);max-width:calc(100% - var(--r-tab) - 94px); /* room for the .win-x strip */height:var(--tab-h);padding:0 4px 0 12px;

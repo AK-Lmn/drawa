@@ -19,6 +19,7 @@ const MAX = 20_000 // characters kept per doc (the whole layout shares localStor
 referable('doc', {
   icon: '▦',
   name: 'scratchpad',
+  copy: el => el.dataset.src ?? '',
   content: (el, label) => ({ text: `Markdown note "${label}" from my canvas:\n\n${el.dataset.src ?? ''}` }),
 })
 

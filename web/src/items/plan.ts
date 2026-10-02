@@ -49,6 +49,7 @@ const saved = (p: Plan) => ({ ...savedRect(p.el), ...(p.el.dataset.name ? { name
 persist('plans', () => Object.fromEntries(all.map(p => ['p:' + p.key, saved(p)])), v => Object.assign(savedPos, v), 0)
 referable('plan', {
   icon: '▤',
+  copy: el => all.find(p => p.el === el)?.md ?? '',
   content: (el, label) => ({ text: `Plan "${label}":\n\n${all.find(p => p.el === el)?.md ?? ''}` }),
 })
 

@@ -225,6 +225,7 @@ persist('snippets',
   (list: Snippet[]) => each(list, snippet))
 referable('snippet', {
   icon: '$',
+  // no copy option: its copy button stays on the tab, always visible
   content: el => el.dataset.type === 'code'
     ? { text: `Code from my canvas (${title(el)}):\n\`\`\`${el.dataset.lang ?? ''}\n${text(el)}\n\`\`\`` }
     : el.dataset.type === 'text'
