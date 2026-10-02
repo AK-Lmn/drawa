@@ -18,7 +18,7 @@ export interface GitState {
 
 /** What a repo's view needs from the window around it. */
 export interface Host {
-  refresh(): void
+  refresh(): Promise<void> | void
   open: Set<string> // the diffs you opened, kept open across refreshes
 }
 
@@ -28,6 +28,7 @@ export interface RepoView {
   gh: Strip // its pull request
   sig: string // the state last drawn: a refresh that changes nothing leaves the DOM (and open diffs) alone
   st?: GitState
+  busy?: boolean // an op is running: a second click waits for it, not runs it again
 }
 
 /** Commit messages being written, by repo ('' the project's own): kept when the window closes, saved with the layout. */
@@ -106,7 +107,7 @@ export function fill(v: RepoView, st: GitState, host: Host) {
     ...section('Untracked', untracked, false, ['Stage all', () => op(v, host, 'stage', paths(untracked))]),
     ...(files.length ? [] : [make('p', 'none', 'Working tree clean.')]),
     ...((st.total ?? 0) > files.length ? [make('p', 'none', `…and ${st.total! - files.length} more changed files (the list stops at ${files.length}).`)] : []),
-    ...(st.log?.length ? [commitsList(st.log)] : []),
+    ...(st.log?.length ? [commitsList(v, st.log, host)] : []),
   )
   // commit / push buttons reflect what's possible now
   const row2 = make('div', 'row')
@@ -171,41 +172,81 @@ function row(v: RepoView, f: GitFile, isStaged: boolean, host: Host) {
   return wrap
 }
 
-function commitsList(log: NonNullable<GitState['log']>) {
+function commitsList(v: RepoView, log: NonNullable<GitState['log']>, host: Host) {
   const d = make('details', 'glog'), s = make('summary')
   s.append(make('b', '', 'Recent commits'))
   d.append(s, ...log.map(c => {
-    const r = make('div', 'gc')
+    const wrap = make('div'), r = make('button', 'gc'), key = `c:${c.hash}`
     r.append(make('code', '', c.hash), make('span', 'gm', c.subject), make('span', 'gw', c.when))
-    r.title = `${c.hash} · ${c.author} · ${c.when}`
-    return r
+    r.title = `${c.hash} · ${c.author} · ${c.when}. Click for what it changed.`
+    r.setAttribute('aria-expanded', 'false')
+    wrap.append(r)
+    const toggle = async () => {
+      const open = wrap.querySelector('.gshow')
+      r.setAttribute('aria-expanded', String(!open))
+      if (open) { open.remove(); host.open.delete(key); return }
+      host.open.add(key)
+      try {
+        const { diff } = await api<{ diff: string }>(`git/show?repo=${q(v.dir)}&hash=${q(c.hash)}`)
+        wrap.append(commitDiff(diff))
+      } catch (e) {
+        r.setAttribute('aria-expanded', 'false')
+        host.open.delete(key)
+        say(v, `Couldn't load commit ${c.hash}: ${(e as Error).message}`, true)
+      }
+    }
+    r.onclick = toggle
+    if (host.open.has(key)) { d.open = true; toggle() } // kept open across refreshes, as files' diffs are
+    return wrap
   }))
   return d
 }
 
-async function op(v: RepoView, host: Host, o: string, paths?: string[]) {
-  const r = await gitPost({ op: o, repo: v.dir, paths })
-  say(v, r.ok ? (o === 'pull' ? r.out || 'Up to date.' : '') : r.out ?? 'Failed', !r.ok)
-  host.refresh()
+/** A commit's patch, one unified() diff per file under its path. */
+function commitDiff(patch: string) {
+  const box = make('div', 'gshow')
+  const files = patch.split(/^(?=diff --git )/m).filter(f => f.startsWith('diff --git '))
+  if (!files.length) box.append(make('p', 'none', 'No changes in this project folder.'))
+  for (const f of files) {
+    const path = /^\+\+\+ b\/(.*)$/m.exec(f)?.[1] ?? /^--- a\/(.*)$/m.exec(f)?.[1] ?? f.split('\n')[0].replace(/^diff --git a\/(.*) b\/.*$/, '$1')
+    box.append(make('div', 'gcf', path), unified(f))
+  }
+  return box
 }
 
-async function commit(v: RepoView, host: Host) {
+/** Run `fn` unless another op of the repo's is running; its buttons look busy meanwhile. */
+async function busy(v: RepoView, fn: () => Promise<void>) {
+  if (v.busy) return
+  v.busy = true
+  v.foot.ariaBusy = v.files.ariaBusy = 'true'
+  try { await fn() } finally { v.busy = false; v.foot.ariaBusy = v.files.ariaBusy = null }
+}
+
+const op = (v: RepoView, host: Host, o: string, paths?: string[]) => busy(v, async () => {
+  if (o === 'pull') say(v, 'Pulling…')
+  const r = await gitPost({ op: o, repo: v.dir, paths })
+  say(v, r.ok ? (o === 'pull' ? r.out || 'Up to date.' : '') : r.out ?? 'Failed', !r.ok)
+  await host.refresh() // the new buttons are drawn before another click counts
+})
+
+const commit = (v: RepoView, host: Host) => busy(v, async () => {
   const message = v.msg.value.trim()
+  if (!v.st?.files?.some(f => f.x !== ' ' && f.x !== '?')) return say(v, 'Nothing staged to commit: stage the files to include first.', true)
   if (!message) { v.msg.focus(); return say(v, `Write a commit message first (or let ${who(writer())} write one).`, true) }
   const r = await gitPost({ op: 'commit', repo: v.dir, message })
   if (r.ok) { v.msg.value = ''; setDraft(v.dir, ''); say(v, r.out?.split('\n')[0] ?? 'Committed.'); v.gh.refresh() } else say(v, r.out ?? 'Commit failed', true)
-  host.refresh()
-}
+  await host.refresh()
+})
 
-async function push(v: RepoView, host: Host) {
+const push = (v: RepoView, host: Host) => busy(v, async () => {
   const where = v.dir ? ` of ${v.dir}` : ''
   if (!await confirmBox('Push to the remote?', `Your commits on this branch${where} are uploaded to the remote repository, where others can see them.`, 'Push')) return
   say(v, 'Pushing…')
   const r = await gitPost({ op: 'push', repo: v.dir })
   if (r.ok) v.gh.refresh()
   say(v, r.ok ? r.out?.split('\n').pop() || 'Pushed.' : r.out ?? 'Push failed', !r.ok)
-  host.refresh()
-}
+  await host.refresh()
+})
 
 /** "Write with <agent>", and a ▾ to pick which agent writes when more than one installed can (remembered, this
  *  browser). `tip` says what it reads, given the agent's name. */
