@@ -6,6 +6,7 @@ import { redraw } from './graph'
 import { setToggle } from './dock'
 import { expand, collapse, focusInput } from './window'
 import { drawing } from './ink'
+import { command } from '../lib/keys'
 import type { PanzoomObject } from '@panzoom/panzoom'
 
 // inside the stage, just under the pen's capture layer: Draw mode works on a window in full view too
@@ -58,7 +59,10 @@ function zoomable(el: HTMLElement) {
 }
 function unzoom() {
   pz?.destroy()
-  if (pzBox) pzBox.style.transform = pzBox.style.cursor = ''
+  // destroy() only unbinds: clear the styles Panzoom set, or the body keeps touch-action:none and overflow:hidden
+  if (pzBox) pzBox.style.transform = pzBox.style.cursor = pzBox.style.touchAction = pzBox.style.userSelect = pzBox.style.transformOrigin = pzBox.style.transition = ''
+  const p = pzBox?.parentElement
+  if (p) p.style.overflow = p.style.userSelect = p.style.touchAction = ''
   pz = pzBox = undefined
 }
 // capture phase: Draw mode's layer sits on top, and the wheel should zoom the picture under it, not pan the canvas
@@ -68,6 +72,15 @@ stage.addEventListener('wheel', e => {
   e.stopPropagation()
   pz!.zoomWithWheel(e)
 }, { capture: true, passive: false })
+
+addEventListener('keydown', e => {
+  if (!pz || !shortcutOk(e) || e.ctrlKey || e.metaKey || e.altKey) return
+  const f = ({ '+': pz.zoomIn, '=': pz.zoomIn, '-': pz.zoomOut, '0': pz.reset } as Record<string, () => unknown>)[e.key]
+  if (!f) return
+  e.preventDefault()
+  f()
+})
+command({ label: 'Zoom the picture in full view in, out, back', group: 'Windows', keys: ['+', '-', '0'] })
 
 export function exitFull() {
   if (!open) return
