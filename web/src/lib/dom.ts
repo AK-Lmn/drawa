@@ -149,11 +149,9 @@ export const reducedMotion = () => still.matches
 /** No pings while something rebuilds in bulk (replaying a saved session would flash every file it touched). */
 export const quietPings = (on: boolean) => { quietUntil = on ? Infinity : 0 }
 
-/** In-app confirmation (instead of the browser's native confirm()). Resolves true when the action button is chosen.
- *  `cancel`: the other button's label, when it's a choice rather than a way back. */
-export function confirmBox(title: string, body: string, action: string, cancel = 'Cancel'): Promise<boolean> {
+/** In-app confirmation (instead of the browser's native confirm()). Resolves true when the action button is chosen. */
+export function confirmBox(title: string, body: string, action: string): Promise<boolean> {
   const d = $<HTMLDialogElement>('#confirm')
-  d.querySelector<HTMLButtonElement>('button[value=""]')!.textContent = cancel
   d.querySelector('h2')!.textContent = title
   d.querySelector('p')!.textContent = body
   d.querySelector<HTMLButtonElement>('button[value=ok]')!.textContent = action

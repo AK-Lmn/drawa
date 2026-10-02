@@ -3,7 +3,7 @@
 // frozen while anything is dragged), and never overlaps another group (groupgeom.ts settles that). A window joins
 // by being dropped into a frame, and leaves by being dropped outside it or through its tab's Remove from group button.
 // Drawings on the canvas belong to groups too (groupink.ts).
-import { make, ICON, iconButton, button, confirmBox, notice, uuid, perFrame, toast } from '../lib/dom'
+import { make, ICON, iconButton, button, confirmBox, notice, uuid, perFrame } from '../lib/dom'
 import { persist, each } from '../lib/store'
 import { world, toWorld, items, byIds, rect, liveRect, savedRect, place, changed, onChange, onCanvas, moveWith, movesWith, viewCenter, parked, onGone, draggable, nearestFree, spawnIn, type Rect } from '../canvas/canvas'
 import { makeWindow, winTitle, titleOf, removeUndoably } from '../canvas/window'
@@ -285,7 +285,7 @@ document.addEventListener('moved', ev => {
     changed()
     const n = notice(`Moved out of "${winTitle(from)}"`, button('Keep in group', '', () => {
       n.remove()
-      if (!from.isConnected || groupOf(el)) return
+      if (!from.isConnected || !el.isConnected || groupOf(el)) return
       join(el, from)
       redraw()
       changed()
@@ -300,11 +300,13 @@ document.addEventListener('moved', ev => {
 function dropIn(el: HTMLElement, not?: HTMLElement) {
   const into = dropTarget(el)
   if (!into || into === not) return
-  const room = inner(styleRect(into), PAD, tabH()), p = placeIn(members(into).map(sizeOf), sizeOf(el), room, GAP)
+  const room = inner(styleRect(into), PAD, tabH()), ms = members(into).map(sizeOf), min = into.classList.contains('min')
+  // a collapsed group was aimed at by its tab, so the drop spot means nothing: below its windows, inside the frame
+  const p = min ? { x: room.x, y: Math.max(room.y, ...ms.map(o => o.y + o.h + GAP)) } : placeIn(ms, sizeOf(el), room, GAP)
   place(el, p.x, p.y)
   join(el, into)
   flash(into)
-  if (into.classList.contains('min')) toast(`Added to "${winTitle(into)}" (collapsed)`)
+  if (min) { const n = notice(`Added to "${winTitle(into)}" (collapsed)`); setTimeout(() => n.remove(), 4000) }
   redraw()
   changed()
 }

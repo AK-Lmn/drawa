@@ -260,6 +260,7 @@
 .win.group .gghost{position:absolute;box-sizing:border-box;padding:8px 10px;border:1px dashed var(--line-2);border-radius:var(--r-box);color:var(--ink-2);font:500 12px/1.4 var(--sans);overflow:hidden} /* a pinned window's spot */
 .win.group[data-state=drop]{--edge:var(--accent)} /* a window dragged over it would join */
 .win.group[data-state=drop]>.win-h .t::after{content:" · drop to add";color:var(--accent-text)} /* on the tab: its windows never cover it */
+#world:has(>.win.group.min[data-state=drop])>.item.dragging{opacity:.4} /* the dragged window hangs over the collapsed tab it aims at */
 /* which windows are in a group (items/group.ts outlines): a dotted frame with corner squares, a thin line round each window */
 .win.group[data-outline]::before,.win.group[data-outline]::after{content:"";position:absolute;pointer-events:none;z-index:var(--z-over)}
 .win.group[data-outline]::before{inset:-4px;border:1px dashed var(--accent)} /* round the whole group, tab included */
