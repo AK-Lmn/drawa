@@ -45,11 +45,14 @@ export async function send(S: Session, prompt: string, content?: object[], refs:
     if (shell) p = typeof p === 'string' ? shell + p : [{ type: 'text', text: shell }, ...p]
     if (images.length) p = [...(typeof p === 'string' ? [{ type: 'text', text: p }] : p), ...images.map(imageBlock)]
     if (!bubble.isConnected) return false // the card was cleared (/clear) while this was being prepared
+    bubble.dataset.state = 'sending'
     await post('send', { cid: S.cid, sid: S.sid, p, mode: S.mode, model: S.model, effort: S.effort, backend: S.backend, uuid: id })
+    delete bubble.dataset.state
     attach(S)
     if (waits && canUnsend(S.backend)) takeBackButtons(S, bubble)
     return true
   } catch (e) {
+    delete bubble.dataset.state
     const i = S.queued.indexOf(bubble)
     if (i >= 0) S.queued.splice(i, 1)
     bubble.classList.replace('queued', 'failed')
@@ -88,7 +91,8 @@ function requeue(S: Session, ids: string[]) {
     b.classList.add('queued')
     S.queued.push(b)
     const text = b.firstChild?.nodeType === Node.TEXT_NODE ? b.firstChild.textContent ?? '' : ''
-    if (text) unsent.set(b, { prompt: text, refs: [], images: [] }) // ponytail: its references and pictures aren't restored for editing
+    // its references and pictures can't be rebuilt from the transcript: such a message can only be deleted, not edited
+    if (text && !b.querySelector('.refdump, .refs.sent')) unsent.set(b, { prompt: text, refs: [], images: [] })
     if (canUnsend(S.backend)) takeBackButtons(S, b)
   }
 }
@@ -228,12 +232,14 @@ function line(S: Session, m: Msg | undefined, raw: string) {
  *  never read go back in the box, to send again. */
 function ended(S: Session, why: string) {
   if (S.pending > S.queued.length) put(S, make('div', 'err', `Interrupted: ${who(S.backend)} stopped before finishing${why ? ` (${why})` : ''}. Send a message to carry on.`))
+  let back = 0
   for (const b of S.queued.splice(0)) {
     b.classList.replace('queued', 'failed')
     b.querySelector('.unsend')?.remove()
     const again = unsent.get(b)
-    if (again) putBack(S, again.prompt, again.refs, again.images, false)
+    if (again) { putBack(S, again.prompt, again.refs, again.images, false); back++ }
   }
+  if (back) toast(`${back === 1 ? 'A message' : `${back} messages`} ${who(S.backend)} never read ${back === 1 ? 'is' : 'are'} back in the message box, to send again.`)
   agentsStopped(S) // its agents were part of it
   expireAsks(S)
   if (S.pending || S.bg) { S.pending = S.bg = 0; quiet(S) }
