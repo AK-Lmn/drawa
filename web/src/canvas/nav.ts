@@ -27,12 +27,12 @@ const deltas = (e: WheelEvent) => (e.shiftKey && !e.deltaX ? { dx: e.deltaY, dy:
  *  at the end of its content: reaching the bottom of a log shouldn't start panning the canvas. */
 const inScroller = (el: Element | null, e: WheelEvent): boolean => {
   const { dx, dy } = deltas(e)
-  const vertical = Math.abs(dy) >= Math.abs(dx)
+  // either axis the wheel moves on: a trackpad's diagonal events over a text that only scrolls down mustn't pan
   for (; el && el !== stage; el = el.parentElement) {
     const s = el as HTMLElement, cs = getComputedStyle(s)
     // the style first: only an element that can scroll gets its sizes read
-    if (!/auto|scroll/.test(vertical ? cs.overflowY : cs.overflowX)) continue
-    if (vertical ? s.scrollHeight > s.clientHeight + 1 : s.scrollWidth > s.clientWidth + 1) return true
+    if (dy && /auto|scroll/.test(cs.overflowY) && s.scrollHeight > s.clientHeight + 1) return true
+    if (dx && /auto|scroll/.test(cs.overflowX) && s.scrollWidth > s.clientWidth + 1) return true
   }
   return false
 }
