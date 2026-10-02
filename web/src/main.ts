@@ -125,8 +125,9 @@ for (const c of [
 ]) command({ ...c, group: 'Items' })
 command({ label: 'Draw mode', group: 'Draw', keys: ['D'], run: () => setDrawing(!drawing), tip: '`D` draws on the canvas; `A` draws an arrow between two items' })
 addEventListener('pointerdown', e => { lastDown = e.target }, true)
-// a key pressed outside a field means a hardware keyboard (an iPad's, say): show the tools' key hints even on touch
-const keyboard = (e: KeyboardEvent) => { if (!typing(e.target)) { document.documentElement.dataset.keys = ''; removeEventListener('keydown', keyboard, true) } }
+// a key pressed outside a field means a hardware keyboard (an iPad's, say): show the tools' key hints even on touch.
+// On-screen keyboards and IMEs send 'Unidentified'/'Process' or composing events, which aren't one
+const keyboard = (e: KeyboardEvent) => { if (e.isComposing || e.key === 'Unidentified' || e.key === 'Process') return; if (!typing(e.target)) { document.documentElement.dataset.keys = ''; removeEventListener('keydown', keyboard, true) } }
 addEventListener('keydown', keyboard, true)
 // Single-key shortcuts, only when not typing.
 addEventListener('keydown', e => {
