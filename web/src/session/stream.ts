@@ -9,7 +9,7 @@ import { change, settleChange, inFile, type Change } from '../panels/diff'
 import { tree, openInspector, inspecting } from '../panels/files'
 import { liveDiagrams } from '../items/diagram'
 import { showPlan, planResult, focusPlan } from '../items/plan'
-import { agentWindow, agentMsg, agentDone, showAgent, agentId, agentCall, agentMessaged, relayed } from '../items/agent'
+import { agentWindow, workflowTask, agentMsg, agentDone, showAgent, agentId, agentCall, agentMessaged, relayed } from '../items/agent'
 import { put, follow, renderCard, clearSession, type Session, type ToolRow, type Block } from './session'
 import { approval, withdrawAsk } from './asks'
 import { thumb } from './images'
@@ -85,7 +85,7 @@ function start(S: Session, i: number, b: ContentBlock) {
   } else if (b.type === 'tool_use') {
     const act = ACTS[b.name ?? '']
     const label = (b.name ?? 'Tool').replace(/^mcp__canvas__canvas_/, 'Canvas · ') // our own canvas tools read as such
-    const d = put(S, fold(`tool run${act ? ' act-' + act : ''}${b.name === 'Agent' || b.name === 'Task' ? ' agent' : ''}${b.name?.startsWith('mcp__canvas__') ? ' canvas' : ''}`, label))
+    const d = put(S, fold(`tool run${act ? ' act-' + act : ''}${b.name === 'Agent' || b.name === 'Task' || b.name === 'Workflow' ? ' agent' : ''}${b.name?.startsWith('mcp__canvas__') ? ' canvas' : ''}`, label))
     S.tools[b.id!] = d
     S.blocks[i] = { type: 'tool_use', buf: '', d, name: b.name, id: b.id }
   }
@@ -148,6 +148,7 @@ function stop(S: Session, i: number) {
   } else if (k.type === 'tool_use') {
     let inp: Record<string, any> = {}
     try { inp = JSON.parse(k.buf || '{}') } catch {}
+    if (k.name === 'Workflow') inp = workflowTask(inp) // shown like an agent: its name, description and phases
     const d = k.d!
     d.querySelector('.arg')!.textContent = rel(describe(inp))
     const c = wire(S, k.id!, k.name ?? '', inp)
@@ -183,9 +184,9 @@ function stop(S: Session, i: number) {
 function result(S: Session, r: ContentBlock) {
   const d = S.tools[r.tool_use_id!]
   const t = plain(r.content)
-  const aid = d?.classList.contains('agent') ? /agentId: ([\w-]+)/.exec(t)?.[1] : undefined
+  const aid = d?.classList.contains('agent') ? /(?:agentId|Task ID): ([\w-]+)/.exec(t)?.[1] : undefined
   if (aid) agentId(r.tool_use_id!, aid) // what SendMessage addresses (live, task_started already said)
-  if (d?.classList.contains('agent') && /^Async agent launched/.test(t)) {
+  if (d?.classList.contains('agent') && /^(Async agent launched|Workflow launched in background)/.test(t)) {
     // background agent: its row keeps running until a task-notification reports back
     d.classList.add('bg')
     d.querySelector('.st')!.textContent = 'background'

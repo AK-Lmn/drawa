@@ -7,12 +7,12 @@ import (
 )
 
 var (
-	launchedRe = regexp.MustCompile(`Async agent launched[^"]*?agentId: ([\w-]+)`)
+	launchedRe = regexp.MustCompile(`(?:Async agent launched[^"]*?agentId|Workflow launched in background\. Task ID): ([\w-]+)`)
 	taskIDRe   = regexp.MustCompile(`<task-id>([\w-]+)</task-id>`)
 )
 
 // trackTasks keeps the set of background agents still running: added when an Agent call answers "Async agent
-// launched" (its id), removed by a task notification naming that id (a live task_notification line, or the
+// launched" (its id) or a Workflow call "Workflow launched in background" (its task id), removed by a task notification naming that id (a live task_notification line, or the
 // <task-notification> message, which may list several). ponytail: a notification the CLI never sends keeps the
 // card from counting as idle until ReapCap; tracking the CLI's own task list would need a protocol for it.
 func (l *Live) trackTasks(line string) {
