@@ -4,7 +4,7 @@ import { $, make, shortcutOk } from '../lib/dom'
 import { changed, stage, onChange, holder } from './canvas'
 import { redraw } from './graph'
 import { setToggle } from './dock'
-import { expand, collapse, focusInput } from './window'
+import { expand, collapse, focusInput, titleOf } from './window'
 import { drawing } from './ink'
 
 // inside the stage, just under the pen's capture layer: Draw mode works on a window in full view too
@@ -33,6 +33,7 @@ export function toggleFull(el: HTMLElement) {
   el.classList.add('full')
   layer.append(el)
   layer.hidden = false
+  layer.setAttribute('aria-label', titleOf(el))
   document.body.classList.add('has-full') // the minimap and hint step aside (panels.css)
   open = { el, spot, min }
   sync(el)
@@ -53,6 +54,11 @@ export function exitFull() {
   sync(el)
   redraw()
   changed()
+  // keyboard users land back on ⤢; .focus shows the tab and button just long enough to take focus (window.css),
+  // then :focus-within keeps them shown
+  el.classList.add('focus')
+  el.querySelector<HTMLElement>(':scope > .win-h .fullbtn')?.focus()
+  el.classList.remove('focus')
 }
 
 export const syncFull = (el: HTMLElement) => setToggle(el, 'fullbtn', isFull(el), 'Back to its place (Esc)', 'Full view (Shift+F)')
