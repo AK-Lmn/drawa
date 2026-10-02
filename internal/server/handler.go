@@ -114,6 +114,13 @@ var getRoutes = map[string]routeFunc{
 		}
 		return ok(gitx.GitDiff(q.Get("repo"), p, q.Get("staged") == "1"))
 	},
+	"/api/git/show": func(q url.Values) (any, int, error) {
+		h, err := need(q, "hash")
+		if err != nil {
+			return nil, 0, err
+		}
+		return ok(gitx.GitShow(q.Get("repo"), h))
+	},
 	"/api/files":     func(q url.Values) (any, int, error) { return filesx.Find(q.Get("q"), 40), 200, nil },
 	"/api/symbols":   symbolsRoute,
 	"/api/meta":      func(q url.Values) (any, int, error) { return live.Meta(q.Get("backend")), 200, nil },
