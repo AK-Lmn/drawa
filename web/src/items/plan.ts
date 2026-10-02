@@ -7,7 +7,7 @@ import { imageBlock } from '../lib/blobs'
 import { persist } from '../lib/store'
 import { md, enhance } from '../lib/markdown'
 import { markChanges } from './plandiff'
-import { rect, savedRect, freeSpot, changed, centerOn } from '../canvas/canvas'
+import { savedRect, spotBeside, changed, centerOn, type Rect } from '../canvas/canvas'
 import { makeWindow } from '../canvas/window'
 import { link, savedPos, forget } from '../canvas/graph'
 import { setDrawing, clearInk } from '../canvas/ink'
@@ -55,14 +55,13 @@ referable('plan', {
 function create(S: Session, key: string): Plan {
   const body = make('div', 'pnode-b md'), foot = make('div', 'pnode-f')
   const state = make('span', 'pstate'), general = make('textarea'), row = make('div', 'row')
-  const c = rect(S.card)
   const close = iconButton(ICON.x, `Remove plan from canvas (rejects it if ${who(S.backend)} is still waiting)`, async () => {
     if (p.req && !await confirmBox('Reject this plan?', `${who(S.backend)} is waiting for your review. Removing the plan rejects it.`, 'Reject and remove')) return
     remove(p)
   }, 'closebtn')
   const { el, head } = makeWindow({
     kind: 'plan', cls: 'pnode', title: 'Plan', minW: 320, minH: 280, actions: [close],
-    rect: { ...freeSpot({ x: c.x + c.w + 150, y: c.y - 20, w: 560, h: 680 }), ...savedPos['p:' + key] },
+    rect: (savedPos['p:' + key] as Rect | undefined) ?? spotBeside(S.card, 560, 680, 150, -20), // beside the card (inside its group, if it's in one)
   })
   el.dataset.id = 'p:' + key // stable across reloads, so arrows and pins come back
   head.querySelector('.t')!.after(state)
