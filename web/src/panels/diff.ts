@@ -24,12 +24,17 @@ function addRow(box: ParentNode, r: Row) {
 function folded(rows: Row[], label: string) {
   const s = make('div', 'sep more', label)
   s.title = 'Show these lines'
+  s.tabIndex = 0
+  s.setAttribute('role', 'button')
   s.onclick = e => {
     e.stopPropagation()
     const f = document.createDocumentFragment()
     rows.forEach(r => addRow(f, r))
+    const box = s.parentElement
     s.replaceWith(f)
+    if (e.detail === 0 && box) { box.tabIndex = -1; box.focus({ preventScroll: true }) } // opened from the keyboard: keep focus nearby instead of losing it with the row
   }
+  s.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); s.click() } }
   return s
 }
 
