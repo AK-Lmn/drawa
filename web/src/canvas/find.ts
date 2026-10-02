@@ -197,7 +197,7 @@ function go(el: HTMLElement) {
 }
 
 let from: HTMLElement | null = null // where focus was before the finder opened: it goes back there unless something is picked
-function openFinder() {
+export function openFinder() {
   if (box.hidden) from = document.activeElement as HTMLElement | null
   box.hidden = false
   input.value = ''

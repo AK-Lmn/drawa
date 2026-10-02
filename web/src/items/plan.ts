@@ -45,7 +45,8 @@ persist('dismissed', () => [...dismissed], (ids: string[]) => ids.forEach(id => 
 interface Review { v: number; general?: string; comments: { i: string; excerpt: string; text: string }[] }
 const review = (p: Plan): Review | undefined => p.done || (!p.comments.length && !p.general.value.trim()) ? undefined
   : { v: p.version, general: p.general.value || undefined, comments: p.comments.map(c => ({ i: c.el.dataset.for ?? '', excerpt: c.excerpt, text: c.text })) }
-persist('plans', () => Object.fromEntries(all.map(p => ['p:' + p.key, { ...savedRect(p.el), ...(p.el.dataset.name ? { name: p.el.dataset.name } : {}), review: review(p) }])), v => Object.assign(savedPos, v), 0)
+const saved = (p: Plan) => ({ ...savedRect(p.el), ...(p.el.dataset.name ? { name: p.el.dataset.name } : {}), review: review(p) })
+persist('plans', () => Object.fromEntries(all.map(p => ['p:' + p.key, saved(p)])), v => Object.assign(savedPos, v), 0)
 referable('plan', {
   icon: '▤',
   content: (el, label) => ({ text: `Plan "${label}":\n\n${all.find(p => p.el === el)?.md ?? ''}` }),
@@ -341,7 +342,11 @@ export function planWithdrawn(S: Session, req: string) {
 
 /* ---------- canvas bookkeeping ---------- */
 export function dropPlans(S: Session) {
-  for (const p of all.filter(p => p.S === S)) { p.el.remove(); all.splice(all.indexOf(p), 1) }
+  for (const p of all.filter(p => p.S === S)) {
+    savedPos['p:' + p.key] = saved(p) // a rebuild puts it back where it is now
+    p.el.remove()
+    all.splice(all.indexOf(p), 1)
+  }
   current.delete(S)
 }
 // a deleted selection has asked already (its confirm says what that means for a waiting plan)

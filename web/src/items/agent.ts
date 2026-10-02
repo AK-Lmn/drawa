@@ -122,6 +122,7 @@ export const runningAgents = (S: Session) => [...running.get(S) ?? []]
 export function dropAgents(S: Session) {
   for (const [call, a] of agents) {
     if (a.S !== S) continue
+    if (a.el.dataset.id) savedPos[a.el.dataset.id] = savedRect(a.el) // a rebuild puts it back where it is now
     forget(a.el)
     a.el.remove()
     drop(a.el) // (a parked one too: its group lets go)
