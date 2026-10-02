@@ -28,7 +28,7 @@ export function approval(S: Session, m: Msg) {
   if (caption) box.append(make('p', '', caption))
   // file changes: show exactly what would change before you allow it
   const diff = input.file_path && ['Edit', 'MultiEdit', 'Write'].includes(r.tool_name) ? change(S, r.tool_name, rel(String(input.file_path)), input) : undefined
-  if (diff) { box.append(diff); inFile(diff, r.tool_name, input) }
+  if (diff) { box.append(diff); inFile(diff) }
   const answer = (allow: boolean, always = false) => {
     // answered only once the server took it: on failure the buttons stay, to try again
     row.querySelectorAll('button').forEach(b => (b.disabled = true))
