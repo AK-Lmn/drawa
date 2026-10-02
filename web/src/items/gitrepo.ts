@@ -186,10 +186,12 @@ function commitsList(v: RepoView, log: NonNullable<GitState['log']>, host: Host)
       r.setAttribute('aria-expanded', String(!open))
       if (open) { open.remove(); host.open.delete(key); return }
       host.open.add(key)
+      const box = wrap.appendChild(make('div', 'gshow')) // placed before the fetch so a second click closes it
       try {
         const { diff } = await api<{ diff: string }>(`git/show?repo=${q(v.dir)}&hash=${q(c.hash)}`)
-        wrap.append(commitDiff(diff))
+        if (box.isConnected) box.replaceWith(commitDiff(diff))
       } catch (e) {
+        box.remove()
         r.setAttribute('aria-expanded', 'false')
         host.open.delete(key)
         say(v, `Couldn't load commit ${c.hash}: ${(e as Error).message}`, true)
@@ -231,7 +233,9 @@ const op = (v: RepoView, host: Host, o: string, paths?: string[]) => busy(v, asy
 
 const commit = (v: RepoView, host: Host) => busy(v, async () => {
   const message = v.msg.value.trim()
-  if (!v.st?.files?.some(f => f.x !== ' ' && f.x !== '?')) return say(v, 'Nothing staged to commit: stage the files to include first.', true)
+  const st = v.st, files = st?.files ?? []
+  // a capped list can hide staged files; then the server's commit op says if there's nothing to commit
+  if ((st?.total ?? 0) <= files.length && !files.some(f => f.x !== ' ' && f.x !== '?')) return say(v, 'Nothing staged to commit: stage the files to include first.', true)
   if (!message) { v.msg.focus(); return say(v, `Write a commit message first (or let ${who(writer())} write one).`, true) }
   const r = await gitPost({ op: 'commit', repo: v.dir, message })
   if (r.ok) { v.msg.value = ''; setDraft(v.dir, ''); say(v, r.out?.split('\n')[0] ?? 'Committed.'); v.gh.refresh() } else say(v, r.out ?? 'Commit failed', true)
