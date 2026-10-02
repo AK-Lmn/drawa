@@ -317,12 +317,25 @@ async function feedback(p: Plan) {
     setMode(p.S, 'plan')
     if (!await send(p.S, 'Feedback on the plan', [{ type: 'text', text: message.replace('They also drew on the plan: the annotated image follows in their next message.', 'They also drew on the plan: see the annotated image below.') },
       ...(image ? [imageBlock('image/png', image)] : [])])) unanswered(p)
+    else sent(p)
     return
   }
-  if (await respond(p, req, { allow: false, message }) && image) send(p.S, 'Annotated plan (my drawing on it)', [
+  if (!await respond(p, req, { allow: false, message })) return
+  sent(p)
+  if (image) send(p.S, 'Annotated plan (my drawing on it)', [
     { type: 'text', text: 'My drawing on your plan, as an annotated screenshot:' },
     imageBlock('image/png', image),
   ])
+}
+
+/** The feedback got there: empty the box and the comments (only now, so a failed send keeps them to try again) and say so. */
+function sent(p: Plan) {
+  p.general.value = ''
+  for (const c of p.comments) c.el.remove()
+  p.comments = []
+  countComments(p)
+  setState(p, `Feedback sent · waiting for the revised plan`, 'revising')
+  changed()
 }
 
 
