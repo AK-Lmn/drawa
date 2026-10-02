@@ -105,7 +105,7 @@ export function agentWindow(S: Session, call: string, inp: Record<string, any>, 
 /** A Workflow call's input in an Agent call's shape. Its name, description and phases come from the script's
  *  `export const meta = {…}` literal (read with patterns, not run), else from its name or scriptPath. */
 export function workflowTask(inp: Record<string, any>) {
-  const meta = /export\s+const\s+meta\s*=\s*\{[\s\S]*?\n\}/.exec(String(inp.script ?? ''))?.[0] ?? ''
+  const meta = /export\s+const\s+meta\s*=\s*\{(?:[^\n]*\}\s*;?\s*$|[\s\S]*?\n\})/m.exec(String(inp.script ?? ''))?.[0] ?? ''
   const str = (key: string, src: string) => new RegExp(`\\b${key}\\s*:\\s*(['"\`])((?:\\\\.|(?!\\1)[^\\\\])*)\\1`).exec(src)?.[2]
   const name = str('name', meta) ?? inp.name ?? String(inp.scriptPath ?? 'Workflow').split('/').pop()!.replace(/\.js$/, '')
   const description = str('description', meta) ?? ''
