@@ -166,6 +166,9 @@ export function termNode(S: Session): TermNode {
 
 /** Card closed: drop its commands and Files windows, and files nothing shows any more. */
 export function dropWindows(S: Session) {
+  // a rebuild (reload() after a gap) makes them again from savedPos: keep where they are now, not where the page
+  // loaded them, or a window you moved jumps back
+  if (S.sid) Object.assign(savedPos, layout())
   terms.get(S)?.el.remove()
   terms.delete(S)
   const l = lists.get(S)
