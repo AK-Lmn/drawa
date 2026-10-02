@@ -63,7 +63,8 @@ onChange(() => {
 
 // what the Undo toast would bring back: everything removed while it shows (a deleted selection is one undo)
 let undo: { toast: HTMLElement; timer: number; items: { el: HTMLElement; back: () => void; also?: (el: HTMLElement) => void }[] } | null = null
-function removeUndoably(el: HTMLElement, also?: (el: HTMLElement) => void) {
+/** Take an item off the canvas with an Undo toast (removeButton's ×; a group's frame deleted with a selection). */
+export function removeUndoably(el: HTMLElement, also?: (el: HTMLElement) => void) {
   const arrows = forget(el), links = dropLinks(el), put = park(el)
   changed()
   if (!undo) {
