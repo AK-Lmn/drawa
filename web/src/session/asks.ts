@@ -144,7 +144,7 @@ function question(S: Session, id: string, qs: { question: string; header?: strin
     if (e.key === 'Enter' && (t === box || t.classList.contains('opt'))) { e.preventDefault(); if (!ok.disabled) ok.click() }
     else if (/^[1-9]$/.test(e.key)) { e.preventDefault(); f?.querySelectorAll<HTMLButtonElement>('.opt')[+e.key - 1]?.click() }
   })
-  row.prepend(make('span', 'keys', '1\u20139 to pick \u00b7 Enter to answer \u00b7 Esc to skip (when nothing\u2019s picked)'))
+  row.prepend(make('span', 'keys', '1\u20139 to pick \u00b7 Enter to answer \u00b7 Esc to skip'))
   row.append(skip, ok)
   box.append(row)
   ready()
