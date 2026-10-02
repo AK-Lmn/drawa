@@ -6,6 +6,7 @@ import { redraw } from './graph'
 import { setToggle } from './dock'
 import { expand, collapse, focusInput } from './window'
 import { drawing } from './ink'
+import type { PanzoomObject } from '@panzoom/panzoom'
 
 // inside the stage, just under the pen's capture layer: Draw mode works on a window in full view too
 const layer = holder(stage.insertBefore(make('div', 'fullview'), $('#ink-capture')))
@@ -38,12 +39,41 @@ export function toggleFull(el: HTMLElement) {
   sync(el)
   focusInput(el)
   redraw()
+  zoomable(el)
 }
+
+// A picture in full view (image, diagram, sketch, a previewed picture: anything drawn in a fitted inkBox) zooms with
+// the wheel or a pinch and pans by dragging. The transform is on the ink box itself, so its strokes zoom with it and
+// Draw mode places new ones from its on-screen rect (ink.ts placeAt): they land on the same spot at any zoom.
+// ponytail: a pen's width is screen px at the moment of drawing, so strokes drawn zoomed in look thinner zoomed out.
+let pz: PanzoomObject | undefined, pzBox: HTMLElement | undefined
+function zoomable(el: HTMLElement) {
+  const box = el.querySelector<HTMLElement>('[data-ink-fit]')
+  if (!box) return
+  import('@panzoom/panzoom').then(({ default: Panzoom }) => { // loaded on first use, as the zoom dialog does
+    if (open?.el !== el || pz) return
+    pzBox = box
+    pz = Panzoom(box, { maxScale: 12, minScale: 1, step: 0.35, cursor: 'grab', animate: false })
+  }, console.error)
+}
+function unzoom() {
+  pz?.destroy()
+  if (pzBox) pzBox.style.transform = pzBox.style.cursor = ''
+  pz = pzBox = undefined
+}
+// capture phase: Draw mode's layer sits on top, and the wheel should zoom the picture under it, not pan the canvas
+stage.addEventListener('wheel', e => {
+  const r = pz && pzBox!.parentElement!.getBoundingClientRect()
+  if (!r || e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return
+  e.stopPropagation()
+  pz!.zoomWithWheel(e)
+}, { capture: true, passive: false })
 
 export function exitFull() {
   if (!open) return
   const { el, spot, min } = open
   open = undefined
+  unzoom()
   layer.hidden = true
   document.body.classList.remove('has-full')
   if (!el.isConnected) { spot.remove(); return } // closed while in full view: it stays closed
