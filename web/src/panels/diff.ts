@@ -106,7 +106,9 @@ export function unified(text: string) {
   const lines = text.replace(/\n$/, '').split('\n')
   const start = lines.findIndex(l => l.startsWith('@@'))
   let a = 0, b = 0, last = 0
-  for (const l of start < 0 ? ['(no textual changes)'] : lines.slice(start)) {
+  // no hunk: git's header says why (an empty new file, a binary one, only its mode changed)
+  const none = /^Binary files /m.test(text) ? '(binary file)' : /^(new|deleted) file mode/m.test(text) ? '(empty file)' : '(no textual changes)'
+  for (const l of start < 0 ? [' ' + none] : lines.slice(start)) { // ' ': a context line, its marker sliced off
     if (l.startsWith('\\')) continue // "\ No newline at end of file"
     // a hunk header says where it is: git's function context, or the line number when there's none
     const h = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@\s?(.*)$/.exec(l)
