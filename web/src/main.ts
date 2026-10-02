@@ -8,7 +8,7 @@ import './lib/symbols' // code symbols for Ctrl+K and diffs; its Settings contro
 import './lib/tooltip' // the app's own tooltips for every title="…"
 import './lib/update' // checks GitHub for a newer release and offers to install it
 import { api } from './lib/api'
-import { $, make, ICON, project, shortcutOk, pressed } from './lib/dom'
+import { $, make, ICON, project, shortcutOk, typing, pressed } from './lib/dom'
 import { command } from './lib/keys'
 import { showHelp, showTip } from './lib/help'
 import { persist, restore, saveSoon } from './lib/store'
@@ -125,6 +125,9 @@ for (const c of [
 ]) command({ ...c, group: 'Items' })
 command({ label: 'Draw mode', group: 'Draw', keys: ['D'], run: () => setDrawing(!drawing), tip: '`D` draws on the canvas; `A` draws an arrow between two items' })
 addEventListener('pointerdown', e => { lastDown = e.target }, true)
+// a key pressed outside a field means a hardware keyboard (an iPad's, say): show the tools' key hints even on touch
+const keyboard = (e: KeyboardEvent) => { if (!typing(e.target)) { document.documentElement.dataset.keys = ''; removeEventListener('keydown', keyboard, true) } }
+addEventListener('keydown', keyboard, true)
 // Single-key shortcuts, only when not typing.
 addEventListener('keydown', e => {
   // Esc backs out one layer: this runs after every other handler, so anything nearer (a field, menu, dialog, Draw
