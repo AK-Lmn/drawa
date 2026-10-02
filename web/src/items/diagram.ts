@@ -253,5 +253,6 @@ creatable('diagram', {
 referable('diagram', {
   icon: '◇',
   label: el => el.querySelector('.t')?.textContent ?? '',
+  copy: el => el.dataset.src ?? '',
   content: (el, label) => ({ text: `Diagram "${label}" (Mermaid):\n\`\`\`mermaid\n${el.dataset.src ?? ''}\n\`\`\`` }),
 })

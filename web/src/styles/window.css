@@ -5,7 +5,7 @@
 .win.focus{--edge:var(--line-2)}
 
 .win-h{position:relative;z-index:var(--z-sticky);display:flex;align-items:center;gap:4px;align-self:flex-start;flex:none;
-  min-width:min(180px,100%);max-width:calc(100% - var(--r-tab) - 94px); /* room for the .win-x strip */height:var(--tab-h);padding:0 4px 0 12px;
+  min-width:min(180px,100%);max-width:calc(100% - var(--r-tab) - 122px); /* room for the .win-x strip */height:var(--tab-h);padding:0 4px 0 12px;
   background:var(--rail);border:1px solid var(--edge);border-bottom:0;border-radius:var(--r-tab) var(--r-tab) 0 0;
   cursor:grab;user-select:none;transition:border-color .25s,box-shadow .25s,opacity .2s,visibility .2s}
 /* the minimal interface (lib/prefs.ts): only the hovered or focused window shows its tab; selected/dragging ones,

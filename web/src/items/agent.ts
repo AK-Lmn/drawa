@@ -244,6 +244,7 @@ persist('agents', () => ({ pos: Object.fromEntries(items('agent').map(el => [el.
 
 referable('agent', {
   icon: '⧉',
+  copy: el => [...agents.values()].find(x => x.el === el)?.result ?? '',
   content: el => {
     const a = [...agents.values()].find(x => x.el === el)
     if (!a) return { text: `Sub-agent "${winTitle(el)}"` }

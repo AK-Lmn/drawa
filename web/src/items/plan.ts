@@ -48,6 +48,7 @@ const review = (p: Plan): Review | undefined => p.done || (!p.comments.length &&
 persist('plans', () => Object.fromEntries(all.map(p => ['p:' + p.key, { ...savedRect(p.el), ...(p.el.dataset.name ? { name: p.el.dataset.name } : {}), review: review(p) }])), v => Object.assign(savedPos, v), 0)
 referable('plan', {
   icon: '▤',
+  copy: el => all.find(p => p.el === el)?.md ?? '',
   content: (el, label) => ({ text: `Plan "${label}":\n\n${all.find(p => p.el === el)?.md ?? ''}` }),
 })
 

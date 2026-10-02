@@ -3,7 +3,7 @@
 // Three types, each shown and sent to Claude as what it is: output, code (with language and file lines), text.
 // Listens at the page level: the canvas layer doesn't import items.
 import { tipText } from '../lib/tooltip'
-import { make, button, ICON, copyButton, ping, perFrame, EDITABLE, keepOnScreen, clip, uuid } from '../lib/dom'
+import { make, button, ICON, ping, perFrame, EDITABLE, keepOnScreen, clip, uuid } from '../lib/dom'
 import { persist, each } from '../lib/store'
 import { items, savedRect, dragOut, changed, nearestFree, onCanvas, rect, viewCenter, centerOn, type Rect } from '../canvas/canvas'
 import { makeWindow, winTitle, removeButton } from '../canvas/window'
@@ -31,12 +31,11 @@ function fill(body: HTMLElement, text: string, type: SnipType, lang?: string) {
 
 export function snippet(o: Snippet) {
   const id = o.id ?? uuid(), body = make('pre', 'xnode-b')
-  const copy = copyButton(() => body.textContent ?? '', 'Copy text')
   const type = typeOf(o)
   fill(body, o.text, type, o.lang)
   const { el } = makeWindow({
     kind: 'snippet', cls: 'xnode', title: o.title, rect: o.rect, minW: 200, minH: 90,
-    actions: [copy, removeButton('Remove from canvas')],
+    actions: [removeButton('Remove from canvas')],
   })
   el.dataset.id = id
   el.dataset.type = type
@@ -203,6 +202,7 @@ persist('snippets',
   (list: Snippet[]) => each(list, snippet))
 referable('snippet', {
   icon: '$',
+  copy: text,
   content: el => el.dataset.type === 'code'
     ? { text: `Code from my canvas (${title(el)}):\n\`\`\`${el.dataset.lang ?? ''}\n${text(el)}\n\`\`\`` }
     : el.dataset.type === 'text'
