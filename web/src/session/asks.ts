@@ -70,7 +70,11 @@ function question(S: Session, id: string, qs: { question: string; header?: strin
   const ready = () => { ok.disabled = !qs.every((_, i) => picked[i].size || other[i].trim()) }
   qs.forEach((q, i) => {
     const f = make('fieldset')
-    f.append(make('legend', '', q.question), make('span', 'hint', q.multiSelect ? 'Pick any' : 'Pick one'))
+    const hint = make('span', 'hint', q.multiSelect ? 'Pick any' : 'Pick one')
+    hint.id = `ask-${id}-${i}`
+    f.setAttribute('role', q.multiSelect ? 'group' : 'radiogroup')
+    f.setAttribute('aria-describedby', hint.id)
+    f.append(make('legend', '', q.question), hint)
     f.dataset.multi = String(!!q.multiSelect)
     if (q.header) f.prepend(make('span', 'chip', q.header))
     for (const o of q.options) {
@@ -126,17 +130,21 @@ function question(S: Session, id: string, qs: { question: string; header?: strin
     if (qs.some((_, i) => picked[i].size || other[i].trim()) && !await confirmBox('Skip these questions?', 'What you picked or typed won\u2019t be sent.', 'Skip')) return
     respond('Skipped', { allow: false, message: 'The user skipped these questions; continue with your best judgment.' })
   }
-  skip.title = 'Skip (Esc)'
+  skip.title = 'Skip (Esc, when nothing\u2019s picked)'
   ok.title = 'Answer (Enter)'
   // Enter answers, Esc skips, 1-9 pick an option of the question you're in (Space still toggles a focused option)
   box.addEventListener('keydown', e => {
     const t = e.target as HTMLElement, f = t.closest('fieldset') ?? box.querySelector('fieldset')
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (!skip.disabled) skip.click(); return }
+    if (e.key === 'Escape') {
+      // with picks or typed text, Esc isn't a skip: leave it to outer handlers (leaving full view)
+      if (qs.some((_, i) => picked[i].size || other[i].trim())) return
+      e.preventDefault(); e.stopPropagation(); if (!skip.disabled) skip.click(); return
+    }
     if (t.tagName === 'INPUT' || e.ctrlKey || e.metaKey || e.altKey) return // typing, or the input's own Enter
     if (e.key === 'Enter' && (t === box || t.classList.contains('opt'))) { e.preventDefault(); if (!ok.disabled) ok.click() }
     else if (/^[1-9]$/.test(e.key)) { e.preventDefault(); f?.querySelectorAll<HTMLButtonElement>('.opt')[+e.key - 1]?.click() }
   })
-  row.prepend(make('span', 'keys', '1\u20139 to pick \u00b7 Enter to answer \u00b7 Esc to skip'))
+  row.prepend(make('span', 'keys', '1\u20139 to pick \u00b7 Enter to answer \u00b7 Esc to skip (when nothing\u2019s picked)'))
   row.append(skip, ok)
   box.append(row)
   ready()
