@@ -5,7 +5,7 @@ import { make, rel, clip, button } from '../lib/dom'
 import { save } from '../lib/store'
 import { md, enhance } from '../lib/markdown'
 import { touch, run, settle, quiet, type Act } from '../canvas/graph'
-import { change, settleChange, type Change } from '../panels/diff'
+import { change, settleChange, inFile, type Change } from '../panels/diff'
 import { tree, openInspector, inspecting } from '../panels/files'
 import { liveDiagrams } from '../items/diagram'
 import { showPlan, planResult, focusPlan } from '../items/plan'
@@ -70,6 +70,7 @@ function wire(S: Session, id: string, name: string, inp: Record<string, any>): C
   else if (act && inp.file_path) {
     const file = rel(inp.file_path)
     const c = act !== 'read' ? change(S, name, file, inp) : undefined
+    if (c && !S.replaying) inFile(c) // now, while the file still holds the old text (a Write's is gone once it runs)
     touch(S, id, act, file, c)
     return c
   }
