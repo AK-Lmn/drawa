@@ -4,7 +4,7 @@ import './lib/fonts' // applies the saved font choice right away
 import './lib/theme'
 import './lib/uimode' // full or minimal interface, from your settings file (lib/prefs.ts)
 import './lib/settings' // the toolbar's Settings panel
-import './lib/symbols' // code symbols for Ctrl+K and diffs; its Settings control asks the server whether ctags is there
+import { symbolsOn } from './lib/symbols' // code symbols for Ctrl+K and diffs; its Settings control asks the server whether ctags is there
 import './lib/tooltip' // the app's own tooltips for every title="…"
 import './lib/update' // checks GitHub for a newer release and offers to install it
 import { api } from './lib/api'
@@ -32,9 +32,10 @@ import './items/image'
 import './items/agent'
 import './items/group' // Ctrl+G groups the selected windows into a frame
 import './items/preview' // Ctrl+K opens project files in windows
-import './canvas/find'
+import { openFinder } from './canvas/find'
+import { menuSection } from './canvas/menu' // the right-click menu: a window's tab, the empty canvas
 import './canvas/winkeys' // W steps through windows, M collapses, Shift+F full view...
-import './canvas/layers' // bring forward / send back: the tab's right-click menu, the selection bar, Ctrl+] / Ctrl+[
+import './canvas/layers' // bring forward / send back: the tab's right-click menu, the selection bar, ] / [
 import { openGit } from './items/git'
 import { openGitHub } from './items/github'
 import { tree, closeInspector, showTab } from './panels/files'
@@ -124,6 +125,20 @@ for (const c of [
   { label: 'GitHub', keys: ['Shift+G'], run: () => openGitHub() },
   { label: 'History & files', keys: ['Shift+H'], run: () => toggleDrawer(), tip: '`Shift+H` opens past sessions and the project files' },
 ]) command({ ...c, group: 'Items' })
+// the right-click menu's New and Open sections (canvas/menu.ts), with the toolbar's own icons
+const iconOf = (sel: string) => $(sel).querySelector('svg')?.outerHTML
+const NOTE = '<svg viewBox="0 0 16 16"><path d="M2.5 2.5h11v7l-4 4h-7zM13.5 9.5h-4v4"/></svg>'
+const PR = '<svg viewBox="0 0 16 16"><circle cx="4" cy="3.5" r="1.5"/><circle cx="4" cy="12.5" r="1.5"/><circle cx="12" cy="12.5" r="1.5"/><path d="M4 5v6M12 11V6.5a2 2 0 0 0-2-2H7.5M9 3 7.5 4.5 9 6"/></svg>'
+menuSection('New', () => [
+  { label: 'Session', icon: ICON.plus, keys: 'N', run: () => newSession() },
+  { label: 'Sticky note', icon: NOTE, keys: 'T', run: noteHere },
+  { label: 'Scratchpad', icon: iconOf('#btn-scratch'), keys: 'S', run: () => doc({ edit: true }) },
+])
+menuSection('Open', () => [
+  { label: 'Git', icon: iconOf('#btn-git'), keys: 'G', run: () => openGit() },
+  { label: 'GitHub', icon: PR, keys: 'Shift+G', run: () => openGitHub() },
+  { label: symbolsOn() ? 'Search files & symbols' : 'Search files & windows', icon: iconOf('#btn-find'), keys: 'Ctrl+K', run: openFinder },
+])
 command({ label: 'Draw mode', group: 'Draw', keys: ['D'], run: () => setDrawing(!drawing), tip: '`D` draws on the canvas; `A` draws an arrow between two items' })
 addEventListener('pointerdown', e => { lastDown = e.target }, true)
 // Single-key shortcuts, only when not typing.

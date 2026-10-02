@@ -124,8 +124,16 @@ body.erasing #ink path:hover{opacity:.45}
 /* drawings in the canvas selection: outlined in the accent, like selected windows */
 #ink .ink-sel,#ink .ink-sel *{stroke:var(--accent);stroke-width:2px;paint-order:stroke;vector-effect:non-scaling-stroke}
 
-/* the layer menu (canvas/layers.ts): a tab's right-click, the selection bar's Layer button; looks like the dropdowns */
-.xsel-item.layer-item{width:100%;grid-template-columns:minmax(0,1fr) auto;border:0;background:none;text-align:left;font:inherit;color:inherit}
-.layer-item:hover{background:var(--hover)}
-.layer-item:focus-visible{outline:none;background:var(--hover);box-shadow:inset 0 0 0 1px var(--focus)}
-.layer-item kbd{grid-row:1;white-space:nowrap;color:var(--muted)}
+/* the right-click menu (canvas/menu.ts): titled sections of icon, label and key caps; looks like the dropdowns */
+.xsel-menu.ctx-menu{min-width:232px;max-height:calc(100vh - 16px);padding:3px 4px 4px} /* tall enough for every section: no scrolling a menu */
+.ctx-group+.ctx-group{margin-top:3px;padding-top:3px;border-top:1px solid var(--line)}
+.ctx-head{padding:5px 10px 2px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);user-select:none}
+.xsel-item.ctx-item{width:100%;grid-template-columns:16px minmax(0,1fr) auto;column-gap:10px;padding:5px 8px 5px 10px;border:0;background:none;text-align:left;font:inherit;color:inherit}
+.ctx-item:hover{background:var(--hover)}
+.ctx-item:focus-visible{outline:none;background:var(--hover);box-shadow:inset 0 0 0 1px var(--focus)}
+.ctx-item .xsel-text{grid-column:2}
+.ctx-icon{grid-column:1;grid-row:1;display:flex;color:var(--ink-2)}
+.xsel-item .ctx-icon svg{width:16px;height:16px;visibility:visible}
+.ctx-item:hover .ctx-icon,.ctx-item:focus-visible .ctx-icon{color:var(--ink)}
+.ctx-keys{grid-column:3;grid-row:1;display:flex;gap:3px;padding-left:12px}
+.ctx-keys kbd{min-width:18px;padding:1px 5px;border:0;border-radius:var(--r-tag);background:var(--code);color:var(--muted);text-align:center;line-height:16px}

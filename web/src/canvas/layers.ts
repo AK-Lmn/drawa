@@ -1,11 +1,13 @@
-// Layer order: bring forward / send backward / to front / to back, from the tab's right-click menu, the selection
-// bar and Ctrl+] / Ctrl+[ (with Shift: all the way). Only windows on the canvas take part: pinned and floating ones
+// Layer order: bring forward / send backward / to front / to back, from the right-click menu (canvas/menu.ts), the
+// selection bar and ] / [ (with Shift: all the way). Only windows on the canvas take part: pinned and floating ones
 // sit above it anyway. The order is the 'z' key canvas.ts already saves.
-import { make, keepOnScreen, shortcutOk } from '../lib/dom'
+import { shortcutOk } from '../lib/dom'
 import { command } from '../lib/keys'
 import { items, onCanvas, hidden, rect, hits, restack } from './canvas'
 import { selected, selectionAction } from './select'
 import { active } from './winkeys'
+import { drawing } from './ink'
+import { openMenu, menuSection } from './menu'
 
 type Move = 'front' | 'forward' | 'backward' | 'back'
 const z = (el: HTMLElement) => +el.style.zIndex || 0
@@ -34,48 +36,34 @@ export function layer(els: HTMLElement[], how: Move) {
 }
 
 const MOVES: [Move, string, string][] = [
-  ['front', 'Bring to front', 'Ctrl+Shift+]'],
-  ['forward', 'Bring forward', 'Ctrl+]'],
-  ['backward', 'Send backward', 'Ctrl+['],
-  ['back', 'Send to back', 'Ctrl+Shift+['],
+  ['front', 'Bring to front', 'Shift+]'],
+  ['forward', 'Bring forward', ']'],
+  ['backward', 'Send backward', '['],
+  ['back', 'Send to back', 'Shift+['],
 ]
+// to front / to back: two sheets, the moving one filled; forward / backward: an arrow past a line
+const sheet = (d: string) => `<svg viewBox="0 0 16 16">${d}</svg>`
+const ICONS: Record<Move, string> = {
+  front: sheet('<path d="M2.5 5.5h7v7h-7z" stroke-dasharray="1.5 1.5"/><path d="M6.5 2.5h7v7h-7z" fill="currentColor" fill-opacity=".25"/>'),
+  forward: sheet('<path d="M8 13V5M5 8l3-3 3 3M3 2.5h10"/>'),
+  backward: sheet('<path d="M8 3v8M5 8l3 3 3-3M3 13.5h10"/>'),
+  back: sheet('<path d="M6.5 2.5h7v7h-7z" stroke-dasharray="1.5 1.5"/><path d="M2.5 5.5h7v7h-7z" fill="currentColor" fill-opacity=".25"/>'),
+}
 const targets = () => { const s = selected(); if (s.length) return s; const a = active(); return a ? [a] : [] }
 for (const [how, label, key] of MOVES) command({ label, group: 'Windows', keys: [key], run: () => layer(targets(), how) })
-const barBtn = selectionAction('Layer', 'Bring forward or send back (Ctrl+] / Ctrl+[, with Shift: all the way)', () => {
+const barBtn = selectionAction('Layer', 'Bring forward or send back (] / [, with Shift: all the way)', () => {
   const r = barBtn.getBoundingClientRect()
-  open(selected(), r.left, r.bottom + 4)
+  openMenu(selected(), r.left, r.bottom + 4, 'Layer')
 }, els => els.some(stacked))
 
+// bare keys, like a drawing app's: with Cmd or Ctrl the browser keeps them (Cmd+Shift+[ / ] switch tabs on a Mac,
+// Cmd+[ / ] go back and forward), so the page never sees them. By physical key: Shift turns them into { and }.
 addEventListener('keydown', e => {
-  if (!(e.ctrlKey || e.metaKey) || e.altKey || !shortcutOk(e) || (e.code !== 'BracketRight' && e.code !== 'BracketLeft')) return
+  if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented || drawing || !shortcutOk(e) || (e.code !== 'BracketRight' && e.code !== 'BracketLeft')) return
   e.preventDefault()
   const up = e.code === 'BracketRight'
   layer(targets(), e.shiftKey ? (up ? 'front' : 'back') : (up ? 'forward' : 'backward'))
 })
 
-/* ---------- the tab's right-click menu ---------- */
-let menu: HTMLElement | null = null
-const close = () => { menu?.remove(); menu = null }
-addEventListener('pointerdown', e => { if (menu && !menu.contains(e.target as Node)) close() }, true)
-addEventListener('keydown', e => { if (e.key === 'Escape' && menu) { e.stopPropagation(); close() } }, true)
-addEventListener('wheel', close, { passive: true })
-
-function open(els: HTMLElement[], x: number, y: number) {
-  close()
-  menu = document.body.appendChild(make('div', 'xsel-menu'))
-  menu.setAttribute('role', 'menu')
-  for (const [how, label, key] of MOVES) {
-    const b = menu.appendChild(make('button', 'xsel-item layer-item'))
-    b.setAttribute('role', 'menuitem')
-    b.append(make('span', 'xsel-text', label), make('kbd', '', key))
-    b.onclick = () => { layer(els, how); close() }
-  }
-  keepOnScreen(menu, x, y)
-  menu.querySelector('button')!.focus()
-}
-document.addEventListener('contextmenu', e => {
-  const el = (e.target as Element).closest<HTMLElement>('#world > .item')
-  if (!el || !(e.target as Element).closest('.win-h') || !stacked(el)) return
-  e.preventDefault()
-  open(selected().includes(el) ? selected() : [el], e.clientX, e.clientY) // a selected window brings the selection along
-})
+// the Layer section of the right-click menu (canvas/menu.ts)
+menuSection('Layer', els => (els.some(stacked) ? MOVES.map(([how, label, key]) => ({ label, icon: ICONS[how], keys: key, run: () => layer(els, how) })) : []))
