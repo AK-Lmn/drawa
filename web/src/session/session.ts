@@ -364,7 +364,8 @@ export function renderCard(S: Session) {
   if (S.replaying) return // once at the end instead
   const busy = S.pending > 0 || S.bg > 0
   S.card.dataset.state = S.asks.size ? 'asking' : busy ? 'busy' : S.done ? 'done' : 'idle'
-  S.card.querySelector('.t')!.textContent = S.title
+  const t = S.card.querySelector<HTMLElement>('.t')!
+  if (!t.isContentEditable) t.textContent = S.title // being renamed: a busy card re-renders often, don't wipe what you type
   const m = S.card.querySelector<HTMLElement>('.win-h .m')!
   const model = S.reportedModel.replace(/^claude-/, '').replace(/^[\w.-]+\//, '') // opencode reports provider/model
   m.textContent = installed().length > 1 ? [title(S.backend), model].filter(Boolean).join(' · ') : model // which agent, once there's a choice
