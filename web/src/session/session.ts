@@ -388,8 +388,9 @@ export function renderCard(S: Session) {
   S.log.classList.toggle('busy', S.pending > 0)
   S.log.setAttribute('aria-busy', String(S.pending > 0))
   S.stopBtn.hidden = !busy
+  if (!busy || (S.stopBtn.dataset.state === 'stopping' && !S.pending)) delete S.stopBtn.dataset.state // what it stopped is over
   // with no turn running, what's left to stop is background agents: they end with the process (see composer.ts)
-  S.stopBtn.title = S.pending ? `Stop what ${who(S.backend)} is doing` : 'Stop its background agents'
+  S.stopBtn.title = S.stopBtn.dataset.state ? 'Stopping\u2026' : S.pending ? `Stop what ${who(S.backend)} is doing` : 'Stop its background agents'
   S.ta.placeholder = busy ? `${who(S.backend)} is working. Type to queue a message.` : `Message ${who(S.backend)}: / commands, @ files, ! shell · ${sendCombo()} sends`
 }
 

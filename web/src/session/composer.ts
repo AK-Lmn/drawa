@@ -1,11 +1,11 @@
 // A card's message box: the textarea with send / stop, the "/" (skills, commands) and "@" (canvas items) menu,
 // and the chips for canvas items attached to the next message (typed with @ or dropped on the box).
-import { make, ICON, ping } from '../lib/dom'
+import { make, ICON, ping, toast } from '../lib/dom'
 import { api, post, q as enc } from '../lib/api'
 import { centerOn, onDrop, onCanvas } from '../canvas/canvas'
 import { link, unlink, onForget } from '../canvas/graph'
 import { canvasRefs, refOf, refIcon, type Ref } from '../canvas/refs'
-import { cards, focus, meta, clearSession, type Session } from './session'
+import { cards, focus, meta, clearSession, renderCard, type Session } from './session'
 import { send } from './live'
 import { readImages, thumb, type Pasted } from './images'
 import { textRefs } from './uploads'
@@ -57,7 +57,17 @@ export function composer(S: Session, body: HTMLElement) {
   Object.assign(S, { ta, stopBtn, chips })
 
   // a turn is interrupted; background agents alone can only be stopped by closing the process (the next message resumes it)
-  stopBtn.onclick = () => post(S.pending ? 'interrupt' : 'close', { cid: S.cid }).catch(() => {})
+  // "stopping" lasts until the card goes quiet (renderCard clears it); a failed request says so and allows a retry
+  stopBtn.onclick = () => {
+    if (stopBtn.dataset.state) return
+    stopBtn.dataset.state = S.pending ? 'stopping' : 'closing' // a turn, or (none running) the background agents
+    renderCard(S)
+    post(S.pending ? 'interrupt' : 'close', { cid: S.cid }).catch(e => {
+      delete stopBtn.dataset.state
+      renderCard(S)
+      toast(`Could not stop ${who(S.backend)}: ${(e as Error).message}`)
+    })
+  }
   form.onsubmit = e => {
     e.preventDefault()
     const p = ta.value.trim()

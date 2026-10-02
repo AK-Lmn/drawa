@@ -63,6 +63,7 @@
 .send{display:grid;place-items:center;width:30px;height:30px;flex:none;border-radius:var(--r-ctl);background:var(--accent);color:var(--on-accent);transition:background .15s,transform .1s}
 .send:active{transform:scale(.94)}
 .send.stop{background:var(--ink);color:var(--bg)}
+.send.stop[data-state]{opacity:.5;cursor:progress}
 
 /* Claude's task list, pinned above the message box */
 .card .tasks{margin:0 0 8px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--bg)}
