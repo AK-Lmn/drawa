@@ -41,7 +41,8 @@ export function toggleFull(el: HTMLElement) {
   redraw()
 }
 
-export function exitFull() {
+/** `keys`: left from the keyboard, so focus goes back to ⤢ (a mouse exit leaves focus alone, or the tab's buttons stay shown) */
+export function exitFull(keys = false) {
   if (!open) return
   const { el, spot, min } = open
   open = undefined
@@ -54,11 +55,11 @@ export function exitFull() {
   sync(el)
   redraw()
   changed()
-  // keyboard users land back on ⤢; .focus shows the tab and button just long enough to take focus (window.css),
-  // then :focus-within keeps them shown
-  el.classList.add('focus')
+  if (!keys) return
+  // .refocus shows the tab and ⤢ just long enough to take focus (window.css), then :focus-within keeps them shown
+  el.classList.add('refocus')
   el.querySelector<HTMLElement>(':scope > .win-h .fullbtn')?.focus()
-  el.classList.remove('focus')
+  el.classList.remove('refocus')
 }
 
 export const syncFull = (el: HTMLElement) => setToggle(el, 'fullbtn', isFull(el), 'Back to its place (Esc)', 'Full view (Shift+F)')
@@ -70,5 +71,5 @@ addEventListener('keydown', e => {
   if (e.key !== 'Escape' || !open || e.defaultPrevented || drawing || !shortcutOk(e)) return
   if (document.querySelector('.xsel-menu, .cmds:not([hidden])')) return
   e.preventDefault()
-  exitFull()
+  exitFull(true)
 })
