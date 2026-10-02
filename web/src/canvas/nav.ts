@@ -1,10 +1,14 @@
 // Moving around the canvas: drag the background to pan (Hand mode, Space, the middle button), the wheel pans,
 // Ctrl/Cmd+wheel (and pinch) zooms; the minimap and the zoom buttons in the corner.
 import { $, make } from '../lib/dom'
+import { handDrag } from './mode'
 import { stage, view, apply, applySoon, zoomView, zoomAt, fit, track, onChange, changed, placed, rect, centerOn, onCanvas, type Rect } from './canvas'
 
+// a group's empty space (.frame) is canvas to pan in Hand mode, with the middle button, or when it's locked in place
+const panThrough = (t: Element, e: PointerEvent) => t.classList.contains('frame') && (e.button === 1 || handDrag() || !!(t as HTMLElement).dataset.locked)
 stage.addEventListener('pointerdown', e => {
-  if (e.button > 1 || (e.target as Element).closest('.item, .fullview, .pinbar')) return
+  const t = e.target as Element
+  if (e.button > 1 || (t.closest('.item, .fullview, .pinbar') && !panThrough(t, e))) return
   const x = view.x, y = view.y
   stage.classList.add('panning')
   track(stage, e, (dx, dy) => { view.x = x + dx; view.y = y + dy; apply() }, () => stage.classList.remove('panning'), { keep: true })

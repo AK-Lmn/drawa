@@ -7,7 +7,8 @@ import { uuid } from '../lib/dom'
 import { strokes, onInkPlaced, type Stroke } from '../canvas/ink'
 import { strokeRect } from '../canvas/inksel'
 import { changed, onCanvas, type Rect } from '../canvas/canvas'
-import { groups, styleRect, inside, flash, empty, ungroup } from './group'
+import { removeUndoably } from '../canvas/window'
+import { groups, styleRect, inside, flash, members } from './group'
 
 export const inkIds = (g: HTMLElement): string[] => JSON.parse(g.dataset.strokes || '[]')
 export function setInkIds(g: HTMLElement, list: string[]) {
@@ -59,8 +60,9 @@ onInkPlaced(list => {
     const c = inkCentre(s), from = inkGroupOf(s, gs), into = open.find(g => inside(styleRect(g), c.x, c.y))
     if (into === from || from?.classList.contains('min')) continue
     if (into) { joinInk([s], into, gs); flash(into) }
+    else if (!members(from!).length && groupInk(from!).length === 1) removeUndoably(from!) // the last out takes the frame (still listed: Undo puts it back in)
     else leaveInk(from!, [s.id!])
-    if (from && empty(from)) ungroup(from)
+    if (into && from?.isConnected && !members(from).length && !groupInk(from).length) removeUndoably(from) // emptied by moving to another
     any = true
   }
   if (any) changed() // frames fit what they hold now

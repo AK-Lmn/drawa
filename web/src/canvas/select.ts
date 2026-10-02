@@ -2,7 +2,7 @@
 // box; Shift/Ctrl+click an item's tab adds or removes it. Dragging a selected item (or, in Select mode, empty canvas
 // inside the selection box) moves them all; Delete (or the bar by the selection) removes them, each through its own
 // remove path. Only items laid out on the canvas take part: pinned, floating and full-view windows don't.
-import { make, ICON, button, iconButton, confirmBox, shortcutOk, EDITABLE, keepOnScreen } from '../lib/dom'
+import { make, ICON, button, iconButton, confirmBox, shortcutOk, EDITABLE, keepOnScreen, toast } from '../lib/dom'
 import { command } from '../lib/keys'
 import { stage, placed, onCanvas, hidden, rect, place, toWorld, view, onChange, moveWith, movesWith, setMoveAlong, changed, swallowNext, hits, track, type Rect, type Mover } from './canvas'
 import { redraw } from './graph'
@@ -153,10 +153,18 @@ function sync() {
 }
 onChange(sync)
 
+let hinted = -1e9
+/** Why a locked item didn't move (a nudge, a drag on a locked group's tab): once per toast, not per key repeat. */
+export function lockedHint() {
+  if (performance.now() - hinted < 6000) return
+  hinted = performance.now()
+  toast('Locked in place: unlock it (its pin button) to move it')
+}
+
 const plural = (n: number) => `${n} item${n === 1 ? '' : 's'}`
 
 async function removeSelected() {
-  const all = [...sel], gone = all.filter(canRemove), kept = all.length - gone.length, ink = [...inkSel]
+  const all = [...sel], gone = all.filter(el => canRemove(el) && !el.dataset.locked), kept = all.length - gone.length, ink = [...inkSel]
   if (!gone.length && !ink.length) return
   const drop = () => { ink.forEach(s => setInk(s, false)); erase(...ink) }
   if (!gone.length) { // drawings only: one goes like the eraser; more ask first
@@ -165,7 +173,7 @@ async function removeSelected() {
     return
   }
   const said = [...new Set(gone.map(el => notes.get(el.dataset.kind!)).filter(Boolean))].join(' ')
-  const left = kept ? `${plural(kept)} can't be removed this way and stay${kept === 1 ? 's' : ''}.` : ''
+  const left = kept ? `${plural(kept)} stay${kept === 1 ? 's' : ''}: locked, or not removable this way.` : ''
   if (!await confirmBox(`Delete ${plural(gone.length + ink.length)}?`, `${said} ${left}`.trim() || 'They are removed from the canvas.', 'Delete')) return
   drop()
   for (const el of gone) removeItem(el)
@@ -189,6 +197,9 @@ document.addEventListener('pointerdown', e => {
 const box = stage.appendChild(make('div', 'marquee'))
 box.hidden = true
 const empty = (t: Element) => t === stage || t.matches('#world, #edges, #inkworld')
+// a group's empty space (.frame) drags the group; Shift+drag there draws a selection box
+const boxFrom = (t: Element, e: PointerEvent) => empty(t) || (e.shiftKey && t.classList.contains('frame'))
+const within = (a: Rect, b: Rect) => a.x >= b.x && a.y >= b.y && a.x + a.w <= b.x + b.w && a.y + a.h <= b.y + b.h
 let last = { t: 0, x: 0, y: 0 }
 
 const inSelbox = (e: PointerEvent) => !selbox.hidden && e.clientX >= boxAt.x0 && e.clientX <= boxAt.x1 && e.clientY >= boxAt.y0 && e.clientY <= boxAt.y1
@@ -211,7 +222,7 @@ function dragSelection(e: PointerEvent) {
 
 stage.addEventListener('pointerdown', e => {
   const t = e.target as Element
-  if (e.button !== 0 || drawing || !empty(t)) return
+  if (e.button !== 0 || drawing || !boxFrom(t, e)) return
   const again = e.timeStamp - last.t < 400 && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 24
   last = { t: e.timeStamp, x: e.clientX, y: e.clientY }
   if (!again && !e.shiftKey && handDrag()) {
@@ -240,7 +251,7 @@ stage.addEventListener('pointerdown', e => {
     const m: Rect = { x: Math.min(start.x, p.x), y: Math.min(start.y, p.y), w: Math.abs(p.x - start.x), h: Math.abs(p.y - start.y) }
     let changes = 0
     for (const { el, r } of candidates) {
-      const on = before.has(el) || hits(r, m, 0)
+      const on = before.has(el) || (el.classList.contains('frame') ? within(r, m) : hits(r, m, 0)) // a frame: only when it's all in the box
       if (on !== sel.has(el)) { set(el, on); changes++ } // only what crossed the box's edge
     }
     const inBox = new Set(canvasStrokes(m, drawings).flatMap(whole)) // one drawing of a group in the box: all of it
@@ -270,6 +281,7 @@ addEventListener('keydown', e => {
   else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeSelected() }
   else if (NUDGE[e.key]) { // arrow keys nudge the selection (Shift: 10px), like Excalidraw
     e.preventDefault()
+    if ([...sel].some(el => el.dataset.locked)) lockedHint()
     const [dx, dy] = NUDGE[e.key], step = e.shiftKey ? 10 : 1
     const m = selectionMover()
     m(dx * step, dy * step)
