@@ -189,7 +189,7 @@ function emptyState(S: Session) {
     ['--edit', `Files ${name} reads or changes are listed in a Files window beside this card, changed files first.`],
     ['--run', 'Commands it runs collect in a commands window below the card (click its tab to see the output).'],
     ['--write', 'Type / for skills and commands, @ to reference scratchpads, diagrams, plans, notes or files (or drop them on the message box).'],
-    ['--read', 'Read only by default. Change it per session in the message bar (Allow edits, Plan only, Allow everything).'],
+    ['--read', 'Ask first by default. Change it per session in the message bar (Allow edits, Plan only, Allow everything).'],
   ]
   for (const [color, text] of tips) {
     const li = make('li'), i = make('i')
