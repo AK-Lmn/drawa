@@ -40,10 +40,9 @@ export function composer(S: Session, body: HTMLElement) {
   sendBtn.type = 'submit'
   sendBtn.innerHTML = ICON.up
   sendBtn.setAttribute('aria-label', 'Send')
-  // effort is Claude Code's (--effort); other agents get only a model picker
-  const modelSel = modelPicker(S), effortSel = S.backend === 'claude' ? effortPicker(S) : null, pick = modePicker(S)
+  const modelSel = modelPicker(S), effortSel = effortPicker(S), pick = modePicker(S)
   const gen = make('div', 'gensel') // model + effort, then the status line (text and rings together) below them
-  gen.append(...[modelSel, effortSel].filter(x => x !== null), infoBadge(S))
+  gen.append(modelSel, effortSel, infoBadge(S))
   form.append(ta, pick, stopBtn, sendBtn)
   chips.hidden = true
   const dock = make('div', 'dock') // the card's footer: attached references above a clearly bordered message field
@@ -52,7 +51,7 @@ export function composer(S: Session, body: HTMLElement) {
   onSendKey(label) // ponytail: never unregistered; a closed card's closure is tiny, add an off() if cards churn by thousands
   dock.append(chips, gen, form)
   body.append(dock)
-  for (const sel of [modelSel, effortSel, pick]) if (sel) enhance(sel) // the custom dropdowns, once they're in the page
+  for (const sel of [modelSel, effortSel, pick]) enhance(sel) // the custom dropdowns, once they're in the page
   form.onclick = e => { if (e.target === form) ta.focus() } // the whole field is the click target
   Object.assign(S, { ta, stopBtn, chips })
 

@@ -20,7 +20,7 @@ import { attach } from './live'
 import { setMode, lastMode } from './mode'
 import { setModel, setEffort, renderInfo, seedInfo, lastModel, lastEffort } from './gen'
 import { loadSessions, resume, sessionPath } from './history'
-import { lastAgent, modesOf, installed, title, who, copySidTip } from '../lib/agents'
+import { lastAgent, modesOf, installed, title, who, copySidTip, type Model } from '../lib/agents'
 import { sendCombo, onSendKey } from '../lib/sendkey'
 import { hasDraft, keepImages } from './drafts'
 
@@ -89,7 +89,7 @@ export let cur: Session | undefined // the focused card
  *  same for every card (it's account-wide, not per-conversation), so a card's status line can show it before its
  *  own process has ever run (see gen.ts's seedInfo). */
 export const meta: {
-  models: { value: string; displayName: string; description: string }[]
+  models: Model[]
   commands: { name: string; description: string; argumentHint?: string }[]
   tools?: number; mcpTotal?: number; mcpConnected?: number
   usageUtil?: number; usageResetAt?: number; weeklyUtil?: number; weeklyResetAt?: number
@@ -258,7 +258,7 @@ export function newSession(opts: { rect?: Rect; cid?: string; backend?: string }
   }
   if (!(modesOf(S.backend)?.includes(S.mode) ?? true)) S.mode = 'default' // e.g. Auto, which OpenCode doesn't have
   S.model = lastModel(S.backend) // restored cards set their own afterwards
-  if (S.backend === 'claude') S.effort = lastEffort()
+  S.effort = lastEffort(S.backend) // the picker drops it if the model doesn't offer it
   composer(S, body) // message box, reference chips, / and @ menu
   seedInfo(S) // tools/MCP/usage from the account-wide meta info, if it's already in by now
   card.dataset.id = S.cid // what canvas tools call this card
