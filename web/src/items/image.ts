@@ -161,6 +161,7 @@ persist('images',
   (list: Saved[]) => each(list, imageWindow))
 referable('image', {
   icon: '▣',
+  picture: true,
   content: async (el, label) => {
     const text = `Image from my canvas ("${label}")`
     // drawn on: the picture as it looks with the drawing; otherwise the stored original, full detail

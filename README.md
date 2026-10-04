@@ -6,7 +6,7 @@
 
 **Your coding agents, on a canvas.**
 
-Run Claude Code, OpenCode and Codex side by side, watch every file they read, edit and run as a live map, and review each change without leaving the browser.
+Run Claude Code, OpenCode, Codex and Antigravity side by side, watch every file they read, edit and run as a live map, and review each change without leaving the browser.
 
 **[drawa.cc](https://drawa.cc)**
 
@@ -27,7 +27,7 @@ Run Claude Code, OpenCode and Codex side by side, watch every file they read, ed
 
 In a terminal, an agent's work scrolls past as a transcript. Drawa lays it out as a map instead.
 
-- **Several agents at once.** Each session is a card on the canvas: Claude Code, OpenCode or Codex, side by side, on the same project.
+- **Several agents at once.** Each session is a card on the canvas: Claude Code, OpenCode, Codex or Antigravity, side by side, on the same project.
 - **Work drawn as a map.** The files each agent reads, edits and writes appear in a window wired to its card, colored by what happened to them. The commands it runs collect beside it.
 - **Review in place.** Click any file for its diff from every session, and approve or answer the agent from the card it's running in.
 
@@ -40,6 +40,7 @@ Drawa runs entirely on your machine. It drives the agent CLIs you already have, 
 | [Claude Code](https://claude.com/claude-code) | **One agent is required.** `claude` on `PATH` and logged in, for your Claude subscription. |
 | [OpenCode](https://opencode.ai) | Or, instead or as well: `opencode` on `PATH`, for any other provider or its free models. See below. Tested with OpenCode 1.18.32. |
 | [Codex](https://developers.openai.com/codex/cli) | Or: `codex` on `PATH` and logged in, for your ChatGPT plan or an OpenAI API key. See below. Tested with Codex 0.158.0. |
+| [Antigravity](https://antigravity.google) | Or: `agy` on `PATH`, signed in once by running `agy` in a terminal. Limited: see below. Tested with agy 1.2.16. |
 | `git` | Optional. Powers the Git window and file history. |
 | [`gh`](https://cli.github.com) | Optional. Powers the GitHub window. |
 | [universal-ctags](https://github.com/universal-ctags/ctags) | Optional. Code symbols: `Ctrl+K` finds functions, classes and the like by name, and clicking a name in a diff shows where it's defined. `brew install universal-ctags` on a Mac. Turn it off in Settings. |
@@ -47,31 +48,39 @@ Drawa runs entirely on your machine. It drives the agent CLIs you already have, 
 
 ### Choosing an agent
 
-No Claude subscription? [OpenCode](https://opencode.ai) is an open-source coding agent that works with most model providers (OpenRouter, Google, OpenAI, local models and more), and [Codex](https://developers.openai.com/codex/cli) is OpenAI's. With either installed, **New session ▾** in the toolbar offers it next to Claude Code, and each session card picks its model from that agent's list. Drawa's startup check lists the agents it finds, and warns if a version isn't the one Drawa was tested with.
+No Claude subscription? [OpenCode](https://opencode.ai) is an open-source coding agent that works with most model providers (OpenRouter, Google, OpenAI, local models and more), [Codex](https://developers.openai.com/codex/cli) is OpenAI's, and [Antigravity](https://antigravity.google) is Google's. With any installed, **New session ▾** in the toolbar offers it next to Claude Code, and each session card picks its model from that agent's list. Drawa's startup check lists the agents it finds, and warns if a version isn't the one Drawa was tested with.
 
-| | Claude Code | OpenCode | Codex |
-|---|---|---|---|
-| **Sign in with** | Your Claude subscription | Any provider, via `opencode auth login`; its own free models need no key | Your ChatGPT plan or an OpenAI API key, via `codex login` |
-| **Install** | [claude.com/claude-code](https://claude.com/claude-code) | `curl -fsSL https://opencode.ai/install \| bash` ([docs](https://opencode.ai/docs)) | [Codex CLI docs](https://developers.openai.com/codex/cli) |
-| **Tested with** | Not pinned | 1.18.32 | 0.158.0 |
-| **Approvals, files and commands windows, canvas tools, history** | ✓ | ✓ | ✓ (looking at the canvas never asks) |
-| **Pasted images** | ✓ | ✓ | ✓ |
-| **Sub-agents** | Own window | Own window | One row, not their own window |
-| **Auto mode** | ✓ | – | – |
-| **Effort setting** | ✓ | – | – (uses its default) |
-| **Usage windows in the status line** | ✓ | – | – |
-| **Take back a queued message** | ✓ | – | – |
-| **Memory per session** | Its own `claude` process | About 300 MB (its own `opencode` server) | About 250 MB (its own `codex app-server`) |
+| | Claude Code | OpenCode | Codex | Antigravity |
+|---|---|---|---|---|
+| **Sign in with** | Your Claude subscription | Any provider, via `opencode auth login`; its own free models need no key | Your ChatGPT plan or an OpenAI API key, via `codex login` | Your Google sign-in, via `agy` in a terminal |
+| **Install** | [claude.com/claude-code](https://claude.com/claude-code) | `curl -fsSL https://opencode.ai/install \| bash` ([docs](https://opencode.ai/docs)) | [Codex CLI docs](https://developers.openai.com/codex/cli) | [antigravity.google](https://antigravity.google) |
+| **Tested with** | Not pinned | 1.18.32 | 0.158.0 | 1.2.16 |
+| **Approvals, files and commands windows, canvas tools, history** | ✓ | ✓ | ✓ (looking at the canvas never asks) | Files, commands and history; no approvals (turns down edits) unless in Allow everything; no canvas tools |
+| **Pasted images** | ✓ | ✓ | ✓ | – |
+| **Sub-agents** | Own window | Own window | One row, not their own window | – |
+| **Auto mode** | ✓ | – | – | – |
+| **Effort setting** | ✓ | – | – (uses its default) | – (models name their own level) |
+| **Usage windows in the status line** | ✓ | – | – | – |
+| **Take back a queued message** | ✓ | – | – | – |
+| **Memory per session** | Its own `claude` process | About 300 MB (its own `opencode` server) | About 250 MB (its own `codex app-server`) | Its own `agy` process |
 
-Neither OpenCode nor Codex has an agent-specific process limit: set `DRAWA_MAX_LIVE` if your machine needs one. The Git window's **Write with ▾** picks which agent writes commit messages and pull request descriptions.
+Neither OpenCode, Codex nor Antigravity has an agent-specific process limit: set `DRAWA_MAX_LIVE` if your machine needs one. The Git window's **Write with ▾** picks which agent writes commit messages and pull request descriptions.
 
 - **OpenCode privacy.** A session's prompts, and the files it reads, go to the provider you pick. OpenCode's free models are run by third parties that may use what you send to improve their models (check [OpenCode Zen's terms](https://opencode.ai/docs/zen/)), so don't use them on code you can't share.
+- **Antigravity is limited.** `agy` can't ask for approval when run headless, so a card streams replies, shows the tools it calls, resumes and reopens past sessions, and writes commit messages, but anything that needs approval (edits, most commands) is turned down and listed under the reply, unless you start the session in **Allow everything** (`agy --dangerously-skip-permissions`: every tool runs without asking). There's no Stop, no mode or model switch mid-session (pick both before the first message), no pasted images, no slash commands, no canvas tools and no cost. Drawa keeps its own list of the project's Antigravity sessions in `~/.drawa/agy/`, and doesn't start one in a cloned repo you didn't trust. See [#34](https://github.com/HimalayanNomads/drawa/issues/34).
 - **Codex trust.** For a local folder, Drawa marks it trusted for Codex, so, as with Claude Code, its `.codex/` settings and `AGENTS.md` load. A cloned GitHub repo you didn't trust is marked untrusted, so they don't. Either way nothing is written to `~/.codex/config.toml`.
 
 <details>
 <summary><b>How the permission modes map onto Codex</b></summary>
 
 **Ask first** asks before edits and before any command Codex doesn't consider safe. **Plan only** never asks, nothing it runs can write, and it doesn't hand you a plan to approve: it answers in the chat. **Allow edits** approves file changes inside the project only (not in `.git`, `.codex`, `.agents` or `.claude`, and not renames out of it). **Always allow** covers a command or edit until the card's Codex process closes (after 30 idle minutes, or to stay under `DRAWA_MAX_LIVE`; it asks again after resuming), and Drawa doesn't save Codex's permanent command rules; canvas changes ask each time. A mode change applies from the next turn (a message sent mid-turn joins the running one), except that leaving **Allow everything** stops a running turn, since it can't lose full access mid-turn.
+
+</details>
+
+<details>
+<summary><b>How the permission modes map onto Antigravity</b></summary>
+
+Headless `agy` cannot prompt for approval during a turn. **Ask first** (the default) allows read-only tools, but any action requiring confirmation (file edits, mutating commands) is automatically turned down and listed under the reply. **Allow everything** starts the session with `--dangerously-skip-permissions`, letting all tools run without asking. Modes cannot be switched mid-session; pick either before sending your first message. Other modes (**Plan only**, **Allow edits**, **Auto**) are not supported.
 
 </details>
 
@@ -132,7 +141,7 @@ It also prints a QR code of the Network link, so a phone can open it with its ca
 
 ## Features
 
-- **Parallel sessions.** Each card is a live agent process: Claude Code, OpenCode or Codex, picked per session. Type any time; messages queue while the agent or its sub-agents work.
+- **Parallel sessions.** Each card is a live agent process: Claude Code, OpenCode, Codex or Antigravity, picked per session. Type any time; messages queue while the agent or its sub-agents work.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/readme/agents-dark.png">
