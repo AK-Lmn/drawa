@@ -23,14 +23,17 @@ referable('preview', {
   icon: '◫',
   name: 'file',
   label: el => el.dataset.path ?? '',
+  copy: el => texts.get(el.dataset.path ?? '') ?? '',
   content: el => ({ text: `File: ${el.dataset.path} (read it if you need its contents)` }),
 })
 
 /** A text file as shown: Markdown rendered, anything else as code. `lines`: only that many (Ctrl+K's preview), from
  *  the start or from a little above `at`, a line to mark (shown as source then, even for Markdown). */
+const texts = new Map<string, string>() // each open file's text as last read, for its copy button
 async function textView(path: string, lines?: number, at?: number) {
   try {
     let { text } = await api<{ text: string | null }>('file?path=' + q(path)), first = 1
+    if (text != null && !lines) texts.set(path, text)
     if (text != null && lines) {
       first = Math.max(1, (at ?? 1) - 20)
       text = text.split('\n', first - 1 + lines).slice(first - 1).join('\n')

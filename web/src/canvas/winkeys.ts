@@ -1,17 +1,18 @@
 // Window keys: W steps through the windows, and M, Shift+F, F2, Shift+P, Shift+S act on the active one (the single
 // selected item, else the frontmost window), so every tab button has a key.
-import { shortcutOk, ping } from '../lib/dom'
+import { shortcutOk, ping, ICON } from '../lib/dom'
 import { command } from '../lib/keys'
 import { items, hidden, front, centerOn, onCanvas } from './canvas'
 import { rename } from './window'
-import { toggleFull, anyFull, exitFull } from './fullview'
-import { toggleDock, toggleFloat } from './dock'
+import { toggleFull, anyFull, exitFull, isFull } from './fullview'
+import { toggleDock, toggleFloat, docked, floating } from './dock'
 import { selected, selectOnly } from './select'
 import { drawing } from './ink'
+import { menuSection } from './menu'
 
 const shown = () => items().filter(el => !hidden(el))
 /** The window the keys act on: the one selected item, else the frontmost. */
-function active(): HTMLElement | undefined {
+export function active(): HTMLElement | undefined {
   const s = selected()
   if (s.length === 1) return s[0]
   return shown().reduce<HTMLElement | undefined>((a, el) => (!a || +el.style.zIndex > +a.style.zIndex ? el : a), undefined)
@@ -34,7 +35,7 @@ function step(dir: 1 | -1) {
 }
 
 const collapse = () => activeWin()?.querySelector<HTMLElement>(':scope > .win-h .minbtn')?.click()
-const full = () => { if (anyFull()) return exitFull(); const el = activeWin(); if (el) toggleFull(el) }
+const full = () => { if (anyFull()) return exitFull(true); const el = activeWin(); if (el) toggleFull(el) }
 const renameActive = () => { const el = activeWin(); if (el) rename(el) }
 const pin = () => { const el = activeWin(); if (el) toggleDock(el) }
 const stick = () => { const el = activeWin(); if (el) toggleFloat(el) }
@@ -46,6 +47,20 @@ command({ label: 'Full view', group: 'Windows', keys: ['Shift+F'], run: full, ti
 command({ label: 'Rename the window', group: 'Windows', keys: ['F2'], run: renameActive })
 command({ label: 'Pin the window to the sidebar', group: 'Windows', keys: ['Shift+P'], run: pin })
 command({ label: 'Stick the window to the screen', group: 'Windows', keys: ['Shift+S'], run: stick })
+
+// the Window section of the right-click menu (canvas/menu.ts): the tab's buttons, for the one window clicked
+menuSection('Window', els => {
+  const el = els.length === 1 ? els[0] : undefined
+  if (!el?.querySelector(':scope > .win-h')) return []
+  const min = el.classList.contains('min')
+  return [
+    { label: min ? 'Expand' : 'Collapse', icon: min ? ICON.open : ICON.collapse, keys: 'M', run: () => el.querySelector<HTMLElement>(':scope > .win-h .minbtn')?.click() },
+    { label: isFull(el) ? 'Leave full view' : 'Full view', icon: ICON.full, keys: 'Shift+F', run: () => toggleFull(el) },
+    { label: 'Rename', icon: ICON.pencil, keys: 'F2', run: () => rename(el) },
+    { label: docked(el) ? 'Unpin from the sidebar' : 'Pin to the sidebar', icon: ICON.pin, keys: 'Shift+P', run: () => toggleDock(el) },
+    { label: floating(el) ? 'Unstick from the screen' : 'Stick to the screen', icon: ICON.float, keys: 'Shift+S', run: () => toggleFloat(el) },
+  ]
+})
 
 const PLAIN: Record<string, () => void> = { w: () => step(1), m: collapse, F2: renameActive }
 const SHIFT: Record<string, () => void> = { w: () => step(-1), f: full, p: pin, s: stick }

@@ -189,7 +189,7 @@ function emptyState(S: Session) {
     ['--edit', `Files ${name} reads or changes are listed in a Files window beside this card, changed files first.`],
     ['--run', 'Commands it runs collect in a commands window below the card (click its tab to see the output).'],
     ['--write', 'Type / for skills and commands, @ to reference scratchpads, diagrams, plans, notes or files (or drop them on the message box).'],
-    ['--read', 'Read only by default. Change it per session in the message bar (Allow edits, Plan only, Allow everything).'],
+    ['--read', 'Ask first by default. Change it per session in the message bar (Allow edits, Plan only, Allow everything).'],
   ]
   for (const [color, text] of tips) {
     const li = make('li'), i = make('i')
@@ -364,7 +364,8 @@ export function renderCard(S: Session) {
   if (S.replaying) return // once at the end instead
   const busy = S.pending > 0 || S.bg > 0
   S.card.dataset.state = S.asks.size ? 'asking' : busy ? 'busy' : S.done ? 'done' : 'idle'
-  S.card.querySelector('.t')!.textContent = S.title
+  const t = S.card.querySelector<HTMLElement>('.t')!
+  if (!t.isContentEditable) t.textContent = S.title // being renamed: a busy card re-renders often, don't wipe what you type
   const m = S.card.querySelector<HTMLElement>('.win-h .m')!
   const model = S.reportedModel.replace(/^claude-/, '').replace(/^[\w.-]+\//, '') // opencode reports provider/model
   m.textContent = installed().length > 1 ? [title(S.backend), model].filter(Boolean).join(' · ') : model // which agent, once there's a choice
@@ -388,8 +389,9 @@ export function renderCard(S: Session) {
   S.log.classList.toggle('busy', S.pending > 0)
   S.log.setAttribute('aria-busy', String(S.pending > 0))
   S.stopBtn.hidden = !busy
+  if (!busy || (S.stopBtn.dataset.state === 'stopping' && !S.pending)) delete S.stopBtn.dataset.state // what it stopped is over
   // with no turn running, what's left to stop is background agents: they end with the process (see composer.ts)
-  S.stopBtn.title = S.pending ? `Stop what ${who(S.backend)} is doing` : 'Stop its background agents'
+  S.stopBtn.title = S.stopBtn.dataset.state ? 'Stopping\u2026' : S.pending ? `Stop what ${who(S.backend)} is doing` : 'Stop its background agents'
   S.ta.placeholder = busy ? `${who(S.backend)} is working. Type to queue a message.` : `Message ${who(S.backend)}: / commands, @ files, ! shell · ${sendCombo()} sends`
 }
 

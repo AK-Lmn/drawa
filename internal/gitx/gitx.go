@@ -3,8 +3,10 @@
 package gitx
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -65,7 +67,7 @@ func command(repo string, args []string) (env, argv []string) {
 		// the repo-local settings that run commands (credential.helper= drops the helper list, the user's own too)
 		argv = append(argv, "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null",
 			"-c", "credential.helper=", "-c", "core.sshCommand=ssh -o BatchMode=yes")
-		if len(args) > 0 && (args[0] == "diff" || args[0] == "log") { // diff drivers and textconv from .gitattributes
+		if len(args) > 0 && (args[0] == "diff" || args[0] == "log" || args[0] == "show") { // diff drivers and textconv from .gitattributes
 			args = append([]string{args[0], "--no-ext-diff", "--no-textconv"}, args[1:]...)
 		}
 	}
@@ -102,6 +104,25 @@ func GitDiff(repo, rel string, staged bool) (map[string]any, error) {
 	ok, out := gitHead(repo, diffMax, args...)
 	if ok && out == "" && !staged { // untracked: show the whole file as added
 		_, out = gitHead(repo, diffMax, "diff", "--no-index", "--", "/dev/null", rel) // --no-index exits 1 when files differ
+	}
+	return map[string]any{"diff": out}, nil
+}
+
+var hashRe = regexp.MustCompile(`^[0-9a-f]{4,64}$`)
+
+// GitShow is what one commit in repo changed, as a patch (no message: the page has it).
+func GitShow(repo, hash string) (map[string]any, error) {
+	if !hashRe.MatchString(hash) { // never an option or a revision expression
+		return nil, errors.New("not a commit hash")
+	}
+	repo, err := repoDir(repo)
+	if err != nil {
+		return nil, err
+	}
+	// ".": only Root's part of the repo, which may be a subfolder of it
+	ok, out := gitHead(repo, diffMax, "show", "--format=", "--patch", hash, "--", ".")
+	if !ok {
+		return nil, errors.New(out)
 	}
 	return map[string]any{"diff": out}, nil
 }

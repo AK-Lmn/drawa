@@ -4,7 +4,7 @@
 import { tipText } from '../lib/tooltip'
 import { make, ping, iconButton } from '../lib/dom'
 import { persist } from '../lib/store'
-import { addItem, place, rect, savedRect, draggable, freeSpot, spotBeside, changed, type Rect } from './canvas'
+import { addItem, place, rect, savedRect, draggable, spotBeside, changed, type Rect } from './canvas'
 import { makeWindow } from './window'
 import { referable } from './refs'
 import { redraw, forget, type Act } from './graph' // used only inside functions (graph.ts imports this module)
@@ -152,7 +152,7 @@ export function termNode(S: Session): TermNode {
   const have = terms.get(S)
   if (have) return have
   const r = rect(S.card), saved = S.sid ? savedPos['t:' + S.sid] as Rect | undefined : undefined
-  const at = freeSpot({ x: r.x + 40, y: r.y + r.h + 90, w: 420, h: 240 })
+  const at = saved ?? spotBeside(S.card, 420, 240, 40 - r.w, r.h + 90) // below the card (inside its group, if it's in one)
   const count = make('span', 'm'), list = make('div', 'cmds-list')
   // collapsed to its tab by default: the run count says enough until you want the output (your choice is saved)
   const { el, head, body } = makeWindow({ kind: 'run', cls: 'tnode', title: 'commands', rect: { min: true, ...at, ...saved }, minW: 240, minH: 120 })
@@ -166,6 +166,9 @@ export function termNode(S: Session): TermNode {
 
 /** Card closed: drop its commands and Files windows, and files nothing shows any more. */
 export function dropWindows(S: Session) {
+  // a rebuild (reload() after a gap) makes them again from savedPos: keep where they are now, not where the page
+  // loaded them, or a window you moved jumps back
+  if (S.sid) Object.assign(savedPos, layout())
   terms.get(S)?.el.remove()
   terms.delete(S)
   const l = lists.get(S)

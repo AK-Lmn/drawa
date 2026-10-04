@@ -30,8 +30,11 @@ eq(scaleInto([{ x: 0, y: 0, w: 50, h: 40 }], { x: 0, y: 0, w: 100, h: 100 }, { x
 // placing a dropped window among the others: its drop spot if free, else the nearest free one
 const a0 = { x: 0, y: 0, w: 100, h: 100 }, area = { x: 0, y: 0, w: 400, h: 300 }
 eq(placeIn([a0], { x: 200, y: 0, w: 100, h: 100 }, area, 24), { x: 200, y: 0, w: 100, h: 100 }, 'a free drop spot is kept')
-eq(placeIn([a0], { x: 30, y: 20, w: 100, h: 100 }, area, 24), { x: 124, y: 0, w: 100, h: 100 }, 'dropped on a window: the nearest free spot beside it')
-eq(placeIn([a0, { x: 124, y: 0, w: 276, h: 100 }], { x: 30, y: 20, w: 100, h: 100 }, area, 24), { x: 0, y: 124, w: 100, h: 100 }, 'no room beside: below')
+eq(placeIn([a0], { x: 110, y: 0, w: 100, h: 100 }, area, 24), { x: 110, y: 0, w: 100, h: 100 }, 'close to a window but not on it: kept')
+eq(placeIn([a0], { x: 70, y: 20, w: 100, h: 100 }, area, 24), { x: 124, y: 20, w: 100, h: 100 }, 'dropped on a window: the nearest free spot beside it, at the drop height')
+eq(placeIn([a0], { x: 200, y: 20, w: 600, h: 100 }, area, 24), { x: 200, y: 20, w: 600, h: 100 }, 'a window wider than the frame keeps its spot (the frame grows)')
+eq(placeIn([a0], { x: 50, y: 0, w: 600, h: 100 }, area, 24), { x: 124, y: 0, w: 600, h: 100 }, 'wide and overlapping: beside, past the frame edge, not at the bottom')
+eq(placeIn([a0, { x: 124, y: 0, w: 276, h: 100 }], { x: 30, y: 20, w: 100, h: 100 }, area, 24), { x: 30, y: 124, w: 100, h: 100 }, 'no room beside: just below')
 // closing the gap a removed window left: everything slides up, then left, as far as it can
 eq(compact([{ x: 0, y: 0, w: 100, h: 100 }, { x: 0, y: 300, w: 100, h: 50 }], area, 24), [{ x: 0, y: 0, w: 100, h: 100 }, { x: 0, y: 124, w: 100, h: 50 }], 'a gap above slides up')
 eq(compact([{ x: 0, y: 0, w: 100, h: 100 }, { x: 250, y: 0, w: 100, h: 100 }], area, 24), [{ x: 0, y: 0, w: 100, h: 100 }, { x: 124, y: 0, w: 100, h: 100 }], 'a gap beside slides left')

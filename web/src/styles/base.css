@@ -6,7 +6,9 @@ body{background:var(--canvas);color:var(--ink);font:14px/1.5 var(--sans);font-fe
 button,select,textarea{font:inherit;color:inherit}
 button{background:none;border:0;padding:0;cursor:pointer}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
-textarea:focus-visible{outline:none}
+/* text fields: a 2px ring over the border, not just a border tint; fields inside a box that shows focus itself opt out */
+:is(input:not([type=checkbox],[type=radio]),textarea):focus-visible{outline:2px solid var(--focus);outline-offset:-1px}
+:is(.card .compose,.dnode-ed) textarea:focus-visible{outline:none}
 code,pre{font-family:var(--mono);font-size:12.5px;font-variant-ligatures:none} /* code shows the characters typed: != stays two, not ≠ */
 button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
 [hidden]{display:none!important}

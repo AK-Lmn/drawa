@@ -78,6 +78,16 @@ function codeSource(block: Element): Source {
   return { title: lang ? `${lang} · ${first}` : first, text, type: 'code', lang, host: host(block) }
 }
 
+/** A diff's selected lines with their +/- back: the markers are drawn by CSS, so the selection's text lacks them.
+ *  Walks only the selected rows; left as selected when the lines and rows don't line up. */
+function marked(diff: Element, range: Range, text: string) {
+  const row = (n: Node) => { let e = n instanceof Element ? n : n.parentElement; while (e && e.parentElement !== diff) e = e.parentElement; return e }
+  const lines = text.replace(/\n$/, '').split('\n'), signs: string[] = []
+  for (let r = row(range.startContainer), end = row(range.endContainer); r; r = r === end ? null : r.nextElementSibling)
+    signs.push(r instanceof HTMLElement && r.dataset.s != null ? (r.dataset.s === '−' ? '-' : r.dataset.s || ' ') : '')
+  return signs.length === lines.length ? lines.map((l, i) => signs[i] + l).join('\n') : text
+}
+
 /** What a selection is, judged by where it sits. `null`: nothing to pin (inputs, window tabs, the toolbar). */
 function selectionSource(node: Element, range: Range, text: string): Source | null {
   if (node.closest(`${EDITABLE}, .win-h, #bar, .pinsel`)) return null
@@ -93,7 +103,7 @@ function selectionSource(node: Element, range: Range, text: string): Source | nu
   const diff = node.closest('.diff')
   if (diff) {
     const file = tipText(diff.closest('.gfile')?.querySelector('.gname')).split(' (')[0] || inspectorPath() || 'diff'
-    return { title: `diff · ${file}`, text, type: 'code', lang: '', host: host(diff) }
+    return { title: `diff · ${file}`, text: marked(diff, range, text), type: 'code', lang: 'diff', host: host(diff) }
   }
   const block = node.closest('.codeblock, pre:has(> code)')
   if (block && !block.closest('.xnode')) return { ...codeSource(block.closest('.codeblock') ?? block), text }
@@ -172,7 +182,19 @@ addEventListener('scroll', follow, true)
 addEventListener('wheel', follow, { passive: true, capture: true })
 addEventListener('pointermove', e => { if (e.buttons) follow() }, { passive: true })
 addEventListener('resize', follow)
-pinBtn.addEventListener('pointerdown', e => e.preventDefault()) // keep the selection while clicking
+pinBtn.title = 'Click to pin beside it, or drag it onto the canvas'
+pinBtn.addEventListener('pointerdown', e => {
+  e.preventDefault() // keep the selection while clicking
+  // or drag the selection out, as a code block's grip drags its block (the click after a drag is swallowed)
+  const src = picked
+  if (e.button !== 0 || !src) return
+  dragOut(pinBtn, e, (x, y) => {
+    const sel = getSelection(), mark = sel?.rangeCount ? markOf(sel.getRangeAt(0)) : null
+    const el = snippet({ ...src, text: src.text.replace(/\n+$/, ''), rect: { x, y, ...sizeFor(src.text) } })
+    if (mark) addMark(el, mark)
+    return el // the selection stays until the drag ends: clearing it hides this button, which holds the pointer
+  })
+})
 
 /* ---------- saved, and sendable ---------- */
 const text = (el: HTMLElement) => el.querySelector('.xnode-b')?.textContent ?? ''
@@ -203,6 +225,7 @@ persist('snippets',
   (list: Snippet[]) => each(list, snippet))
 referable('snippet', {
   icon: '$',
+  // no copy option: its copy button stays on the tab, always visible
   content: el => el.dataset.type === 'code'
     ? { text: `Code from my canvas (${title(el)}):\n\`\`\`${el.dataset.lang ?? ''}\n${text(el)}\n\`\`\`` }
     : el.dataset.type === 'text'

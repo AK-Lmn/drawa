@@ -1,13 +1,13 @@
 // Windows on the canvas (session cards, terminals, diagrams, sketches, plans) share one shape: a folder.
 // The header is a tab on the top-left that carries the title and the window's buttons; the body sits under it.
 // Drag by the tab, double-click it (or its – button) to collapse the window down to the tab, resize from the corner.
-import { make, ICON, iconButton, button, notice } from '../lib/dom'
+import { make, ICON, iconButton, button, notice, copyButton } from '../lib/dom'
 import { addItem, place, front, draggable, resizable, changed, onChange, view, park, drop, type Rect } from './canvas'
 import { redraw, forget } from './graph'
 import { dropLinks } from './links'
 import { toggleDock, toggleFloat, syncPin } from './dock'
 import { toggleFull, syncFull } from './fullview'
-import { refIcon, refOf, winTitle } from './refs'
+import { refIcon, refOf, winTitle, copyOf } from './refs'
 import { tipText } from '../lib/tooltip'
 
 interface WindowOpts {
@@ -63,7 +63,8 @@ onChange(() => {
 
 // what the Undo toast would bring back: everything removed while it shows (a deleted selection is one undo)
 let undo: { toast: HTMLElement; timer: number; items: { el: HTMLElement; back: () => void; also?: (el: HTMLElement) => void }[] } | null = null
-function removeUndoably(el: HTMLElement, also?: (el: HTMLElement) => void) {
+/** Take an item off the canvas with an Undo toast (removeButton's ×; a group's frame deleted with a selection). */
+export function removeUndoably(el: HTMLElement, also?: (el: HTMLElement) => void) {
   const arrows = forget(el), links = dropLinks(el), put = park(el)
   changed()
   if (!undo) {
@@ -77,6 +78,8 @@ function removeUndoably(el: HTMLElement, also?: (el: HTMLElement) => void) {
   clearTimeout(undo.timer)
   undo.timer = setTimeout(() => settle(false), 8000)
 }
+/** Whether `el` was deleted and Undo can still bring it back. */
+export const undoable = (el: HTMLElement) => !!undo?.items.some(it => it.el === el)
 function settle(back: boolean) {
   if (!undo) return
   const { toast, timer, items } = undo
@@ -117,6 +120,8 @@ export function makeWindow(o: WindowOpts): Win {
   // minimize and close (a narrow tab would otherwise shrink its title and shift them)
   const extra = head.appendChild(make('span', 'win-x')).appendChild(make('span'))
   extra.append(iconButton(ICON.float, '', () => toggleFloat(el), 'floatbtn'), iconButton(ICON.pin, '', () => toggleDock(el), 'pinbtn'), iconButton(ICON.full, '', () => toggleFull(el), 'fullbtn'))
+  const copy = copyOf(o.kind)
+  if (copy) extra.prepend(copyButton(() => copy(el)))
   syncPin(el)
   syncFull(el)
   resizable(el, o.minW, o.minH, onChange, false, o.aspect)

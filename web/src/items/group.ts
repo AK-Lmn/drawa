@@ -3,14 +3,15 @@
 // frozen while anything is dragged), and never overlaps another group (groupgeom.ts settles that). A window joins
 // by being dropped into a frame, and leaves by being dropped outside it or through its tab's Remove from group button.
 // Drawings on the canvas belong to groups too (groupink.ts).
-import { make, ICON, iconButton, confirmBox, uuid, perFrame } from '../lib/dom'
+import { make, ICON, iconButton, button, confirmBox, notice, uuid, perFrame } from '../lib/dom'
 import { persist, each } from '../lib/store'
-import { world, items, byIds, rect, savedRect, place, changed, onChange, onCanvas, moveWith, movesWith, viewCenter, parked, onGone, type Rect } from '../canvas/canvas'
-import { makeWindow, winTitle, titleOf } from '../canvas/window'
+import { world, toWorld, items, byIds, rect, liveRect, savedRect, place, changed, onChange, onCanvas, moveWith, movesWith, viewCenter, parked, onGone, draggable, nearestFree, spawnIn, type Rect } from '../canvas/canvas'
+import { makeWindow, winTitle, titleOf, removeUndoably, undoable } from '../canvas/window'
 import { referable } from '../canvas/refs'
 import { setToggle } from '../canvas/dock'
 import { redraw, forget } from '../canvas/graph'
-import { removable, removeItem, onSelect } from '../canvas/select'
+import { removable, removeItem, onSelect, lockedHint } from '../canvas/select'
+import { handDrag } from '../canvas/mode'
 import { erase } from '../canvas/inkundo'
 import { strokeMover, inkWith } from '../canvas/inksel'
 import { inkIds, setInkIds, groupInk, hideInk, inkRects } from './groupink'
@@ -75,7 +76,8 @@ export function group(o: { id?: string; title?: string; members?: string[]; ink?
   const c = viewCenter()
   const lock = iconButton(ICON.pin, '', () => setLocked(el, !el.dataset.locked), 'lockbtn')
   const { el, head } = makeWindow({
-    kind: 'group', cls: 'group', title: o.title ?? 'Group', minW: MIN.w, minH: MIN.h,
+    // frame: its empty space is canvas to pan or box-select in (canvas/nav.ts, canvas/select.ts)
+    kind: 'group', cls: 'group frame', title: o.title ?? 'Group', minW: MIN.w, minH: MIN.h,
     rect: o.rect ?? { x: c.x - MIN.w / 2, y: c.y - MIN.h / 2, ...MIN },
     actions: [lock, iconButton(ICON.ungroup, 'Ungroup, keep the windows (Ctrl+Shift+G)', () => ungroup(el)),
       iconButton(ICON.x, 'Delete group', () => { deleteGroup(el) }, 'closebtn')],
@@ -90,8 +92,16 @@ export function group(o: { id?: string; title?: string; members?: string[]; ink?
   head.addEventListener('pointerleave', outlinesSoon)
   // a resize starts: remember the frame and where its windows were, so they scale from there (see scaleMembers)
   el.addEventListener('pointerdown', e => { if ((e.target as Element).closest('.grip')?.parentElement === el) resizing.set(el, { f: styleRect(el), ms: members(el).map(m => ({ m, r: sizeOf(m) })) }) }, true)
-  // locked: the tab doesn't drag (its buttons, renaming and double-click to collapse still work)
-  head.addEventListener('pointerdown', e => { if (el.dataset.locked && !(e.target as Element).closest('button')) e.stopImmediatePropagation() }, true)
+  // locked: the tab doesn't drag (its buttons, renaming and double-click to collapse still work); a drag says why
+  head.addEventListener('pointerdown', e => {
+    if (!el.dataset.locked || (e.target as Element).closest('button')) return
+    e.stopImmediatePropagation()
+    addEventListener('pointerup', u => { if (Math.hypot(u.clientX - e.clientX, u.clientY - e.clientY) > 4) lockedHint() }, { once: true })
+  }, true)
+  // dragging its empty space drags the group (Shift+drag: a selection box; Hand mode or locked: pans, canvas/nav.ts)
+  draggable(el, el, redraw, undefined, e => e.target === el && !e.shiftKey && !handDrag() && !el.dataset.locked)
+  // a press on its empty space never starts a text selection: a double-click or a drag there selected the windows' text
+  el.addEventListener('mousedown', e => { if (e.target === el) e.preventDefault() })
   return el
 }
 /** data-locked: the canvas leaves it where it is (movesWith skips it); here, its tab doesn't drag and nothing pushes it. */
@@ -138,17 +148,22 @@ onSelect(outlinesSoon)
 
 /** Add a window to a group (out of any other: a window is in at most one). */
 export function join(el: HTMLElement, g: HTMLElement) {
-  if (groupOf(el) === g) return // (leaving first would empty a one-window group and take its frame away)
+  if (groupOf(el) === g) return
   leave(el)
   setIds(g, [...ids(g), el.dataset.id!])
 }
-/** Take a window out of its group; the last one out takes the frame with it (no empty frame left behind). */
+/** Take a window out of its group; the last one out takes the frame with it (no empty frame is kept), with Undo
+ *  bringing the frame back with the window in it. Returns whether the frame went. ponytail: a window that joins another
+ *  group before that Undo is listed by both; the later one wins groupOf. */
 function leave(el: HTMLElement) {
   const g = groupOf(el)
-  if (!g) return
+  if (!g) return false
+  if (lastOne(g, el)) { removeUndoably(g); return true } // (still listed: Undo puts it back in)
   setIds(g, ids(g).filter(id => id !== el.dataset.id))
-  if (empty(g)) ungroup(g)
+  return false
 }
+/** Nothing but `el` keeps `g` (no other window on the page, no drawing). */
+const lastOne = (g: HTMLElement, el: HTMLElement) => !groupInk(g).length && members(g).every(m => m === el)
 
 /** Take the frame away and leave the windows where they are. */
 export function ungroup(g: HTMLElement) {
@@ -184,9 +199,10 @@ async function deleteGroup(g: HTMLElement) {
   const ms = members(g), ink = groupInk(g), n = ms.length, d = ink.length
   const what = [n && `${n} window${n === 1 ? '' : 's'}`, d && `${d} drawing${d === 1 ? '' : 's'}`].filter(Boolean).join(' and ')
   if (what && !await confirmBox(`Delete "${winTitle(g)}" and its ${what}?`, 'To keep them, use Ungroup instead.', 'Delete all')) return
-  ungroup(g) // shows hidden windows first, so each one's own remove path finds it
+  if (g.classList.contains('min')) hide(g, false) // so each window's own remove path finds it (it hides again on Undo)
   ms.forEach(removeItem)
-  erase(...ink) // (Undo brings them back)
+  erase(...ink) // (Undo in Draw mode brings them back)
+  removeUndoably(g) // one Undo brings the frame back with its windows, title, lock and members
 }
 
 /** Slide other groups out of the way of these (just moved, grown or made), each with its windows. */
@@ -256,7 +272,7 @@ onChange(viewOnly => {
   changed() // the new frames get saved (and fit again: nothing changes, so it stops there)
 })
 
-removable('group', g => ungroup(g), 'A group\'s windows stay unless they are selected too.')
+removable('group', g => removeUndoably(g), 'A group\'s windows stay unless they are selected too.')
 
 export const inside = (r: Rect, x: number, y: number) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h
 
@@ -266,28 +282,54 @@ document.addEventListener('moved', ev => {
   if (!el.classList?.contains('item') || !onCanvas(el)) return // a pinned window moved on screen: still in its group
   const moving = movesWith(el), moved = moving.filter(isGroup)
   if (moved.length) settleFrom(moved) // groups that moved (dragged, or along with a selection) push others aside
-  if (isGroup(el) || moving.length > 1) return // a whole selection doesn't join or leave
+  if (isGroup(el)) return
+  if (moving.length > 1) { moving.forEach(m => dropIn(m)); return } // a selection: its loose windows join where they land; none leave
   const from = groupOf(el)
   // a member dropped with its center outside the frame (still its pre-drag shape: it doesn't refit mid-drag) steps
-  // out; inside, it stays in and the frame grows to wrap it
-  if (from && !inside(styleRect(from), ...center(el))) leave(el)
-  if (groupOf(el)) return
+  // out at once; its Undo puts it back and lets the frame grow round it
+  if (from && !inside(styleRect(from), ...center(el))) {
+    const went = leave(el) // the frame's own Undo puts the window back in: one Undo, not two
+    redraw()
+    changed()
+    if (!went) {
+      const n = notice('') // looks like the delete Undo (canvas/window.ts)
+      n.classList.add('undo')
+      n.replaceChildren(make('span', '', `Moved out of "${winTitle(from)}"`), button('Undo', '', () => {
+        n.remove()
+        if (!from.isConnected || !el.isConnected || groupOf(el)) return
+        join(el, from)
+        redraw()
+        changed()
+      }))
+      setTimeout(() => n.remove(), 8000)
+    }
+  }
+  dropIn(el, from) // (not back into the one it left: Undo does that)
+})
+
+/** A window in no group joins the one it was dropped on, at a spot of its own among the others: where it was dropped
+ *  if that's free, else the nearest free one. A collapsed group takes it in out of sight. */
+function dropIn(el: HTMLElement, not?: HTMLElement) {
   const into = dropTarget(el)
-  if (!into) return
-  // it gets a spot of its own among the others: where it was dropped if that's free, else the nearest free one
-  const room = inner(styleRect(into), PAD, tabH()), p = placeIn(members(into).map(sizeOf), sizeOf(el), room, GAP)
+  if (!into || into === not) return
+  const room = inner(styleRect(into), PAD, tabH()), ms = members(into).map(sizeOf), min = into.classList.contains('min')
+  // a collapsed group was aimed at by its tab, so the drop spot means nothing: below its windows, inside the frame
+  const p = min ? { x: room.x, y: Math.max(room.y, ...ms.map(o => o.y + o.h + GAP)) } : placeIn(ms, sizeOf(el), room, GAP)
   place(el, p.x, p.y)
   join(el, into)
   flash(into)
+  if (min) { const n = notice(`Added to "${winTitle(into)}" (collapsed)`); setTimeout(() => n.remove(), 4000) }
   redraw()
   changed()
-})
+}
 
-/** The group a window (in no group yet) would join if dropped now: the open one under its center. */
+/** The group a window (in no group yet) would join if dropped now: the open one under its center, or the collapsed
+ *  one whose tab is under the pointer (a window's center is rarely over a tab). */
 function dropTarget(el: HTMLElement) {
   if (!groupable(el) || groupOf(el)) return undefined
-  return groups().find(g => onCanvas(g) && !g.classList.contains('min') && inside(styleRect(g), ...center(el)))
+  return groups().find(g => onCanvas(g) && (g.classList.contains('min') ? inside(liveRect(g), pointer.x, pointer.y) : inside(styleRect(g), ...center(el))))
 }
+let pointer = { x: 0, y: 0 } // in canvas units, while something is dragged
 const center = (el: HTMLElement): [number, number] => { const r = rect(el); return [r.x + r.w / 2, r.y + r.h / 2] }
 // while a window is dragged over a group it could join, the frame lights up ("Drop to add to group")
 let over: HTMLElement | null = null
@@ -297,8 +339,9 @@ const light = (g: HTMLElement | null) => {
   if (g) g.dataset.state = 'drop'
   over = g
 }
-addEventListener('pointermove', perFrame(() => {
+addEventListener('pointermove', perFrame((e: PointerEvent) => {
   const el = document.querySelector<HTMLElement>('#world > .item.dragging')
+  if (el) pointer = toWorld(e.clientX, e.clientY)
   light((el && dropTarget(el)) ?? null)
 }))
 addEventListener('pointerup', () => light(null))
@@ -308,13 +351,11 @@ addEventListener('pointercancel', () => light(null))
 function takeOut(m: HTMLElement) {
   const g = groupOf(m)
   if (!g) return
-  const f = styleRect(g)
-  leave(m)
-  if (onCanvas(m)) place(m, f.x + f.w + GAP, parseFloat(m.style.top) || 0)
-  if (g.isConnected) { // (the last one out took the frame away)
-    const ms = members(g), to = compact(ms.map(sizeOf), inner(f, PAD, tabH()), GAP)
-    ms.forEach((el, i) => place(el, to[i].x, to[i].y))
-  }
+  const f = styleRect(g), r = sizeOf(m)
+  const went = leave(m)
+  if (onCanvas(m)) { const p = nearestFree({ ...r, x: f.x + f.w + GAP }); place(m, p.x, p.y) } // not on top of another window
+  const ms = went ? [] : members(g), to = compact(ms.map(sizeOf), inner(f, PAD, tabH()), GAP)
+  ms.forEach((el, i) => place(el, to[i].x, to[i].y))
   redraw()
   changed() // the frame fits the windows left, then settles
 }
@@ -332,13 +373,52 @@ persist('groups',
 // on the page and stays, and so does one only parked (a finished sub-agent's window, a delete that can still be
 // undone) until it's dropped for good. ponytail: ids of windows that never show up again stay in the saved list
 // (harmless: nothing resolves them); a periodic prune could drop them if lists get long
+// a window made beside a member (an agent, a diagram, canvas_create near it) is made inside its group: spotBeside
+// asks here for the spot, and the window joins when it shows up there
+const spawning: { g: HTMLElement; x: number; y: number }[] = []
+spawnIn((from, w, h) => {
+  const g = groupOf(from)
+  if (!g || !onCanvas(g) || g.classList.contains('min')) return null
+  const f = rect(from), r = placeIn(members(g).map(sizeOf), { x: f.x + f.w + GAP, y: f.y, w, h }, inner(styleRect(g), PAD, tabH()), GAP)
+  const at = { g, x: Math.round(r.x), y: Math.round(r.y) }
+  spawning.push(at)
+  setTimeout(() => spawning.splice(spawning.indexOf(at) >>> 0, 1), 10000) // made elsewhere after all (a saved spot won)
+  return r
+})
+function arrived(el: HTMLElement) {
+  const i = spawning.findIndex(s => s.x === parseFloat(el.style.left) && s.y === parseFloat(el.style.top))
+  if (i < 0 || !groupable(el) || groupOf(el) || !spawning[i].g.isConnected) return
+  join(el, spawning.splice(i, 1)[0].g)
+}
+/** A frame taken off the page for now (deleted, Undo still showing): its windows lose what membership gave them
+ *  (adopt gives it back if it returns). */
+function release(g: HTMLElement) {
+  for (const m of members(g)) {
+    m.querySelector(':scope > .win-h .leavebtn')?.remove()
+    if (m.dataset.hiddenIn === g.dataset.id) { delete m.dataset.hiddenIn; m.inert = false }
+  }
+  hideInk(g, false)
+}
+
 function gone(el: HTMLElement) {
   const g = groupOf(el)
   if (!g || g === el) return
-  setIds(g, ids(g).filter(id => id !== el.dataset.id))
-  if (empty(g)) ungroup(g) // (its drawings keep it)
+  if (lastOne(g, el)) removeUndoably(g) // removed some other way than its ×: the frame still doesn't stay empty
+  else setIds(g, ids(g).filter(id => id !== el.dataset.id))
 }
+/** A last window deleted with its × (Undo still showing): the frame goes in the same Undo, keeping it listed. A window
+ *  parked for another reason (a finished sub-agent's) leaves its frame be. */
+function deleting(el: HTMLElement) {
+  const g = groupOf(el)
+  if (g && g !== el && undoable(el) && lastOne(g, el)) removeUndoably(g)
+}
+const isEl = (n: Node): n is HTMLElement => n instanceof HTMLElement && !!n.dataset.id
 new MutationObserver(recs => {
-  recs.flatMap(r => [...r.removedNodes]).filter((n): n is HTMLElement => n instanceof HTMLElement && !n.isConnected && !!n.dataset.id && !parked(n)).forEach(gone)
+  const out = recs.flatMap(r => [...r.removedNodes]).filter(isEl), added = recs.flatMap(r => [...r.addedNodes]).filter(isEl)
+  if ([...out, ...added].some(isGroup)) index = null // a frame parked or back: who's in which group changed
+  out.filter(n => !n.isConnected && parked(n) && isGroup(n)).forEach(release)
+  out.filter(n => !n.isConnected && !parked(n)).forEach(gone)
+  out.filter(n => !n.isConnected && parked(n) && !isGroup(n)).forEach(deleting)
+  added.filter(n => n.isConnected).forEach(arrived)
 }).observe(world, { childList: true })
 onGone(gone)

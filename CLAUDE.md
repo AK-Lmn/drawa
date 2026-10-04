@@ -37,7 +37,7 @@ The app scales through these registration points. A new feature should plug into
 |---|---|---|
 | Something on the canvas | `addItem(el, kind)` for bare nodes, or `makeWindow({...})` for windows | `canvas/canvas.ts`, `canvas/window.ts` |
 | Survive a reload | `persist(key, save, load, phase)` | `lib/store.ts` |
-| Referenceable with `@` or by dropping on a card | `referable(kind, { icon, name, label, status, content })` (`name`: what Ctrl+K calls the kind; `status(el)`: what the item is doing, shown there in its place) | `canvas/refs.ts` |
+| Referenceable with `@` or by dropping on a card | `referable(kind, { icon, name, label, status, content, copy })` (`name`: what Ctrl+K calls the kind; `status(el)`: what the item is doing, shown there in its place; `copy(el)`: the text its window's copy button copies, such as Markdown or Mermaid source; no button without it) | `canvas/refs.ts` |
 | Recover after the server comes back | `onReconnect(fn)` | `lib/connection.ts` |
 | Post-process rendered Markdown (diagrams, anything drawn from a code block) | `onRendered(fn)` | `lib/markdown.ts` |
 | Claude can create or edit it (canvas tools) | `creatable(kind, { size, create, update })` | `canvas/tools.ts` |
@@ -50,6 +50,8 @@ The app scales through these registration points. A new feature should plug into
 | A button on the bar by a selection | `selectionAction(label, tip, fn, when?)` (`when(els)`: shown only for selections it applies to) | `canvas/select.ts` |
 | Drawings that move along when an item is dragged (the selection's, a group's) | `inkWith(fn)` (`fn(el)` returns canvas strokes; `inkOf(els)` gathers them, each once) | `canvas/inksel.ts` |
 | React to drawings just drawn, written or dragged (a group taking in what lands in its frame) | `onInkPlaced(fn)` | `canvas/ink.ts` |
+| Windows made beside an item land somewhere else (inside the item's group) | `spawnIn(fn)` (`fn(from, w, h)` returns the spot or null; `spotBeside()` asks it) | `canvas/canvas.ts` |
+| An item whose empty space is canvas (a group's frame): pans in Hand mode, with the middle button or when locked; Shift+drag draws a selection box; a selection box picks it only when it holds all of it | class `frame` on the item | `canvas/nav.ts`, `canvas/select.ts` |
 
 **Adding a new kind of canvas item** should mean one new file in `items/`, an import in `main.ts`, and CSS in `styles/items.css`. The item file should:
 - Build the element with `makeWindow()`, which handles the folder tab, dragging, collapsing and resizing.

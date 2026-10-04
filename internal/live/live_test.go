@@ -256,6 +256,10 @@ func TestTrackTasks(t *testing.T) {
 	if l.working() {
 		t.Fatalf("still working: %v", l.tasks)
 	}
+	l.trackTasks(`{"type":"user","message":{"content":[{"type":"tool_result","content":"Workflow launched in background. Task ID: wlhba8rwq\nSummary: x"}]}}`)
+	if !l.tasks["wlhba8rwq"] {
+		t.Fatalf("workflow not tracked: %v", l.tasks)
+	}
 }
 
 // The canvas MCP config reaches claude as a 0600 file (not on the command line), removed when it exits.

@@ -23,7 +23,6 @@
 .xsel-menu.up{transform-origin:bottom left;--dy:4px}
 .xsel-menu:focus-visible{outline:none} /* the active item carries the focus indication */
 @keyframes xsel-in{from{opacity:0;transform:translateY(var(--dy,-4px)) scale(.98)}}
-@media (prefers-reduced-motion:reduce){.xsel-menu{animation:none}.xsel svg{transition:none}}
 
 .xsel-item{display:grid;grid-template-columns:minmax(0,1fr) 16px;column-gap:14px;align-items:center;padding:8px 10px;border-radius:var(--r-ctl);cursor:pointer;user-select:none}
 .xsel-item+.xsel-item{margin-top:1px}

@@ -1,10 +1,10 @@
 // File tree (in the drawer) and the inspector: a file's diffs from every session, plus the file itself.
 import { tipText } from '../lib/tooltip'
 import { api, q, type TreeItem } from '../lib/api'
-import { $, make, pathEl, pressed } from '../lib/dom'
+import { $, make, pathEl, pressed, toast, revealIn } from '../lib/dom'
 import { md, enhance, enhanceMarked, highlighter } from '../lib/markdown'
 import { files, pin, refreshSelection, setInspector } from '../canvas/sessionwins'
-import type { Change } from './diff'
+import { inFile, type Change } from './diff'
 import { centerOn } from '../canvas/canvas'
 
 const expanded = new Set<string>()
@@ -50,7 +50,8 @@ const inspector = $('#inspector')
 // the canvas's Files windows and file nodes open files here (canvas/ can't import panels/)
 setInspector({ open: p => openInspector(p), current: () => inspecting })
 
-export function openInspector(path: string, tab?: 'changes' | 'viewer', focus?: Change) {
+/** `line`: in the viewer, scrolled to and marking that line. */
+export function openInspector(path: string, tab?: 'changes' | 'viewer', focus?: Change, line?: number) {
   const changes = files.get(path)?.changes ?? []
   const fresh = inspecting !== path || inspector.hidden
   inspecting = path
@@ -58,9 +59,10 @@ export function openInspector(path: string, tab?: 'changes' | 'viewer', focus?: 
   $('#ipath').replaceChildren(pathEl('', path))
   $('#nchg').textContent = changes.length ? String(changes.length) : ''
   $('#changes').replaceChildren(...(changes.length ? changes : [make('p', 'none', 'No open session has changed this file.')]))
+  changes.forEach(c => inFile(c)) // numbered, in the file: once each, when first shown (not for every replayed edit)
   const which = tab ?? (fresh ? (changes.length ? 'changes' : 'viewer') : $('#viewer').hidden ? 'changes' : 'viewer')
   showTab(which)
-  if (which === 'viewer' || fresh) view(path)
+  if (which === 'viewer' || fresh) view(path, line)
   if (focus) {
     focus.scrollIntoView({ block: 'start' })
     focus.classList.add('flash')
@@ -142,12 +144,15 @@ export function mdView(p: string, text: string) {
   return out
 }
 
-export async function view(p: string) {
+export async function view(p: string, at?: number) {
+  const viewer = $('#viewer')
+  // another file's text under this path would read as this file's while it loads
+  if (viewer.dataset.path !== p) { viewer.replaceChildren(make('p', 'none', 'Reading…')); viewer.dataset.path = p }
   const head = make('div', 'vhead'), ins = make('button', 'btn', 'Insert path')
   ins.title = 'Add this path to the message you are writing'
   ins.onclick = () => {
     const ta = lastInput?.isConnected ? lastInput : document.querySelector<HTMLTextAreaElement>('.card textarea')
-    if (!ta) return
+    if (!ta) return toast('Open a session to insert this path into its message.')
     ta.setRangeText(p + ' ', ta.selectionStart, ta.selectionEnd, 'end')
     ta.focus()
   }
@@ -155,13 +160,13 @@ export async function view(p: string) {
   let text: string | null = null, src: HTMLElement
   try {
     ({ text } = await api<{ text: string | null }>('file?path=' + q(p)))
-    src = await sourceView(p, text)
+    src = await sourceView(p, text, { at })
   } catch (e) {
     src = make('p', 'none', (e as Error).message)
   }
   if (inspecting !== p) return // user moved on while loading
 
-  if (text != null && isMarkdown(p)) {
+  if (text != null && isMarkdown(p) && !at) { // at a line: the source, where lines are
     const preview = mdView(p, text), toggle = make('button', 'btn')
     const sync = () => { preview.hidden = mdSource; src.hidden = !mdSource; toggle.textContent = mdSource ? 'Preview' : 'Source' }
     toggle.onclick = () => { mdSource = !mdSource; sync() }
@@ -172,5 +177,6 @@ export async function view(p: string) {
   } else {
     head.append(ins)
     $('#viewer').replaceChildren(head, src)
+    revealIn($('#viewer'))
   }
 }

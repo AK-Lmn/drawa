@@ -1,4 +1,4 @@
-// A window per sub-agent (each Agent/Task call a session makes): its task, its tool calls and text as they happen,
+// A window per sub-agent (each Agent/Task call a session makes, and each Workflow call): its task, its tool calls and text as they happen,
 // a box to message it, and its result. The card keeps a compact row that opens the window. Live, the CLI tags a
 // sub-agent's messages with the Agent call's id (parent_tool_use_id); on reload the server replays them from the
 // sub-agent's own transcript with the same tag, so both paths end up in agentMsg(). A finished agent's window leaves
@@ -78,6 +78,7 @@ export function agentWindow(S: Session, call: string, inp: Record<string, any>, 
   task.appendChild(make('div', 'io')).appendChild(make('pre', '', prompt)).dataset.l = 'Task'
   // talking to it: the CLI has no way to type into a sub-agent, so the session's Claude relays it (SendMessage)
   const ta = body.appendChild(make('div', 'abox')).appendChild(make('textarea'))
+  if (type === 'workflow') ta.parentElement!.hidden = true // SendMessage can't reach a workflow's agents
   ta.rows = 1
   ta.setAttribute('aria-label', 'Message this agent')
   const a: Agent = { call, S, el, log, state, ta, type, prompt, result: '', done: false, bg: false, rows: new Map() }
@@ -101,6 +102,23 @@ export function agentWindow(S: Session, call: string, inp: Record<string, any>, 
   return a
 }
 
+/** A Workflow call's input in an Agent call's shape. Its name, description and phases come from the script's
+ *  `export const meta = {…}` literal (read with patterns, not run), else from its name or scriptPath. */
+export function workflowTask(inp: Record<string, any>) {
+  const meta = /export\s+const\s+meta\s*=\s*\{(?:[^\n]*\}\s*;?\s*$|[\s\S]*?\n\})/m.exec(String(inp.script ?? ''))?.[0] ?? ''
+  const str = (key: string, src: string) => new RegExp(`\\b${key}\\s*:\\s*(['"\`])((?:\\\\.|(?!\\1)[^\\\\])*)\\1`).exec(src)?.[2]
+  const name = str('name', meta) ?? inp.name ?? String(inp.scriptPath ?? 'Workflow').split('/').pop()!.replace(/\.js$/, '')
+  const description = str('description', meta) ?? ''
+  const phases = [...meta.matchAll(/\{[^{}]*\btitle\s*:[^{}]*\}/g)].map(([p]) => {
+    const detail = str('detail', p)
+    return `- ${str('title', p)}${detail ? ': ' + detail : ''}`
+  })
+  // ponytail: the CLI streams no per-agent progress for a workflow (its agents' steps go to a journal.jsonl on disk),
+  // so the window shows the plan and the final result; reading that journal would give live per-agent rows
+  const prompt = [description, phases.length ? 'Phases:\n' + phases.join('\n') : ''].filter(Boolean).join('\n\n')
+  return { subagent_type: 'workflow', description: String(name), prompt: prompt || String(inp.scriptPath ?? '') }
+}
+
 function hide(call: string) {
   const a = agents.get(call)
   if (!a?.el.isConnected) return
@@ -122,6 +140,7 @@ export const runningAgents = (S: Session) => [...running.get(S) ?? []]
 export function dropAgents(S: Session) {
   for (const [call, a] of agents) {
     if (a.S !== S) continue
+    if (a.el.dataset.id) savedPos[a.el.dataset.id] = savedRect(a.el) // a rebuild puts it back where it is now
     forget(a.el)
     a.el.remove()
     drop(a.el) // (a parked one too: its group lets go)
@@ -244,6 +263,7 @@ persist('agents', () => ({ pos: Object.fromEntries(items('agent').map(el => [el.
 
 referable('agent', {
   icon: '⧉',
+  copy: el => [...agents.values()].find(x => x.el === el)?.result ?? '',
   content: el => {
     const a = [...agents.values()].find(x => x.el === el)
     if (!a) return { text: `Sub-agent "${winTitle(el)}"` }

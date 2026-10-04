@@ -4,7 +4,7 @@ import { $, make, shortcutOk } from '../lib/dom'
 import { changed, stage, onChange, holder } from './canvas'
 import { redraw } from './graph'
 import { setToggle } from './dock'
-import { expand, collapse, focusInput } from './window'
+import { expand, collapse, focusInput, titleOf } from './window'
 import { drawing } from './ink'
 import { command } from '../lib/keys'
 import type { PanzoomObject } from '@panzoom/panzoom'
@@ -35,6 +35,7 @@ export function toggleFull(el: HTMLElement) {
   el.classList.add('full')
   layer.append(el)
   layer.hidden = false
+  layer.setAttribute('aria-label', titleOf(el))
   document.body.classList.add('has-full') // the minimap and hint step aside (panels.css)
   open = { el, spot, min }
   sync(el)
@@ -82,7 +83,8 @@ addEventListener('keydown', e => {
 })
 command({ label: 'Zoom the picture in full view in, out, back', group: 'Windows', keys: ['+', '-', '0'] })
 
-export function exitFull() {
+/** `keys`: left from the keyboard, so focus goes back to ⤢ (a mouse exit leaves focus alone, or the tab's buttons stay shown) */
+export function exitFull(keys = false) {
   if (!open) return
   const { el, spot, min } = open
   open = undefined
@@ -96,6 +98,11 @@ export function exitFull() {
   sync(el)
   redraw()
   changed()
+  if (!keys) return
+  // .refocus shows the tab and ⤢ just long enough to take focus (window.css), then :focus-within keeps them shown
+  el.classList.add('refocus')
+  el.querySelector<HTMLElement>(':scope > .win-h .fullbtn')?.focus()
+  el.classList.remove('refocus')
 }
 
 export const syncFull = (el: HTMLElement) => setToggle(el, 'fullbtn', isFull(el), 'Back to its place (Esc)', 'Full view (Shift+F)')
@@ -107,5 +114,5 @@ addEventListener('keydown', e => {
   if (e.key !== 'Escape' || !open || e.defaultPrevented || drawing || !shortcutOk(e)) return
   if (document.querySelector('.xsel-menu, .cmds:not([hidden])')) return
   e.preventDefault()
-  exitFull()
+  exitFull(true)
 })
