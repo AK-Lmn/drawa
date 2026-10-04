@@ -328,11 +328,20 @@ func (l *Live) Close() {
 	l.be.Close()
 }
 
-// otherEffort: idle, and started with another effort than the one asked for now.
+// otherEffort: idle, and started with another effort than the one asked for now. A backend that takes effort per
+// turn (EffortSetter) is handed the new one instead, working or not.
 func (l *Live) otherEffort(effort string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return effort != l.effort && !l.working()
+	if effort == l.effort {
+		return false
+	}
+	if e, ok := l.be.(EffortSetter); ok {
+		e.SetEffort(effort)
+		l.effort = effort
+		return false
+	}
+	return !l.working()
 }
 
 // replace closes it quietly, to start another in its place.

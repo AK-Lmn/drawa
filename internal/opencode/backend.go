@@ -105,13 +105,15 @@ type server struct {
 	client *http.Client
 	v2     bool // this card's OpenCode is a v2 release: different endpoints, request/response shapes and events
 
-	mu        sync.Mutex
-	tr        wireTranslator
-	sid       string
-	mode      string
-	spawnMode string // the mode its config (OPENCODE_CONFIG_CONTENT) was built for
-	model     string
-	sse       chan struct{} // closed when the event stream ends
+	mu         sync.Mutex
+	tr         wireTranslator
+	sid        string
+	mode       string
+	spawnMode  string // the mode its config (OPENCODE_CONFIG_CONTENT) was built for
+	model      string
+	effort     string        // the model variant ("high", ...) prompts ask for, "" for the model's default
+	sentEffort string        // v2: the variant its session has (v1 sends it with every prompt)
+	sse        chan struct{} // closed when the event stream ends
 }
 
 // versionWarning notes an installed OpenCode other than the tested one (a warning: newer ones usually work).
@@ -157,7 +159,7 @@ func spawn(s live.Spec, sink live.Sink) (live.Backend, error) {
 	} else {
 		tr = newTranslator(s.Sid, s.Model)
 	}
-	srv := &server{pass: randHex(16), ready: make(chan struct{}), client: &http.Client{}, sid: s.Sid, mode: s.Mode, spawnMode: s.Mode, model: s.Model,
+	srv := &server{pass: randHex(16), ready: make(chan struct{}), client: &http.Client{}, sid: s.Sid, mode: s.Mode, spawnMode: s.Mode, model: s.Model, effort: s.Effort,
 		tr: tr, sse: make(chan struct{}), v2: v2}
 	// the static permission config still works in its v1 shape on a v2 server; only the runtime API (SetMode) changed
 	cfg := map[string]any{"permission": permissions(s.Mode)}

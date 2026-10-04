@@ -1,6 +1,7 @@
 package live
 
 import (
+	"slices"
 	"sync"
 	"time"
 )
@@ -59,4 +60,17 @@ func TrackMeta(l *Live) func() {
 		metaLive = nil
 		Mu.Unlock()
 	}
+}
+
+// Accepts reports whether the backend's model list says model takes effort (its entry's "efforts"). Usually
+// cached: the page loaded it before offering the levels.
+func Accepts(kind, model, effort string) bool {
+	list, _ := Meta(kind)["models"].([]any)
+	for _, m := range list {
+		if m, _ := m.(map[string]any); m != nil && m["value"] == model {
+			efforts, _ := m["efforts"].([]string)
+			return slices.Contains(efforts, effort)
+		}
+	}
+	return false
 }

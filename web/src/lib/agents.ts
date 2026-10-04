@@ -6,7 +6,7 @@ import { make } from './dom'
 import { enhance } from './select'
 
 export interface Agent { name: string; title: string; blurb?: string; installed: boolean; install: string; modes: string[]; canWrite: boolean; canUnsend?: boolean; resume?: string }
-export interface Model { value: string; displayName: string; description: string }
+export interface Model { value: string; displayName: string; description: string; efforts?: string[] } // efforts: levels it accepts (other agents; Claude's are EFFORTS)
 export interface Meta { models: Model[]; commands: { name: string; description: string; argumentHint?: string }[] }
 
 export let agents: Agent[] = []
