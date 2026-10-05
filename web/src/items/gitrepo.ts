@@ -63,7 +63,7 @@ export function repoView(dir: string, repo: string, host: Host): RepoView {
   head.onclick = () => { folds[dir] = !isOpen(v); changed(); fold(v); if (isOpen(v)) v.gh.wake() }
   line.onclick = e => { if (e.target === line || (e.target as Element).matches('.gb,.n')) head.click() } // the whole line folds, but the picker
   msg.rows = 2
-  msg.placeholder = dir ? `Commit message for ${wt ? wtFolder(dir) : repoName(dir)}` : 'Commit message'
+  msg.placeholder = dir ? `Commit message for ${wt ? dir.slice(dir.lastIndexOf('/') + 1) : repoName(dir)}` : 'Commit message' // a worktree by its folder's name, not its whole path
   msg.setAttribute('aria-label', msg.placeholder)
   msg.value = drafts[dir] ?? ''
   msg.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) commit(v, host) })
@@ -94,13 +94,12 @@ export function fill(v: RepoView, st: GitState, host: Host) {
   chev.innerHTML = ICON.open
   const slash = v.repo.lastIndexOf('/'), sync = syncText(st), many = v.checkouts.length > 1
   v.head.replaceChildren(chev, make('span', 'gp', repoName(v.repo)), make('span', 'gd', slash > 0 ? v.repo.slice(0, slash + 1) : ''))
-  // with worktrees the picker names the branch; the line keeps the sync and the count
   const had = v.line.contains(document.activeElement) ? document.activeElement as HTMLElement : null
   const gb = make('span', 'gb', st.repo ? many ? sync : `${st.branch}${sync ? ' ' + sync : ''}` : 'unreadable')
   gb.title = gb.textContent ?? '' // the whole branch when the line is too narrow for it
-  const tail = make('span', 'gtail') // wraps under the name as one piece when the line is too narrow
-  tail.append(...(many ? [picker(v, host)] : []), gb, ...(st.total ? [make('span', 'n', String(st.total))] : []))
-  v.line.replaceChildren(v.head, tail)
+  const tail = make('span', 'gtail') // the second line, under the name: the branch, or the picker standing in for it
+  tail.append(...(many ? [picker(v, host)] : []), gb)
+  v.line.replaceChildren(v.head, ...(st.total ? [make('span', 'n', String(st.total))] : []), tail)
   if (had?.isConnected && had !== document.activeElement) had.focus() // moving the fold button or picker drops its focus
   v.head.title = st.repo ? `${v.dir || project.name}: ${st.total ? `${st.total} changed file${st.total === 1 ? '' : 's'}` : 'clean'}` : st.error ?? ''
   fold(v)
