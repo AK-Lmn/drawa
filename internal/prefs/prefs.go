@@ -21,7 +21,7 @@ import (
 // shows every window's tab, "minimal" a window's tab only when you reach for the window. "theme": "system" follows
 // the computer's light or dark mode; each mode has its color scheme (the ids in web/src/lib/theme.ts). "symbols":
 // "auto" reads code symbols with universal-ctags when it's installed (internal/symbols), "off" never runs it.
-// "vim": "on" gives a file window's editor Vim motions.
+// "vim": "on" gives the file editor and scratchpads Vim motions.
 var Defaults = map[string]any{"ui": "full", "theme": "system", "lightScheme": "claude-light", "darkScheme": "claude-dark", "symbols": "auto", "vim": "off"}
 
 // checks say which values each setting may take. A scheme is only checked for shape: the page falls back to the

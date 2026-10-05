@@ -174,8 +174,11 @@ export const setMoveAlong = (f: typeof moveAlong) => { moveAlong = f }
  *  `when`: only presses it accepts drag (a group's empty space: not while Shift draws a selection box). */
 export function draggable(el: HTMLElement, handle: HTMLElement, onMove: () => void, onClick?: () => void, when?: (e: PointerEvent) => boolean) {
   const own = (e: Event) => (e.target as Element).closest(`button, a, .log, .compose, ${EDITABLE}`)
-  // pressing the handle leaves focus where it was: typing in the window (a file being edited) carries on after a drag
-  handle.addEventListener('mousedown', e => { if (e.button === 0 && !own(e) && el.contains(document.activeElement)) e.preventDefault() })
+  // pressing the handle leaves focus in a box marked data-keep-focus (a file being edited): typing carries on after a
+  // drag. A message box still loses it, so a click on its card's tab makes the next key a shortcut again.
+  handle.addEventListener('mousedown', e => {
+    if (e.button === 0 && !own(e) && el.contains(document.activeElement?.closest('[data-keep-focus]') ?? null)) e.preventDefault()
+  })
   handle.addEventListener('pointerdown', e => {
     if (e.button !== 0 || !onCanvas(el) || own(e) || (when && !when(e))) return
     e.stopPropagation()

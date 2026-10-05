@@ -101,26 +101,28 @@ function loadVim() {
     }
     // a file window's editor grows with its text and the box around it scrolls (styles/items.css), so Vim's page
     // and screen motions (Ctrl+D, Ctrl+F, H, M, L, zt, zz, Ctrl+E) measure and scroll that box: the editor's own
-    // scroller would take the whole file for the screen. Positions stay the editor's, offset by where it sits.
+    // scroller would take the whole file for the screen. Positions stay the editor's, offset by where it sits, and
+    // in screen pixels as Vim's own (charCoords, defaultTextHeight) are: the canvas may be zoomed.
     const proto = m.CodeMirror.prototype, info = proto.getScrollInfo, to = proto.scrollTo, posV = proto.findPosV
     proto.getScrollInfo = function () {
       const v: EditorView = this.cm6, box = scrollBox(v)
       if (box === v.scrollDOM) return info.call(this)
-      const at = offset(v, box)
-      return { left: box.scrollLeft - at.x, top: box.scrollTop - at.y, height: v.scrollDOM.scrollHeight, width: v.scrollDOM.scrollWidth, clientHeight: box.clientHeight, clientWidth: box.clientWidth }
+      const at = offset(v, box), sx = v.scaleX, sy = v.scaleY
+      return { left: (box.scrollLeft - at.x) * sx, top: (box.scrollTop - at.y) * sy, height: v.scrollDOM.scrollHeight * sy,
+        width: v.scrollDOM.scrollWidth * sx, clientHeight: box.clientHeight * sy, clientWidth: box.clientWidth * sx }
     }
     proto.scrollTo = function (x?: number | null, y?: number | null) {
       const v: EditorView = this.cm6, box = scrollBox(v)
       if (box === v.scrollDOM) return to.call(this, x, y)
       const at = offset(v, box)
-      if (x != null) box.scrollLeft = x + at.x
-      if (y != null) box.scrollTop = y + at.y
+      if (x != null) box.scrollLeft = x / v.scaleX + at.x
+      if (y != null) box.scrollTop = y / v.scaleY + at.y
     }
     // Ctrl+F and Ctrl+B: a page is what the box shows, in lines (a file window's lines don't wrap)
     proto.findPosV = function (start, amount, unit, goal) {
       const v: EditorView = this.cm6, box = scrollBox(v)
       if (unit !== 'page' || box === v.scrollDOM) return posV.call(this, start, amount, unit, goal)
-      return posV.call(this, start, amount * Math.max(1, Math.floor(box.clientHeight / v.defaultLineHeight)), 'line', goal)
+      return posV.call(this, start, amount * Math.max(1, Math.floor(box.clientHeight * v.scaleY / v.defaultLineHeight)), 'line', goal)
     }
     return m
   })
@@ -136,10 +138,10 @@ function scrollBox(v: EditorView) {
   }
   return box
 }
-/** Where `v`'s scroller sits in `box`'s scrolled content, in unzoomed pixels (the canvas may be zoomed). */
+/** Where `v`'s scroller sits in `box`'s scrolled content, in unzoomed pixels (scrolling counts from inside its border). */
 function offset(v: EditorView, box: HTMLElement) {
   const a = v.scrollDOM.getBoundingClientRect(), b = box.getBoundingClientRect()
-  return { x: (a.left - b.left) / v.scaleX + box.scrollLeft, y: (a.top - b.top) / v.scaleY + box.scrollTop }
+  return { x: (a.left - b.left) / v.scaleX - box.clientLeft + box.scrollLeft, y: (a.top - b.top) / v.scaleY - box.clientTop + box.scrollTop }
 }
 /** Flash what a yank took: while Vim's yank runs, the editor's selections are exactly the yanked ranges. */
 function markYank(m: typeof import('@replit/codemirror-vim')) {
@@ -207,9 +209,11 @@ export async function codeEditor(parent: HTMLElement, o: Opts): Promise<Editor> 
       o.hint ? placeholder(o.hint) : [],
       o.max ? EditorState.changeFilter.of(tr => {
         if (tr.newDoc.length <= o.max! || tr.newDoc.length <= tr.startState.doc.length) return true
-        // refused: what made the change (Vim's p) still moves the cursor as if it had happened, so put it back after
+        // refused: what made the change (Vim's p) still moves the cursor as if it had happened, so put it back once
+        // that's done, before the next key. ponytail: a macro running on past the refusal (@q = pj) loses its moves
+        // from there; track the refused command's own selection if that ever matters.
         const at = tr.startState.selection
-        setTimeout(() => { if (!gone && at.main.to <= view.state.doc.length) view.dispatch({ selection: at }) })
+        queueMicrotask(() => { if (!gone && at.ranges.every(r => r.to <= view.state.doc.length)) view.dispatch({ selection: at }) })
         return false
       }) : [],
       // kept as you type: what's kept is never unsaved, so :q never refuses
@@ -223,16 +227,18 @@ export async function codeEditor(parent: HTMLElement, o: Opts): Promise<Editor> 
   // out (the server only opens files with one kind of line ending, so this gives back exactly what was read)
   const crlf = o.text.includes('\r\n'), text = () => crlf ? view.state.sliceDoc().replace(/\n/g, '\r\n') : view.state.sliceDoc()
   owners.set(view, { o, dirty })
+  parent.dataset.keepFocus = '' // dragging its window keeps the keys here (canvas.ts draggable)
   view.contentDOM.addEventListener('focus', () => { if (vimAsked) pull() })
   // Tab outside insert mode is Vim's Ctrl+I (jump forward), not an indent. CodeMirror's way out for the keyboard (Esc,
-  // then Tab, leaves the editor) stays, but takes an Esc in normal mode: the Esc that leaves insert mode doesn't count.
-  let escaped = false
+  // then Tab within 2s, leaves the editor) stays, but takes an Esc in normal mode: the Esc that leaves insert mode
+  // doesn't count. Modifier keys in between (Shift for Shift+Tab) don't spend it, as in CodeMirror.
+  let escapedAt = 0
   parent.addEventListener('keydown', e => {
     const cm = vimAsked ? getCM(view) : null, vim = cm?.state.vim as { insertMode?: boolean; visualMode?: boolean } | undefined
-    if (!cm || !vim || e.target !== view.contentDOM) return
-    const wasEscaped = escaped
-    escaped = e.key === 'Escape' && !vim.insertMode && !vim.visualMode
-    if (e.key !== 'Tab' || e.ctrlKey || e.altKey || e.metaKey || vim.insertMode || wasEscaped) return
+    if (!cm || !vim || e.target !== view.contentDOM || /^(Shift|Control|Alt|Meta)$/.test(e.key)) return
+    const escaped = Date.now() - escapedAt < 2000
+    escapedAt = e.key === 'Escape' && !vim.insertMode && !vim.visualMode ? Date.now() : 0
+    if (e.key !== 'Tab' || e.ctrlKey || e.altKey || e.metaKey || vim.insertMode || escaped) return
     e.preventDefault()
     e.stopPropagation()
     if (!e.shiftKey) void vimMod?.then(m => m.Vim.handleKey(cm, '<C-i>', 'user'))
