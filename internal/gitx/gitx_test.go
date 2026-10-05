@@ -600,3 +600,35 @@ func TestNestedGitOncePerRefresh(t *testing.T) {
 		t.Fatalf("git worktree ran %d times", n)
 	}
 }
+
+// A worktree folder left behind after its admin entry is pruned keeps a .git file pointing at nothing: git says
+// "not a repository" there, so it isn't listed as a repo of its own.
+func TestStaleWorktreeFolder(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	base := t.TempDir()
+	run := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	repo := filepath.Join(base, "repo")
+	os.MkdirAll(repo, 0o755)
+	run(repo, "init", "-q", "-b", "main")
+	run(repo, "commit", "-q", "--allow-empty", "-m", "first")
+	run(repo, "worktree", "add", "-q", "-b", "live", filepath.Join(base, "live"))
+	run(repo, "worktree", "add", "-q", "-b", "stale", filepath.Join(base, "stale"))
+	if err := os.RemoveAll(filepath.Join(repo, ".git", "worktrees", "stale")); err != nil {
+		t.Fatal(err)
+	}
+	got := findRepos(base)
+	slices.Sort(got)
+	if want := []string{"live", "repo"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("findRepos = %v, want %v", got, want)
+	}
+}

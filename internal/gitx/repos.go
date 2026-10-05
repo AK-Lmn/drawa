@@ -74,7 +74,7 @@ func findRepos(root string) []string {
 		if strings.Count(rel, string(filepath.Separator)) >= repoDepth {
 			return filepath.SkipDir
 		}
-		if _, err := os.Lstat(filepath.Join(p, ".git")); err == nil { // a folder, or a file for submodules and worktrees
+		if hasGit(p) {
 			found = append(found, filepath.ToSlash(rel))
 			if len(found) >= maxRepos {
 				return filepath.SkipAll
@@ -84,6 +84,27 @@ func findRepos(root string) []string {
 	})
 	slices.Sort(found)
 	return found
+}
+
+// hasGit says dir holds a repo: a .git folder, or a .git file (submodules, worktrees) whose gitdir still exists. A
+// worktree left behind after git worktree prune keeps a .git file pointing at nothing; git calls it not a repository,
+// so listing it would only show an unreadable group.
+func hasGit(dir string) bool {
+	p := filepath.Join(dir, ".git")
+	fi, err := os.Lstat(p)
+	if err != nil || fi.IsDir() {
+		return err == nil
+	}
+	b, err := os.ReadFile(p)
+	target, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "gitdir: ")
+	if err != nil || !ok {
+		return false
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(dir, target)
+	}
+	fi, err = os.Stat(target)
+	return err == nil && fi.IsDir()
 }
 
 // Repos are the repositories the Git and GitHub windows offer: "" (Root's own) when Root is in one, then Nested.
