@@ -163,3 +163,35 @@ export function enhance(select: HTMLSelectElement): void {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); open() }
   }
 }
+
+/** A row of buttons over a native <select>, for a few short choices; like `enhance`, the select stays the source of truth. */
+export function segmented(select: HTMLSelectElement): void {
+  const row = make('div', 'seg')
+  row.setAttribute('role', 'radiogroup')
+  const name = select.id && document.querySelector(`label[for="${select.id}"]`)?.textContent
+  if (name) row.setAttribute('aria-label', name)
+  select.after(row)
+  select.hidden = true
+  const sync = () => [...row.children].forEach((b, i) => {
+    const on = select.options[i]?.selected ?? false
+    b.classList.toggle('on', on)
+    b.setAttribute('aria-checked', String(on))
+  })
+  const render = () => {
+    row.replaceChildren(...[...select.options].map(o => {
+      const b = make('button', '', o.textContent)
+      b.setAttribute('role', 'radio')
+      if (o.title) b.title = o.title
+      b.onclick = () => { if (o.selected) return; select.value = o.value; select.dispatchEvent(new Event('change')) }
+      return b
+    }))
+    sync()
+  }
+  for (const prop of ['value', 'selectedIndex'] as const) {
+    const d = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, prop)!
+    Object.defineProperty(select, prop, { configurable: true, get() { return d.get!.call(this) }, set(v) { d.set!.call(this, v); sync() } })
+  }
+  new MutationObserver(render).observe(select, { childList: true, subtree: true, characterData: true })
+  select.addEventListener('change', sync)
+  render()
+}
