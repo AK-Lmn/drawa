@@ -280,14 +280,15 @@ func Get(rel string) (map[string]any, error) {
 		return nil, err
 	}
 	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, maxRead)) // ponytail: 1MB cap; Save refuses files past it
+	data, err := io.ReadAll(io.LimitReader(f, maxRead+1)) // ponytail: 1MB cap; Save refuses files past it
 	if err != nil {
 		return nil, err
 	}
 	if bytes.IndexByte(data, 0) >= 0 {
 		return map[string]any{"text": nil}, nil
 	}
-	return map[string]any{"text": toUTF8(data)}, nil
+	// editable: the text is the whole file as it is, so the editor may save it (not cut off, not re-encoded)
+	return map[string]any{"text": toUTF8(data[:min(len(data), maxRead)]), "editable": editable(data)}, nil
 }
 
 func toUTF8(b []byte) string {

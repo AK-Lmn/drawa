@@ -462,7 +462,7 @@ func doPOST(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, map[string]any{"ok": true}, 200)
 		case errors.Is(err, filesx.ErrChanged):
 			sendJSON(w, map[string]any{"error": err.Error()}, 409)
-		case errors.Is(err, config.ErrOutside):
+		case errors.Is(err, config.ErrOutside), errors.Is(err, filesx.ErrReadOnly):
 			sendJSON(w, map[string]any{"error": err.Error()}, 403)
 		default:
 			sendJSON(w, map[string]any{"error": err.Error()}, 500)

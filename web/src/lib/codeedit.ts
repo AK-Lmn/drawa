@@ -2,15 +2,16 @@
 // here is in the page until someone edits a file. Colors come from the theme's --syn-* tokens (styles/items.css
 // styles the rest), so it follows light, dark and every scheme without redrawing.
 import { EditorView, basicSetup } from 'codemirror'
-import { Compartment, type Extension } from '@codemirror/state'
+import { Compartment, EditorState, type Extension, type Text } from '@codemirror/state'
 import { keymap } from '@codemirror/view'
 import { indentWithTab } from '@codemirror/commands'
 import { HighlightStyle, LanguageDescription, syntaxHighlighting } from '@codemirror/language'
 import { languages } from '@codemirror/language-data'
 import { tags as t } from '@lezer/highlight'
 
-export interface Editor { text(): string; setVim(on: boolean): Promise<void>; focus(): void; destroy(): void }
-interface Opts { path: string; text: string; vim: boolean; save(): Promise<void>; quit(): void; change(): void }
+/** `take()`: the text to save, and `done()` to call once it's saved; `dirty()`: changed since the last save. */
+export interface Editor { take(): { text: string; done(): void }; dirty(): boolean; setVim(on: boolean): Promise<void>; focus(): void; destroy(): void }
+interface Opts { path: string; text: string; vim: boolean; save(): Promise<void>; quit(): void }
 
 // the same token groups as highlight.js's colors in styles/markdown.css
 const colors = HighlightStyle.define([
@@ -31,8 +32,10 @@ function loadVim() {
   return vimMod ??= import('@replit/codemirror-vim').then(m => {
     const of = (cm: { cm6: EditorView }) => owners.get(cm.cm6)
     m.Vim.defineEx('write', 'w', cm => of(cm)?.save())
-    m.Vim.defineEx('quit', 'q', cm => of(cm)?.quit())
-    m.Vim.defineEx('wq', 'wq', async cm => { await of(cm)?.save(); of(cm)?.quit() })
+    // quit after Vim has finished with the command: destroying the editor inside it breaks Vim's own cleanup
+    const quit = (o?: Opts) => setTimeout(() => o?.quit())
+    m.Vim.defineEx('quit', 'q', cm => quit(of(cm)))
+    m.Vim.defineEx('wq', 'wq', async cm => { const o = of(cm); await o?.save(); quit(o) })
     return m
   })
 }
@@ -45,18 +48,27 @@ export async function codeEditor(parent: HTMLElement, o: Opts): Promise<Editor> 
     doc: o.text,
     extensions: [
       vimSlot.of(await vimExt(o.vim)), // before the other keymaps, so Vim sees keys first
+      // a CRLF file stays CRLF: CodeMirror would otherwise save every line with \n. ponytail: mixed endings
+      // become the file's first kind; keep per-line endings if that ever matters
+      o.text.includes('\r\n') ? EditorState.lineSeparator.of('\r\n') : [],
       basicSetup,
       keymap.of([{ key: 'Mod-s', preventDefault: true, run: () => { o.save(); return true } }, indentWithTab]),
       lang ? await lang.load() : [],
       syntaxHighlighting(colors),
-      EditorView.updateListener.of(u => { if (u.docChanged) o.change() }),
     ],
   })
   owners.set(view, o)
+  // eq() skips the parts an edit didn't touch, so asking is cheap even for a big file
+  let saved: Text = view.state.doc, gone = false, vimAsked = o.vim
   return {
-    text: () => view.state.doc.toString(),
-    setVim: async on => view.dispatch({ effects: vimSlot.reconfigure(await vimExt(on)) }),
+    take() { const doc = view.state.doc; return { text: view.state.sliceDoc(), done: () => { saved = doc } } },
+    dirty: () => !view.state.doc.eq(saved),
+    async setVim(on) {
+      vimAsked = on
+      const ext = await vimExt(on)
+      if (!gone && vimAsked === on) view.dispatch({ effects: vimSlot.reconfigure(ext) }) // the newest choice wins
+    },
     focus: () => view.focus(),
-    destroy: () => view.destroy(),
+    destroy: () => { gone = true; view.destroy() },
   }
 }

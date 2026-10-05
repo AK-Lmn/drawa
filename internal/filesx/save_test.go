@@ -34,6 +34,17 @@ func TestSave(t *testing.T) {
 	if err := Save("big", string(big[:maxRead]), "x"); !errors.Is(err, ErrChanged) {
 		t.Errorf("big file: %v", err)
 	}
+	// not UTF-8: the page saw replacement characters, saving them would rewrite every such byte
+	os.WriteFile(filepath.Join(root, "latin1"), []byte("caf\xe9\n"), 0o644)
+	if err := Save("latin1", "caf\uFFFD\n", "x"); !errors.Is(err, ErrChanged) {
+		t.Errorf("not UTF-8: %v", err)
+	}
+	if os.Getuid() != 0 { // root may write anything
+		os.WriteFile(filepath.Join(root, "ro"), []byte("a"), 0o444)
+		if err := Save("ro", "a", "b"); !errors.Is(err, ErrReadOnly) {
+			t.Errorf("read-only: %v", err)
+		}
+	}
 	if err := Save("../outside", "", "x"); err == nil {
 		t.Error("saved outside the project")
 	}

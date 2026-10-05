@@ -73,7 +73,6 @@ export function preview(o: { path: string; title?: string; rect: Rect; line?: nu
     kind: 'preview', cls: 'pvnode', title: o.title || o.path.split('/').pop()!, rect: o.rect, minW: 200, minH: 120,
     actions: [...(image ? [] : [pencil]), iconButton(ICON.reload, 'Read the file again', () => load(true)), removeButton('Remove from canvas')],
   })
-
   el.dataset.id = 'preview:' + o.path // the same after a reload: arrows and canvas tools find it by this
   el.dataset.path = o.path
   // the ink host is made once, here: strokes stay on it through the reload button, and restoring ink (phase 2)
@@ -87,7 +86,7 @@ export function preview(o: { path: string; title?: string; rect: Rect; line?: nu
   const load = async (again = false) => {
     if (editing(el)) return // the editor holds the file until you stop editing
     const n = ++loads, view = image ? picture(el, host, again) : await textView(o.path, undefined, at)
-    if (n !== loads) return
+    if (n !== loads || editing(el)) return // the pencil was pressed while this read was on its way
     fill(host, view)
     revealIn(host)
   }
