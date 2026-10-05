@@ -11,6 +11,7 @@ import { prefs, setPrefs, onPrefs } from '../lib/prefs'
 import { command } from '../lib/keys'
 import { onForget } from '../canvas/graph'
 import { onGone, parked } from '../canvas/canvas'
+import { saved as shown } from '../panels/files'
 import type { Editor } from '../lib/codeedit'
 
 interface Edit { editor: Editor; base: string; saving?: Promise<boolean>; quit(force?: boolean): Promise<void>; close(): void }
@@ -93,7 +94,7 @@ async function save(e: Edit, path: string): Promise<boolean> {
 
 async function write(e: Edit, path: string) {
   const { text, done } = e.editor.take()
-  const saved = () => { e.base = text; done(); toast(`Saved ${path}`); return true }
+  const saved = () => { e.base = text; done(); toast(`Saved ${path}`); shown(path); return true }
   try {
     await post('file', { path, base: e.base, text })
     return saved()

@@ -72,7 +72,7 @@ function lineAt(host: HTMLElement, y: number) {
   return Math.min(n, Math.max(1, Math.floor((y - r.top) / (r.height / n)) + 1))
 }
 
-const toLine = new WeakMap<HTMLElement, (line: number) => void>()
+const toLine = new WeakMap<HTMLElement, (line: number) => void>(), toEdit = new WeakMap<HTMLElement, () => Promise<void>>()
 
 export function preview(o: { path: string; title?: string; rect: Rect; line?: number }) {
   const key = 'pv:' + o.path, image = IMAGE.test(o.path)
@@ -108,14 +108,19 @@ export function preview(o: { path: string; title?: string; rect: Rect; line?: nu
   }
   load()
   toLine.set(el, line => { at = line; if (editing(el)) editAt(el, line); else load() }) // read again: the line is where it is in the file now
+  toEdit.set(el, async () => { if (!editing(el)) await edit() })
   return el
 }
 
-fileOpener((path, line) => {
-  const open = items('preview').find(el => el.dataset.path === path)
-  if (open) { if (line) toLine.get(open)?.(line); return open } // a file already open is flown to rather than opened twice
-  const c = viewCenter(), el = preview({ path, line, rect: freeSpot({ x: c.x - 260, y: c.y - 200, w: 520, h: 400 }) })
-  changed()
+fileOpener((path, line, edit) => {
+  let el = items('preview').find(el => el.dataset.path === path) // a file already open is flown to rather than opened twice
+  if (el) { if (line) toLine.get(el)?.(line) }
+  else {
+    const c = viewCenter()
+    el = preview({ path, line, rect: freeSpot({ x: c.x - 260, y: c.y - 200, w: 520, h: 400 }) })
+    changed()
+  }
+  if (edit) { const w = el; toEdit.get(w)?.().then(() => { if (line) editAt(w, line) }) }
   return el
 }, async (path, line) => IMAGE.test(path) ? Object.assign(make('img', 'finder-img'), { src: '/api/raw?path=' + q(path), alt: '' }) : textView(path, 200, line))
 

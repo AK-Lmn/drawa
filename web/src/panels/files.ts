@@ -6,6 +6,7 @@ import { md, enhance, enhanceMarked, highlighter } from '../lib/markdown'
 import { files, pin, refreshSelection, setInspector } from '../canvas/sessionwins'
 import { inFile, type Change } from './diff'
 import { centerOn } from '../canvas/canvas'
+import { openFileAt } from '../canvas/find'
 
 const expanded = new Set<string>()
 export let inspecting: string | null = null
@@ -144,6 +145,9 @@ export function mdView(p: string, text: string) {
   return out
 }
 
+/** A file was just saved (items/fileedit.ts): the File tab showing it reads it again. */
+export const saved = (p: string) => { if (inspecting === p && !inspector.hidden && !$('#viewer').hidden) view(p) }
+
 export async function view(p: string, at?: number) {
   const viewer = $('#viewer')
   // another file's text under this path would read as this file's while it loads
@@ -165,6 +169,12 @@ export async function view(p: string, at?: number) {
     src = make('p', 'none', (e as Error).message)
   }
   if (inspecting !== p) return // user moved on while loading
+  if (text != null) { // in the file's window on the canvas: one editor, with its saving and Vim motions
+    const edit = make('button', 'btn', 'Edit')
+    edit.title = 'Edit this file in its window on the canvas'
+    edit.onclick = () => openFileAt(p, at, true)
+    head.append(edit)
+  }
 
   if (text != null && isMarkdown(p) && !at) { // at a line: the source, where lines are
     const preview = mdView(p, text), toggle = make('button', 'btn')
