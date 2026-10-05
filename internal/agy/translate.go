@@ -217,6 +217,7 @@ func (x *translator) tool(e event) []string {
 	// the result needs its call's message closed first: the page reads it as the reply to what came before
 	out = append(out, x.t.StopMessage()...)
 	res := map[string]any{"type": "tool_result", "tool_use_id": id, "content": content, "is_error": isErr}
+	sessions.Clip([]any{res}) // big outputs trimmed for the page and the record alike
 	x.flush()
 	x.rec = append(x.rec, map[string]any{"role": "user", "content": []any{res}})
 	return append(out, live.Line(live.Obj{"type", "user", "message", live.Obj{"role", "user", "content", []any{res}}, "session_id", x.t.Sid}))
@@ -249,9 +250,12 @@ func (x *translator) result(e event) []string {
 		for _, d := range r.Denied {
 			denials = append(denials, live.Obj{"tool_name", d.Name, "tool_input", live.Obj{}})
 		}
-		b, _ := json.Marshal(denials)
-		last := lines[len(lines)-1]
-		lines[len(lines)-1] = strings.TrimSuffix(last, "}") + `,"permission_denials":` + string(b) + "}"
+		var res map[string]any
+		if n := len(lines); n > 0 && json.Unmarshal([]byte(lines[n-1]), &res) == nil {
+			res["permission_denials"] = denials
+			b, _ := json.Marshal(res)
+			lines[n-1] = string(b)
+		}
 	}
 	return lines
 }

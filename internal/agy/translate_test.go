@@ -57,3 +57,15 @@ func TestTranslate(t *testing.T) {
 		}
 	}
 }
+
+func TestToolOutputClipped(t *testing.T) {
+	x := newTranslator("4bd7c6c4-6c0e-428e-85cc-5d3e33a33160", "")
+	x.queued("u1", "read")
+	x.frame([]byte(`{"event":"step_update","step_update":{"step_index":0,"state":"DONE","step_type":"user_input"}}`))
+	big, _ := json.Marshal(strings.Repeat("x", 30000))
+	x.frame([]byte(`{"event":"step_update","step_update":{"step_index":1,"state":"DONE","step_type":"tool","tool_info":{"name":"view_file","output":` + string(big) + `}}}`))
+	x.frame([]byte(`{"event":"result","result":{"status":"SUCCESS"}}`))
+	if b, _ := json.Marshal(x.done()); len(b) > 25000 {
+		t.Errorf("tool output not clipped in the record: %d bytes", len(b))
+	}
+}
