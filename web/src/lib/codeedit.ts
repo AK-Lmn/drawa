@@ -103,6 +103,8 @@ function loadVim() {
     // and screen motions (Ctrl+D, Ctrl+F, H, M, L, zt, zz, Ctrl+E) measure and scroll that box: the editor's own
     // scroller would take the whole file for the screen. Positions stay the editor's, offset by where it sits, and
     // in screen pixels as Vim's own (charCoords, defaultTextHeight) are: the canvas may be zoomed.
+    // ponytail: scaleX/Y and defaultLineHeight update on CodeMirror's next measure, so the first scroll key after a
+    // zoom uses the old zoom (every key measures, so the next is right); read the scale from rects if that shows.
     const proto = m.CodeMirror.prototype, info = proto.getScrollInfo, to = proto.scrollTo, posV = proto.findPosV
     proto.getScrollInfo = function () {
       const v: EditorView = this.cm6, box = scrollBox(v)
@@ -227,18 +229,17 @@ export async function codeEditor(parent: HTMLElement, o: Opts): Promise<Editor> 
   // out (the server only opens files with one kind of line ending, so this gives back exactly what was read)
   const crlf = o.text.includes('\r\n'), text = () => crlf ? view.state.sliceDoc().replace(/\n/g, '\r\n') : view.state.sliceDoc()
   owners.set(view, { o, dirty })
-  parent.dataset.keepFocus = '' // dragging its window keeps the keys here (canvas.ts draggable)
+  parent.dataset.keepFocus = '' // the canvas keeps the keys here when its window is dragged
   view.contentDOM.addEventListener('focus', () => { if (vimAsked) pull() })
-  // Tab outside insert mode is Vim's Ctrl+I (jump forward), not an indent. CodeMirror's way out for the keyboard (Esc,
-  // then Tab within 2s, leaves the editor) stays, but takes an Esc in normal mode: the Esc that leaves insert mode
-  // doesn't count. Modifier keys in between (Shift for Shift+Tab) don't spend it, as in CodeMirror.
-  let escapedAt = 0
+  // Tab outside insert mode is Vim's Ctrl+I (jump forward), not an indent. CodeMirror's own way out for the keyboard
+  // (Esc, then Tab within 2s, leaves the editor) still works: it's armed only by an Esc nothing else took, so not by
+  // the one that leaves insert mode. ponytail: reads CodeMirror's private inputState.tabFocusMode (no getter); if a
+  // CodeMirror update renames it, Tab always goes to Vim and Esc then Tab stops leaving.
   parent.addEventListener('keydown', e => {
-    const cm = vimAsked ? getCM(view) : null, vim = cm?.state.vim as { insertMode?: boolean; visualMode?: boolean } | undefined
-    if (!cm || !vim || e.target !== view.contentDOM || /^(Shift|Control|Alt|Meta)$/.test(e.key)) return
-    const escaped = Date.now() - escapedAt < 2000
-    escapedAt = e.key === 'Escape' && !vim.insertMode && !vim.visualMode ? Date.now() : 0
-    if (e.key !== 'Tab' || e.ctrlKey || e.altKey || e.metaKey || vim.insertMode || escaped) return
+    const cm = vimAsked ? getCM(view) : null, vim = cm?.state.vim as { insertMode?: boolean } | undefined
+    if (!cm || !vim || vim.insertMode || e.key !== 'Tab' || e.ctrlKey || e.altKey || e.metaKey || e.target !== view.contentDOM) return
+    const mode = (view as unknown as { inputState?: { tabFocusMode?: number } }).inputState?.tabFocusMode ?? -1
+    if (mode === 0 || Date.now() <= mode) return // leaving: CodeMirror lets the browser move focus
     e.preventDefault()
     e.stopPropagation()
     if (!e.shiftKey) void vimMod?.then(m => m.Vim.handleKey(cm, '<C-i>', 'user'))

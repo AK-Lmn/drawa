@@ -11,7 +11,7 @@ export interface Prefs {
   lightScheme: string
   darkScheme: string
   symbols: 'auto' | 'off' // lib/symbols.ts: code symbols from universal-ctags when it's installed, or never
-  vim: 'off' | 'on' // items/fileedit.ts: Vim motions in the file editor and scratchpads
+  vim: 'off' | 'on' // items/fileedit.ts, items/doc.ts: Vim motions in the file editor and scratchpads
 }
 const DEFAULTS: Prefs = { ui: 'full', theme: 'system', lightScheme: 'claude-light', darkScheme: 'claude-dark', symbols: 'auto', vim: 'off' }
 const KEY = 'drawa:prefs'

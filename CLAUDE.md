@@ -52,6 +52,7 @@ The app scales through these registration points. A new feature should plug into
 | React to drawings just drawn, written or dragged (a group taking in what lands in its frame) | `onInkPlaced(fn)` | `canvas/ink.ts` |
 | Windows made beside an item land somewhere else (inside the item's group) | `spawnIn(fn)` (`fn(from, w, h)` returns the spot or null; `spotBeside()` asks it) | `canvas/canvas.ts` |
 | An item whose empty space is canvas (a group's frame): pans in Hand mode, with the middle button or when locked; Shift+drag draws a selection box; a selection box picks it only when it holds all of it | class `frame` on the item | `canvas/nav.ts`, `canvas/select.ts` |
+| Pressing a window's tab to drag it leaves focus where it is (typing carries on after the drag; a message box isn't one) | attribute `data-keep-focus` on the box holding the focus (`codeEditor()` sets it) | `canvas/canvas.ts` (`draggable`) |
 
 **Adding a new kind of canvas item** should mean one new file in `items/`, an import in `main.ts`, and CSS in `styles/items.css`. The item file should:
 - Build the element with `makeWindow()`, which handles the folder tab, dragging, collapsing and resizing.
