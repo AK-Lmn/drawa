@@ -23,9 +23,13 @@ export const anyFull = () => !!open
 // the window in full view was closed (its ×): take the dimmed layer down with it
 onChange(() => { if (open && !open.el.isConnected) exitFull() })
 
+/** What has focus inside `el`: moving a window to or from full view takes focus away, so it's handed back after. */
+const focusIn = (el: HTMLElement) => el.contains(document.activeElement) && document.activeElement !== el ? document.activeElement as HTMLElement : null
+
 export function toggleFull(el: HTMLElement) {
   if (open?.el === el) return exitFull()
   exitFull() // one at a time
+  const had = focusIn(el) // typing in it (a file being edited, a note): keep typing in full view
   const spot = document.createComment('full view') // holds its place (canvas or sidebar) while it's lifted out
   const min = el.classList.contains('min')
   el.replaceWith(spot)
@@ -37,7 +41,8 @@ export function toggleFull(el: HTMLElement) {
   document.body.classList.add('has-full') // the minimap and hint step aside (panels.css)
   open = { el, spot, min }
   sync(el)
-  focusInput(el)
+  if (had) had.focus({ preventScroll: true })
+  else focusInput(el)
   redraw()
 }
 
@@ -50,12 +55,13 @@ export function exitFull(keys = false) {
   document.body.classList.remove('has-full')
   if (!el.isConnected) { spot.remove(); return } // closed while in full view: it stays closed
   el.classList.remove('full')
+  const had = focusIn(el)
   spot.replaceWith(el)
   if (min) collapse(el)
   sync(el)
   redraw()
   changed()
-  if (!keys) return
+  if (!keys) return had?.focus({ preventScroll: true }) // left with the mouse while typing: carry on typing
   // .refocus shows the tab and ⤢ just long enough to take focus (window.css), then :focus-within keeps them shown
   el.classList.add('refocus')
   el.querySelector<HTMLElement>(':scope > .win-h .fullbtn')?.focus()
