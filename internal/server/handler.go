@@ -455,6 +455,19 @@ func doPOST(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, map[string]any{"prefs": p}, 200)
 		}
 		return
+	case "/api/file":
+		err := filesx.Save(str(body["path"]), str(body["base"]), str(body["text"]))
+		switch {
+		case err == nil:
+			sendJSON(w, map[string]any{"ok": true}, 200)
+		case errors.Is(err, filesx.ErrChanged):
+			sendJSON(w, map[string]any{"error": err.Error()}, 409)
+		case errors.Is(err, config.ErrOutside):
+			sendJSON(w, map[string]any{"error": err.Error()}, 403)
+		default:
+			sendJSON(w, map[string]any{"error": err.Error()}, 500)
+		}
+		return
 	case "/api/git":
 		out, err := gitx.GitOp(body)
 		if err != nil {

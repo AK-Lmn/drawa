@@ -14,6 +14,7 @@ import { toggleFull, isFull } from '../canvas/fullview'
 import { openZoom } from '../lib/zoom'
 import { fileOpener } from '../canvas/find'
 import { sourceView, mdView, isMarkdown } from '../panels/files'
+import { toggleEdit, editing } from './fileedit'
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif|bmp|ico)$/i // what /api/raw serves
 interface Saved { path: string; title: string; rect: Rect }
@@ -66,11 +67,13 @@ function picture(el: HTMLElement, host: HTMLElement, again: boolean) {
 const toLine = new WeakMap<HTMLElement, (line: number) => void>()
 
 export function preview(o: { path: string; title?: string; rect: Rect; line?: number }) {
+  const key = 'pv:' + o.path, image = IMAGE.test(o.path)
+  const pencil = iconButton(ICON.pencil, 'Edit the file', () => toggleEdit(el, host, o.path, pencil, () => load()))
   const { el, body } = makeWindow({
     kind: 'preview', cls: 'pvnode', title: o.title || o.path.split('/').pop()!, rect: o.rect, minW: 200, minH: 120,
-    actions: [iconButton(ICON.reload, 'Read the file again', () => load(true)), removeButton('Remove from canvas')],
+    actions: [...(image ? [] : [pencil]), iconButton(ICON.reload, 'Read the file again', () => load(true)), removeButton('Remove from canvas')],
   })
-  const key = 'pv:' + o.path, image = IMAGE.test(o.path)
+
   el.dataset.id = 'preview:' + o.path // the same after a reload: arrows and canvas tools find it by this
   el.dataset.path = o.path
   // the ink host is made once, here: strokes stay on it through the reload button, and restoring ink (phase 2)
@@ -82,6 +85,7 @@ export function preview(o: { path: string; title?: string; rect: Rect; line?: nu
   body.append(host)
   let loads = 0, at = o.line // only the newest read is shown, when the reload button is pressed while one is still coming
   const load = async (again = false) => {
+    if (editing(el)) return // the editor holds the file until you stop editing
     const n = ++loads, view = image ? picture(el, host, again) : await textView(o.path, undefined, at)
     if (n !== loads) return
     fill(host, view)

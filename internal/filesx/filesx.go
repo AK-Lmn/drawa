@@ -270,6 +270,9 @@ func Open(rel string) (*os.File, os.FileInfo, error) {
 	return f, info, nil
 }
 
+// maxRead caps what Get shows and what Save will replace: a cut-off copy must never be saved over the whole file.
+const maxRead = 1_000_000
+
 // Get reads a file for the viewer.
 func Get(rel string) (map[string]any, error) {
 	f, _, err := Open(rel)
@@ -277,7 +280,7 @@ func Get(rel string) (map[string]any, error) {
 		return nil, err
 	}
 	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, 1_000_000)) // ponytail: 1MB cap, viewer not an editor
+	data, err := io.ReadAll(io.LimitReader(f, maxRead)) // ponytail: 1MB cap; Save refuses files past it
 	if err != nil {
 		return nil, err
 	}

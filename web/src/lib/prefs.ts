@@ -11,8 +11,9 @@ export interface Prefs {
   lightScheme: string
   darkScheme: string
   symbols: 'auto' | 'off' // lib/symbols.ts: code symbols from universal-ctags when it's installed, or never
+  vim: 'off' | 'on' // items/fileedit.ts: Vim motions in a file window's editor
 }
-const DEFAULTS: Prefs = { ui: 'full', theme: 'system', lightScheme: 'claude-light', darkScheme: 'claude-dark', symbols: 'auto' }
+const DEFAULTS: Prefs = { ui: 'full', theme: 'system', lightScheme: 'claude-light', darkScheme: 'claude-dark', symbols: 'auto', vim: 'off' }
 const KEY = 'drawa:prefs'
 const read = (key: string) => { try { return JSON.parse(localStorage.getItem(key) ?? 'null') } catch { return null } }
 
