@@ -58,6 +58,7 @@ export function openInspector(path: string, tab?: 'changes' | 'viewer', focus?: 
   inspecting = path
   inspector.hidden = false
   $('#ipath').replaceChildren(pathEl('', path))
+  $('#iedit').onclick = () => openFileAt(path, line, true) // in its window on the canvas: one editor, with its saving and Vim motions
   $('#nchg').textContent = changes.length ? String(changes.length) : ''
   $('#changes').replaceChildren(...(changes.length ? changes : [make('p', 'none', 'No open session has changed this file.')]))
   changes.forEach(c => inFile(c)) // numbered, in the file: once each, when first shown (not for every replayed edit)
@@ -169,12 +170,6 @@ export async function view(p: string, at?: number) {
     src = make('p', 'none', (e as Error).message)
   }
   if (inspecting !== p) return // user moved on while loading
-  if (text != null) { // in the file's window on the canvas: one editor, with its saving and Vim motions
-    const edit = make('button', 'btn', 'Edit')
-    edit.title = 'Edit this file in its window on the canvas'
-    edit.onclick = () => openFileAt(p, at, true)
-    head.append(edit)
-  }
 
   if (text != null && isMarkdown(p) && !at) { // at a line: the source, where lines are
     const preview = mdView(p, text), toggle = make('button', 'btn')
