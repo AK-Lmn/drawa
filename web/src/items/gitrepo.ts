@@ -98,6 +98,7 @@ export function fill(v: RepoView, st: GitState, host: Host) {
   const gb = make('span', 'gb', st.repo ? many ? sync : `${st.branch}${sync ? ' ' + sync : ''}` : 'unreadable')
   gb.title = gb.textContent ?? '' // the whole branch when the line is too narrow for it
   const tail = make('span', 'gtail') // the second line, under the name: the branch, or the picker standing in for it
+  if (v.wt) tail.dataset.wt = '' // showing a worktree, not the repo's own checkout: commits land there, so it stands out
   tail.append(...(many ? [picker(v, host)] : []), gb)
   v.line.replaceChildren(v.head, ...(st.total ? [make('span', 'n', String(st.total))] : []), tail)
   if (had?.isConnected && had !== document.activeElement) had.focus() // moving the fold button or picker drops its focus

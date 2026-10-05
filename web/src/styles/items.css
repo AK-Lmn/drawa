@@ -97,6 +97,7 @@
 /* the picker reads as the branch it stands in for; its edge shows when you reach for it */
 .gpick .xsel{min-width:0;height:22px;margin-left:-6px;padding:0 3px 0 6px;gap:3px;border-color:transparent;background:none;font:11.5px var(--mono);font-weight:400;color:var(--muted)}
 .gpick .xsel:hover,.gpick .xsel:focus-visible,.gpick .xsel[aria-expanded=true]{border-color:var(--field-edge);color:var(--ink)}
+.gtail[data-wt] .xsel,.gtail[data-wt] .xsel svg{color:var(--accent-text)}
 .gpick .xsel svg{width:12px;height:12px;flex:none}
 .gpick .xsel-label{max-width:none;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .xsel-rich .xsel-item{grid-template-columns:16px minmax(0,1fr) auto;column-gap:8px;padding:4px 6px 4px 8px}
