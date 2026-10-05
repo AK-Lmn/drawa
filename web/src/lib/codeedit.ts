@@ -2,7 +2,7 @@
 // here is in the page until someone edits a file. Colors come from the theme's --syn-* tokens (styles/items.css
 // styles the rest), so it follows light, dark and every scheme without redrawing.
 import { EditorView, basicSetup } from 'codemirror'
-import { Compartment, Prec, StateEffect, StateField, type Extension, type Text } from '@codemirror/state'
+import { Compartment, EditorState, Prec, StateEffect, StateField, type Extension, type Text } from '@codemirror/state'
 import { Decoration, keymap, placeholder, type DecorationSet } from '@codemirror/view'
 import { indentWithTab } from '@codemirror/commands'
 import { HighlightStyle, LanguageDescription, syntaxHighlighting } from '@codemirror/language'
@@ -17,10 +17,11 @@ export interface Editor {
 }
 /** `save()` answers whether the text reached the disk; `quit(force)` stops editing (force: drop unsaved changes).
  *  `path`: picks the language. `change(text)`: kept as you type (a scratchpad), so nothing is ever unsaved. `leave`:
- *  Esc (without Vim) and Ctrl/Cmd+Enter stop editing. `label`, `hint`: its accessible name and empty placeholder. */
+ *  Esc (without Vim) and Ctrl/Cmd+Enter stop editing. `label`, `hint`: its accessible name and empty placeholder.
+ *  `max`: characters it holds at most (an edit past it doesn't happen, rather than being cut off later). */
 interface Opts {
   path: string; text: string; vim: boolean; save(): Promise<boolean>; quit(force?: boolean): void
-  change?(text: string): void; leave?: boolean; label?: string; hint?: string
+  change?(text: string): void; leave?: boolean; label?: string; hint?: string; max?: number
 }
 
 // the same token groups as highlight.js's colors in styles/markdown.css
@@ -131,6 +132,7 @@ export async function codeEditor(parent: HTMLElement, o: Opts): Promise<Editor> 
       yanked,
       EditorView.contentAttributes.of({ 'aria-label': o.label ?? `Editing ${o.path}` }),
       o.hint ? placeholder(o.hint) : [],
+      o.max ? EditorState.changeFilter.of(tr => tr.newDoc.length <= o.max! || tr.newDoc.length <= tr.startState.doc.length) : [],
       // kept as you type: what's kept is never unsaved, so :q never refuses
       o.change ? EditorView.updateListener.of(u => { if (u.docChanged) { saved = u.state.doc; o.change!(text()) } }) : [],
     ],

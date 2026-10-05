@@ -85,7 +85,7 @@ export function doc(o: { id?: string; title?: string; text?: string; rect?: Rect
     try {
       const { codeEditor } = await import('../lib/codeedit')
       const made = await codeEditor(box, {
-        path: 'scratchpad.md', text: el.dataset.src ?? '', vim: prefs().vim === 'on', leave: true,
+        path: 'scratchpad.md', text: el.dataset.src ?? '', vim: prefs().vim === 'on', leave: true, max: MAX,
         label: 'Markdown source', hint: '# Markdown\n\nLists, code blocks, ```mermaid diagrams, > [!NOTE] callouts…',
         save: async () => { setSrc(el, made.text()); return true },
         quit: () => void toggle(false),
