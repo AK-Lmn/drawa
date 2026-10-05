@@ -7,7 +7,7 @@ import { enhance } from './select'
 
 export interface Agent { name: string; title: string; blurb?: string; installed: boolean; install: string; modes: string[]; canWrite: boolean; canUnsend?: boolean; resume?: string; noEffort?: string; textOnly?: boolean }
 export interface Model { value: string; displayName: string; description: string; efforts?: string[] } // efforts: levels it accepts (other agents; Claude's are EFFORTS)
-export interface Meta { models: Model[]; commands: { name: string; description: string; argumentHint?: string }[] }
+export interface Meta { models: Model[]; commands: { name: string; description: string; argumentHint?: string }[]; usageUtil?: number; usageResetAt?: number; weeklyUtil?: number; weeklyResetAt?: number }
 
 export let agents: Agent[] = []
 export const agentsReady: Promise<void> = api<Agent[]>('agents').then(a => { agents = a }, () => {})
@@ -53,7 +53,7 @@ const metas: Record<string, Meta> = {}, asked: Record<string, Promise<Meta>> = {
 /** An agent's models and commands, asked once (slow the first time: the server asks a fresh process). */
 export function meta(name: string): Promise<Meta> {
   return asked[name] ??= api<Meta>('meta?backend=' + encodeURIComponent(name)).then(
-    m => (metas[name] = { models: m.models ?? [], commands: m.commands ?? [] }),
+    m => (metas[name] = { ...m, models: m.models ?? [], commands: m.commands ?? [] }),
     () => { delete asked[name]; return { models: [], commands: [] } })
 }
 /** What's loaded of it so far. */
