@@ -173,8 +173,11 @@ export const setMoveAlong = (f: typeof moveAlong) => { moveAlong = f }
 /** Drag `el` by `handle` (with the rest of the selection, if it's selected). A press that doesn't move counts as a click.
  *  `when`: only presses it accepts drag (a group's empty space: not while Shift draws a selection box). */
 export function draggable(el: HTMLElement, handle: HTMLElement, onMove: () => void, onClick?: () => void, when?: (e: PointerEvent) => boolean) {
+  const own = (e: Event) => (e.target as Element).closest(`button, a, .log, .compose, ${EDITABLE}`)
+  // pressing the handle leaves focus where it was: typing in the window (a file being edited) carries on after a drag
+  handle.addEventListener('mousedown', e => { if (e.button === 0 && !own(e) && el.contains(document.activeElement)) e.preventDefault() })
   handle.addEventListener('pointerdown', e => {
-    if (e.button !== 0 || !onCanvas(el) || (e.target as Element).closest(`button, a, .log, .compose, ${EDITABLE}`) || (when && !when(e))) return
+    if (e.button !== 0 || !onCanvas(el) || own(e) || (when && !when(e))) return
     e.stopPropagation()
     front(el)
     const sx = e.clientX, sy = e.clientY, o = rect(el)

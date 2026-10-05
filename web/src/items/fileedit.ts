@@ -23,6 +23,8 @@ export const editing = (el: HTMLElement) => edits.has(el) || opening.has(el)
 export const draft = (el: HTMLElement) => edits.get(el)?.editor.text()
 /** Put the editor's cursor on `line` (Ctrl+K opening a code symbol in a window being edited). */
 export const editAt = (el: HTMLElement, line: number) => edits.get(el)?.editor.goto(line)
+/** Put the keys in the window's editor (Edit again on a file already being edited). */
+export const editFocus = (el: HTMLElement) => edits.get(el)?.editor.focus()
 const read = (path: string) => api<File>('file?path=' + q(path))
 
 /** Edit `path` in `host` (the window `el`'s content box), or stop editing if it already is. `done` shows the file

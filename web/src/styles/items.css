@@ -283,6 +283,8 @@ body:not(.drawing) #stage:not(.hand) .inode-b .ink-shape .ink-line{pointer-event
 /* a file window's editor (items/fileedit.ts): CodeMirror in the theme's colors. It grows with its text and the
    window's box scrolls, as it does for the file view, so pen strokes on the box stay on their lines. */
 .pvnode-ed{min-height:100%;display:flex}
+/* as wide as its longest line, so the box scrolls sideways to the cursor: CodeMirror would scroll this wrapper instead */
+.pvnode-s>.pvnode-ed{min-width:100%;width:max-content}
 /* the file view's metrics (.src in panels.css: 12px text on 19px lines, 10px above), so strokes drawn on one land
    on the same lines in the other */
 .pvnode-ed .cm-editor{flex:1;min-height:100%;background:var(--bg);color:var(--ink);font-size:12px}
@@ -307,6 +309,7 @@ body:not(.drawing) #stage:not(.hand) .inode-b .ink-shape .ink-line{pointer-event
 .pvnode-ed .cm-foldPlaceholder{background:var(--code);color:var(--muted);border:1px solid var(--line-2);border-radius:var(--r-tag)}
 .pvnode-ed .cm-foldGutter .cm-gutterElement{color:var(--muted)}
 .pvnode-ed .cm-panels{background:var(--code);color:var(--ink);border-color:var(--line)}
+.pvnode-ed .cm-vim-panel{padding:3px 10px}
 .pvnode-ed .cm-panels input,.pvnode-ed .cm-textfield{font-family:var(--mono);background:var(--bg);color:var(--ink);border:1px solid var(--field-edge);border-radius:var(--r-ctl)}
 .pvnode-ed .cm-textfield:focus{outline:2px solid var(--focus);outline-offset:-1px}
 .pvnode-ed .cm-button{background:var(--bg);background-image:none;color:var(--ink);border:1px solid var(--line-2);border-radius:var(--r-ctl)}

@@ -5,7 +5,7 @@ import { EditorView, basicSetup } from 'codemirror'
 import { Compartment, EditorState, Prec, StateEffect, StateField, type Extension, type Text } from '@codemirror/state'
 import { Decoration, keymap, placeholder, type DecorationSet } from '@codemirror/view'
 import { indentWithTab } from '@codemirror/commands'
-import { HighlightStyle, LanguageDescription, syntaxHighlighting, syntaxTree } from '@codemirror/language'
+import { HighlightStyle, LanguageDescription, indentUnit, syntaxHighlighting, syntaxTree } from '@codemirror/language'
 import { languages } from '@codemirror/language-data'
 import { tags as t } from '@lezer/highlight'
 
@@ -59,19 +59,22 @@ function loadVim() {
     // quit after Vim has finished with the command: destroying the editor inside it breaks Vim's own cleanup
     const quit = (o: Opts | undefined, force: boolean) => setTimeout(() => o?.quit(force))
     const refuse = (cm: VimCM) => cm.openNotification(Object.assign(document.createElement('span'),
-      { textContent: 'E37: No write since last change (add ! to override)' }), { bottom: true, duration: 5000 })
+      { className: 'cm-vim-message', textContent: 'E37: No write since last change (add ! to override)' }), { bottom: true, duration: 5000 })
     m.Vim.defineEx('write', 'w', cm => void of(cm)?.o.save())
     m.Vim.defineEx('quit', 'q', (cm, p) => {
       const ed = of(cm), force = p.argString?.trim() === '!'
       if (ed?.dirty() && !force) refuse(cm as unknown as VimCM)
       else quit(ed?.o, true) // nothing to lose, or told to drop it: no Discard dialog
     })
-    m.Vim.defineEx('wq', 'wq', async cm => { const ed = of(cm); if (await ed?.o.save()) quit(ed?.o, true) }) // a failed save stays open
+    const saveQuit = async (cm: { cm6: EditorView }) => { const ed = of(cm); if (await ed?.o.save()) quit(ed?.o, true) } // a failed save stays open
+    m.Vim.defineEx('wq', 'wq', saveQuit)
+    m.Vim.defineEx('xit', 'x', saveQuit) // save() writes only what changed, so :x and :update are :wq and :w here
+    m.Vim.defineEx('update', 'up', cm => void of(cm)?.o.save())
     // gd / gD, which the package doesn't have: the first use of the name under the cursor in the current function
     // (gd: usually where it's declared) or in the file (gD), skipping comments. A motion, so dgd and the like work too.
     m.Vim.defineMotion('declaration', (cm, head, args) => declaration(cm.cm6, cm.indexFromPos(head), !!(args as { local?: boolean }).local) ?? head)
-    m.Vim.mapCommand('gd', 'motion', 'declaration', { local: true }, {})
-    m.Vim.mapCommand('gD', 'motion', 'declaration', { local: false }, {})
+    m.Vim.mapCommand('gd', 'motion', 'declaration', { local: true, toJumplist: true }, {}) // Ctrl+O comes back
+    m.Vim.mapCommand('gD', 'motion', 'declaration', { local: false, toJumplist: true }, {})
     // the system clipboard is Vim's unnamed register, as with clipboard=unnamedplus: a yank or delete is copied out,
     // and what was copied elsewhere is what p pastes (read when the editor or the page gets focus again). `seen` is
     // the clipboard as last known: only a change to it since (a copy in another app) replaces the register, so a
@@ -96,10 +99,48 @@ function loadVim() {
       if (msg) msg.style.color = y ? 'var(--muted)' : 'var(--danger)'
       return open.call(this, n, o)
     }
+    // a file window's editor grows with its text and the box around it scrolls (styles/items.css), so Vim's page
+    // and screen motions (Ctrl+D, Ctrl+F, H, M, L, zt, zz, Ctrl+E) measure and scroll that box: the editor's own
+    // scroller would take the whole file for the screen. Positions stay the editor's, offset by where it sits.
+    const proto = m.CodeMirror.prototype, info = proto.getScrollInfo, to = proto.scrollTo, posV = proto.findPosV
+    proto.getScrollInfo = function () {
+      const v: EditorView = this.cm6, box = scrollBox(v)
+      if (box === v.scrollDOM) return info.call(this)
+      const at = offset(v, box)
+      return { left: box.scrollLeft - at.x, top: box.scrollTop - at.y, height: v.scrollDOM.scrollHeight, width: v.scrollDOM.scrollWidth, clientHeight: box.clientHeight, clientWidth: box.clientWidth }
+    }
+    proto.scrollTo = function (x?: number | null, y?: number | null) {
+      const v: EditorView = this.cm6, box = scrollBox(v)
+      if (box === v.scrollDOM) return to.call(this, x, y)
+      const at = offset(v, box)
+      if (x != null) box.scrollLeft = x + at.x
+      if (y != null) box.scrollTop = y + at.y
+    }
+    // Ctrl+F and Ctrl+B: a page is what the box shows, in lines (a file window's lines don't wrap)
+    proto.findPosV = function (start, amount, unit, goal) {
+      const v: EditorView = this.cm6, box = scrollBox(v)
+      if (unit !== 'page' || box === v.scrollDOM) return posV.call(this, start, amount, unit, goal)
+      return posV.call(this, start, amount * Math.max(1, Math.floor(box.clientHeight / v.defaultLineHeight)), 'line', goal)
+    }
     return m
   })
 }
 let seen: string | undefined, pull = (): unknown => undefined
+const boxes = new WeakMap<EditorView, HTMLElement>()
+/** What scrolls `v`: its own scroller, or the nearest box around it that does (overflow is set once, so it's kept). */
+function scrollBox(v: EditorView) {
+  let box = boxes.get(v)
+  if (!box) {
+    for (let e: HTMLElement | null = v.scrollDOM; e && !box; e = e.parentElement) if (/auto|scroll/.test(getComputedStyle(e).overflowY)) box = e
+    boxes.set(v, box ??= v.scrollDOM)
+  }
+  return box
+}
+/** Where `v`'s scroller sits in `box`'s scrolled content, in unzoomed pixels (the canvas may be zoomed). */
+function offset(v: EditorView, box: HTMLElement) {
+  const a = v.scrollDOM.getBoundingClientRect(), b = box.getBoundingClientRect()
+  return { x: (a.left - b.left) / v.scaleX + box.scrollLeft, y: (a.top - b.top) / v.scaleY + box.scrollTop }
+}
 /** Flash what a yank took: while Vim's yank runs, the editor's selections are exactly the yanked ranges. */
 function markYank(m: typeof import('@replit/codemirror-vim')) {
   const view = activeView(), cm = view && m.getCM(view)
@@ -115,12 +156,19 @@ function markYank(m: typeof import('@replit/codemirror-vim')) {
     setTimeout(() => { if (owners.has(view)) view.dispatch({ effects: flash.of([]) }) }, 250)
   })
 }
+/** Indent with tabs: the file mostly does already, or (new or unindented) it's Go or a Makefile, where tabs are the rule. */
+function tabbed(path: string, text: string) {
+  const tabs = text.match(/^\t/gm)?.length ?? 0, spaces = text.match(/^ {2}/gm)?.length ?? 0
+  return tabs || spaces ? tabs > spaces : /(^|\/)(GNUm|m|M)akefile$|\.(go|mk)$/.test(path)
+}
 const FUNCTION = /Func|Method|Lambda|Arrow|Closure/, COMMENT = /Comment/
 /** Where Vim's gd (`local`: from the start of the outermost function around `at`) or gD (from the top of the file)
  *  lands for the name at `at`, as a position the Vim package understands; null when there's no name there.
  *  ponytail: Vim also makes the name the search pattern, so n goes to its next use; add when someone misses it. */
 function declaration(view: EditorView, at: number, local: boolean) {
-  const { state } = view, word = state.wordAt(at), cm = getCM(view)
+  const { state } = view, cm = getCM(view)
+  // the name under the cursor or, as in Vim, the next one on the line (wordAt also takes a name ending at the cursor)
+  const rest = state.sliceDoc(at, state.doc.lineAt(at).to).search(/[\p{L}\p{N}_$]/u), word = rest < 0 ? null : state.wordAt(at + rest)
   if (!word || !cm) return null
   const tree = syntaxTree(state)
   let from = 0
@@ -151,12 +199,19 @@ export async function codeEditor(parent: HTMLElement, o: Opts): Promise<Editor> 
         ...(o.leave ? [{ key: 'Mod-Enter', run: () => { o.quit(); return true } }] : []),
         indentWithTab,
       ])),
+      tabbed(o.path, o.text) ? indentUnit.of('\t') : [], // before the language's own: the first one counts
       lang ? await lang.load() : [],
       syntaxHighlighting(colors),
       yanked,
       EditorView.contentAttributes.of({ 'aria-label': o.label ?? `Editing ${o.path}` }),
       o.hint ? placeholder(o.hint) : [],
-      o.max ? EditorState.changeFilter.of(tr => tr.newDoc.length <= o.max! || tr.newDoc.length <= tr.startState.doc.length) : [],
+      o.max ? EditorState.changeFilter.of(tr => {
+        if (tr.newDoc.length <= o.max! || tr.newDoc.length <= tr.startState.doc.length) return true
+        // refused: what made the change (Vim's p) still moves the cursor as if it had happened, so put it back after
+        const at = tr.startState.selection
+        setTimeout(() => { if (!gone && at.main.to <= view.state.doc.length) view.dispatch({ selection: at }) })
+        return false
+      }) : [],
       // kept as you type: what's kept is never unsaved, so :q never refuses
       o.change ? EditorView.updateListener.of(u => { if (u.docChanged) { saved = u.state.doc; o.change!(text()) } }) : [],
     ],
@@ -169,6 +224,19 @@ export async function codeEditor(parent: HTMLElement, o: Opts): Promise<Editor> 
   const crlf = o.text.includes('\r\n'), text = () => crlf ? view.state.sliceDoc().replace(/\n/g, '\r\n') : view.state.sliceDoc()
   owners.set(view, { o, dirty })
   view.contentDOM.addEventListener('focus', () => { if (vimAsked) pull() })
+  // Tab outside insert mode is Vim's Ctrl+I (jump forward), not an indent. CodeMirror's way out for the keyboard (Esc,
+  // then Tab, leaves the editor) stays, but takes an Esc in normal mode: the Esc that leaves insert mode doesn't count.
+  let escaped = false
+  parent.addEventListener('keydown', e => {
+    const cm = vimAsked ? getCM(view) : null, vim = cm?.state.vim as { insertMode?: boolean; visualMode?: boolean } | undefined
+    if (!cm || !vim || e.target !== view.contentDOM) return
+    const wasEscaped = escaped
+    escaped = e.key === 'Escape' && !vim.insertMode && !vim.visualMode
+    if (e.key !== 'Tab' || e.ctrlKey || e.altKey || e.metaKey || vim.insertMode || wasEscaped) return
+    e.preventDefault()
+    e.stopPropagation()
+    if (!e.shiftKey) void vimMod?.then(m => m.Vim.handleKey(cm, '<C-i>', 'user'))
+  }, true)
   return {
     take() { const doc = view.state.doc; return { text: text(), done: () => { saved = doc } } },
     dirty,

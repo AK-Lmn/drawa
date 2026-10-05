@@ -14,7 +14,7 @@ import { toggleFull, isFull } from '../canvas/fullview'
 import { openZoom } from '../lib/zoom'
 import { fileOpener } from '../canvas/find'
 import { sourceView, mdView, isMarkdown } from '../panels/files'
-import { toggleEdit, editing, draft, editAt } from './fileedit'
+import { toggleEdit, editing, draft, editAt, editFocus } from './fileedit'
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif|bmp|ico)$/i // what /api/raw serves
 interface Saved { path: string; title: string; rect: Rect }
@@ -108,7 +108,7 @@ export function preview(o: { path: string; title?: string; rect: Rect; line?: nu
   }
   load()
   toLine.set(el, line => { at = line; if (editing(el)) editAt(el, line); else load() }) // read again: the line is where it is in the file now
-  toEdit.set(el, async () => { if (!editing(el)) await edit() })
+  toEdit.set(el, async () => { if (editing(el)) editFocus(el); else await edit() })
   return el
 }
 
