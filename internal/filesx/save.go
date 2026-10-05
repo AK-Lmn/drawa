@@ -16,6 +16,9 @@ import (
 // was read), so saving would throw away what's there.
 var ErrChanged = errors.New("the file changed on disk since it was opened")
 
+// ErrTooBig: the text is over the 1 MB the editor may open, so it couldn't be edited again once saved.
+var ErrTooBig = errors.New("the text is over 1 MB, more than the editor can open again")
+
 // ErrReadOnly: the file isn't writable; replacing it by rename would get around that.
 var ErrReadOnly = errors.New("the file is read-only")
 
@@ -45,6 +48,9 @@ func writable(p string) bool { return syscall.Access(p, 2) == nil } // 2: W_OK
 // a new file, it writes the file in place instead. ponytail: the rename drops ACLs and extended attributes, and a
 // hard link keeps the old copy; write in place always if those ever matter more than a safe write.
 func Save(rel, base, text string) error {
+	if len(text) > maxRead {
+		return ErrTooBig
+	}
 	f, info, err := Open(rel)
 	if err != nil {
 		return err

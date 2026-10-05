@@ -30,6 +30,7 @@ func TestFileSaveRoute(t *testing.T) {
 		{`{"path":"a.txt","base":"one\n","text":"three\n"}`, 409}, // the copy it started from is gone
 		{`{"path":"../a.txt","base":"","text":"x"}`, 403},
 		{`{"path":"missing.txt","base":"","text":"x"}`, 404},
+		{`{"path":"a.txt","base":"two\n","text":"` + strings.Repeat("x", 1_000_001) + `"}`, 413},
 	}
 	if os.Getuid() != 0 {
 		cases = append(cases, struct {

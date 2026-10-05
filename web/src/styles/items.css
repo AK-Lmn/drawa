@@ -281,9 +281,15 @@ body:not(.drawing) #stage:not(.hand) .inode-b .ink-shape .ink-line{pointer-event
 /* a file window's editor (items/fileedit.ts): CodeMirror in the theme's colors. It grows with its text and the
    window's box scrolls, as it does for the file view, so pen strokes on the box stay on their lines. */
 .pvnode-ed{min-height:100%;display:flex}
-.pvnode-ed .cm-editor{flex:1;min-height:100%;background:var(--bg);color:var(--ink);font-size:12.5px}
+/* the file view's metrics (.src in panels.css: 12px text on 19px lines, 10px above), so strokes drawn on one land
+   on the same lines in the other */
+.pvnode-ed .cm-editor{flex:1;min-height:100%;background:var(--bg);color:var(--ink);font-size:12px}
 .pvnode-ed .cm-editor.cm-focused{outline:none}
-.pvnode-ed .cm-scroller{font-family:var(--mono);line-height:1.55;overflow:visible}
+.pvnode-ed .cm-scroller{font-family:var(--mono);line-height:19px;overflow:visible}
+.pvnode-ed .cm-content{padding:10px 0;tab-size:8 !important}
+.pvnode-ed .cm-line{padding:0 14px}
+.pvnode-ed .cm-lineNumbers .cm-gutterElement{padding:0 3px 0 14px} /* + the fold gutter: the view's 12px */
+.pvnode[data-state=editing] .pv-reload{display:none}
 .pvnode-ed .cm-content{caret-color:var(--ink)}
 .pvnode-ed .cm-cursor{border-left-color:var(--ink)}
 .pvnode-ed .cm-gutters{background:var(--bg);color:var(--muted);border-right:1px solid var(--line)}

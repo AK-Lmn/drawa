@@ -2,7 +2,7 @@
 // here is in the page until someone edits a file. Colors come from the theme's --syn-* tokens (styles/items.css
 // styles the rest), so it follows light, dark and every scheme without redrawing.
 import { EditorView, basicSetup } from 'codemirror'
-import { Compartment, EditorState, type Extension, type Text } from '@codemirror/state'
+import { Compartment, type Extension, type Text } from '@codemirror/state'
 import { keymap } from '@codemirror/view'
 import { indentWithTab } from '@codemirror/commands'
 import { HighlightStyle, LanguageDescription, syntaxHighlighting } from '@codemirror/language'
@@ -12,7 +12,7 @@ import { tags as t } from '@lezer/highlight'
 /** `take()`: the text to save, and `done()` to call once it's saved; `dirty()`: changed since the last save;
  *  `text()`: what the editor holds now. */
 export interface Editor {
-  take(): { text: string; done(): void }; dirty(): boolean; text(): string
+  take(): { text: string; done(): void }; dirty(): boolean; text(): string; goto(line: number): void
   setVim(on: boolean): Promise<void>; focus(): void; destroy(): void
 }
 /** `save()` answers whether the text reached the disk; `quit(force)` stops editing (force: drop unsaved changes). */
@@ -60,9 +60,6 @@ export async function codeEditor(parent: HTMLElement, o: Opts): Promise<Editor> 
     doc: o.text,
     extensions: [
       vimSlot.of(await vimExt(o.vim)), // before the other keymaps, so Vim sees keys first
-      // a CRLF file stays CRLF: CodeMirror would otherwise save every line with \n (files mixing endings, or
-      // with a lone \r, aren't opened here: the server says so)
-      o.text.includes('\r\n') ? EditorState.lineSeparator.of('\r\n') : [],
       basicSetup,
       keymap.of([{ key: 'Mod-s', preventDefault: true, run: () => { void o.save(); return true } }, indentWithTab]),
       lang ? await lang.load() : [],
@@ -73,11 +70,19 @@ export async function codeEditor(parent: HTMLElement, o: Opts): Promise<Editor> 
   // eq() skips the parts an edit didn't touch, so asking is cheap even for a big file
   let saved: Text = view.state.doc, gone = false, vimAsked = o.vim
   const dirty = () => !view.state.doc.eq(saved)
+  // a CRLF file stays CRLF, pasted lines included: the editor works in \n and every line gets \r\n back on the way
+  // out (the server only opens files with one kind of line ending, so this gives back exactly what was read)
+  const crlf = o.text.includes('\r\n'), text = () => crlf ? view.state.sliceDoc().replace(/\n/g, '\r\n') : view.state.sliceDoc()
   owners.set(view, { o, dirty })
   return {
-    take() { const doc = view.state.doc; return { text: view.state.sliceDoc(), done: () => { saved = doc } } },
+    take() { const doc = view.state.doc; return { text: text(), done: () => { saved = doc } } },
     dirty,
-    text: () => view.state.sliceDoc(),
+    text,
+    goto(line) {
+      const at = view.state.doc.line(Math.min(Math.max(1, line), view.state.doc.lines)).from
+      view.dispatch({ selection: { anchor: at }, effects: EditorView.scrollIntoView(at, { y: 'center' }) })
+      view.focus()
+    },
     async setVim(on) {
       vimAsked = on
       const ext = await vimExt(on)

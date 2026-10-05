@@ -20,6 +20,8 @@ const edits = new Map<HTMLElement, Edit>(), opening = new WeakSet<HTMLElement>()
 export const editing = (el: HTMLElement) => edits.has(el) || opening.has(el)
 /** What the window's editor holds now, for its copy button; undefined when it isn't being edited. */
 export const draft = (el: HTMLElement) => edits.get(el)?.editor.text()
+/** Put the editor's cursor on `line` (Ctrl+K opening a code symbol in a window being edited). */
+export const editAt = (el: HTMLElement, line: number) => edits.get(el)?.editor.goto(line)
 const read = (path: string) => api<File>('file?path=' + q(path))
 
 /** Edit `path` in `host` (the window `el`'s content box), or stop editing if it already is. `done` shows the file

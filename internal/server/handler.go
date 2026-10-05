@@ -502,7 +502,7 @@ func restartNow(w http.ResponseWriter) {
 }
 
 // saveStatus: 409 tells the page its copy is stale (it then checks whether its save landed after all); 403 is a
-// file it may not write; 404 one that's gone; anything else went wrong on the way.
+// file it may not write; 404 one that's gone; 413 text too big to open again; anything else went wrong on the way.
 func saveStatus(err error) int {
 	switch {
 	case errors.Is(err, filesx.ErrChanged):
@@ -511,6 +511,8 @@ func saveStatus(err error) int {
 		return 403
 	case errors.Is(err, os.ErrNotExist):
 		return 404 // deleted since it was opened
+	case errors.Is(err, filesx.ErrTooBig):
+		return 413
 	}
 	return 500
 }

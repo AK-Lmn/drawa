@@ -14,7 +14,7 @@ import { toggleFull, isFull } from '../canvas/fullview'
 import { openZoom } from '../lib/zoom'
 import { fileOpener } from '../canvas/find'
 import { sourceView, mdView, isMarkdown } from '../panels/files'
-import { toggleEdit, editing, draft } from './fileedit'
+import { toggleEdit, editing, draft, editAt } from './fileedit'
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif|bmp|ico)$/i // what /api/raw serves
 interface Saved { path: string; title: string; rect: Rect }
@@ -71,7 +71,7 @@ export function preview(o: { path: string; title?: string; rect: Rect; line?: nu
   const pencil = iconButton(ICON.pencil, 'Edit the file', () => toggleEdit(el, host, o.path, pencil, () => load()))
   const { el, body } = makeWindow({
     kind: 'preview', cls: 'pvnode', title: o.title || o.path.split('/').pop()!, rect: o.rect, minW: 200, minH: 120,
-    actions: [...(image ? [] : [pencil]), iconButton(ICON.reload, 'Read the file again', () => load(true)), removeButton('Remove from canvas')],
+    actions: [...(image ? [] : [pencil]), iconButton(ICON.reload, 'Read the file again', () => load(true), 'pv-reload'), removeButton('Remove from canvas')],
   })
   el.dataset.id = 'preview:' + o.path // the same after a reload: arrows and canvas tools find it by this
   el.dataset.path = o.path
@@ -91,7 +91,7 @@ export function preview(o: { path: string; title?: string; rect: Rect; line?: nu
     revealIn(host)
   }
   load()
-  toLine.set(el, line => { at = line; load() }) // read again: the line is where it is in the file now
+  toLine.set(el, line => { at = line; if (editing(el)) editAt(el, line); else load() }) // read again: the line is where it is in the file now
   return el
 }
 
