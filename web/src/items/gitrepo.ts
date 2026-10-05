@@ -96,9 +96,11 @@ export function fill(v: RepoView, st: GitState, host: Host) {
   v.head.replaceChildren(chev, make('span', 'gp', repoName(v.repo)), make('span', 'gd', slash > 0 ? v.repo.slice(0, slash + 1) : ''))
   // with worktrees the picker names the branch; the line keeps the sync and the count
   const had = v.line.contains(document.activeElement) ? document.activeElement as HTMLElement : null
-  v.line.replaceChildren(v.head, ...(many ? [picker(v, host)] : []),
-    make('span', 'gb', st.repo ? many ? sync : `${st.branch}${sync ? ' ' + sync : ''}` : 'unreadable'),
-    ...(st.total ? [make('span', 'n', String(st.total))] : []))
+  const gb = make('span', 'gb', st.repo ? many ? sync : `${st.branch}${sync ? ' ' + sync : ''}` : 'unreadable')
+  gb.title = gb.textContent ?? '' // the whole branch when the line is too narrow for it
+  const tail = make('span', 'gtail') // wraps under the name as one piece when the line is too narrow
+  tail.append(...(many ? [picker(v, host)] : []), gb, ...(st.total ? [make('span', 'n', String(st.total))] : []))
+  v.line.replaceChildren(v.head, tail)
   if (had?.isConnected && had !== document.activeElement) had.focus() // moving the fold button or picker drops its focus
   v.head.title = st.repo ? `${v.dir || project.name}: ${st.total ? `${st.total} changed file${st.total === 1 ? '' : 's'}` : 'clean'}` : st.error ?? ''
   fold(v)
