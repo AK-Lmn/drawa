@@ -41,7 +41,7 @@ export function picker(v: RepoView, host: Host) {
       empty: 'No worktrees match',
       action: o => {
         const c = find(o)
-        return !c || c === v.checkouts[0] || c.locked ? null : { icon: ICON.x, label: 'Remove worktree', run: () => removeWorktree(c, host) }
+        return !c || c === v.checkouts[0] || c.locked ? null : { icon: ICON.x, label: `Remove worktree ${branchOf(c)}`, run: () => removeWorktree(c, host) }
       },
     })
   }

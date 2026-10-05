@@ -8,7 +8,8 @@ const svg = (d: string) => `<svg viewBox="0 0 16 16" aria-hidden="true"><path d=
 const CHEVRON = svg('M4.5 6.5 8 10l3.5-3.5'), CHECK = svg('M3.5 8.5l3 3 6-7')
 
 /** Rich menus: `row(o)` draws an option's row instead of its text and title (the check mark moves to its left), and
- *  `action(o)` adds a button at its right end (null: none). The button is its own Tab stop; clicking it closes the menu
+ *  `action(o)` adds a button at its right end (null: none). Tab from the list reaches the highlighted row's button, Tab or Shift+Tab
+ *  from it goes back; `label` names the row too ("Remove worktree feat/auth"). Clicking it closes the menu
  *  without picking the row, then runs. */
 export interface Rich {
   row(o: HTMLOptionElement): Node[]
@@ -78,7 +79,7 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
         body.append(...rich.row(o))
         const a = rich.action?.(o)
         // an option's children are presentational to screen readers: the row says what its button (a Tab away) does
-        if (a) item.setAttribute('aria-description', `${a.label}: press Tab`)
+        if (a) item.setAttribute('aria-description', `${a.label}: press Tab while highlighted`)
         if (a) item.append(iconButton(a.icon, a.label, () => { close(true); a.run() }, 'xsel-act'))
         return item
       }
@@ -206,9 +207,12 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
       case 'Escape':
         if (box?.value) { box.value = ''; filter(); box.focus() } else close(true) // the text first, then the menu
         break
-      case 'Tab':
-        if (menu!.querySelector('.xsel-act')) { e.stopPropagation(); return } // on to the rows' buttons
-        close(true); return // focus is back on the trigger, so Tab carries on from there
+      case 'Tab': {
+        if (onButton) { (box ?? menu!).focus({ preventScroll: true }); break } // back to the list, its row still highlighted
+        const act = !e.shiftKey && list!.querySelectorAll('.xsel-item')[active]?.querySelector<HTMLElement>('.xsel-act')
+        if (act) { act.focus(); break } // the highlighted row's button, not the first one in DOM order
+        close(true); return
+      } // focus is back on the trigger, so Tab carries on from there
       default: {
         if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return
         // Type-ahead: next option (wrapping) whose label starts with the typed letter.
