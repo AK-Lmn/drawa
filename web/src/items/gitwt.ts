@@ -13,6 +13,9 @@ export function picker(v: RepoView, host: Host) {
   const list = [own, ...v.checkouts.slice(1).sort((a, b) => +!a.total - +!b.total || branchOf(a).localeCompare(branchOf(b)))]
   // rows look up the latest fill's checkouts: the options are replaced on every refresh
   const find = (o: HTMLOptionElement) => v.checkouts.find(c => id(c) === o.value)
+  // paths read from the folder holding the repo, so rows differ where they matter: drawa, drawa-wt-1, drawa/.worktrees/x
+  const abs = (d: string) => !d ? project.root : d.startsWith('/') ? d : `${project.root}/${d}`
+  const shown = (p: string) => { const up = abs(v.repo).replace(/\/[^/]+$/, ''); return up && p.startsWith(up + '/') ? p.slice(up.length + 1) : p }
   if (!v.pick) {
     v.pick = make('select')
     v.pick.setAttribute('aria-label', 'Checkout shown: the repository or one of its worktrees')
@@ -30,14 +33,17 @@ export function picker(v: RepoView, host: Host) {
         const c = find(o)
         if (!c) return []
         const top = make('div', 'gpt'), dir = make('div', 'gpf'), mine = c === v.checkouts[0]
-        top.append(make('span', 'gpb', branchOf(c)), make('span', 'gpn', [mine ? '(repo)' : '', c.total ? `${c.total} changed` : ''].filter(Boolean).join(' ')),
-          ...(c.locked ? [make('span', 'gpl', 'locked')] : []))
-        const path = mine ? (v.repo || project.root) : c.dir!
-        dir.append(make('span', '', path))
+        top.append(make('span', 'gpb', branchOf(c)), ...(mine ? [make('span', 'gpl', 'repo')] : []), ...(c.locked ? [make('span', 'gpl', 'locked')] : []),
+          ...(c.total ? [make('span', 'gpn', `${c.total} changed`)] : []))
+        const path = abs(mine ? v.repo : c.dir!)
+        dir.append(make('span', '', shown(path)))
         dir.title = path
         return [top, dir]
       },
-      search: o => { const c = find(o); return c ? `${branchOf(c)} ${c === v.checkouts[0] ? (v.repo || project.root) : c.dir}` : '' },
+      // a worktree's name is its folder (drawa-wt-1), shown on its row; its branch and full path match too
+      search: o => { const c = find(o); if (!c) return ''; const p = abs(c === v.checkouts[0] ? v.repo : c.dir!); return `${shown(p)} ${branchOf(c)} ${p}` },
+      searchFrom: 1,
+      prefix: () => 'Worktree:',
       empty: 'No worktrees match',
       action: o => {
         const c = find(o)

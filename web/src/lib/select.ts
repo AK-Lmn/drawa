@@ -18,6 +18,10 @@ export interface Rich {
    *  is the row shown when nothing matches. */
   search?(o: HTMLOptionElement): string
   empty?: string
+  /** Rows from which the search box shows (default SEARCH_FROM + 1): a short list can still want it. */
+  searchFrom?: number
+  /** Muted words before the trigger's label, saying what it picks ("2 worktrees:"); read again whenever the options change. */
+  prefix?(): string
 }
 
 const SEARCH_FROM = 5
@@ -28,6 +32,7 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
   trigger.setAttribute('aria-expanded', 'false')
   trigger.innerHTML = `<span class="xsel-label"></span>${CHEVRON}`
   const label = trigger.firstElementChild as HTMLElement
+  const pre = rich?.prefix ? label.parentElement!.insertBefore(make('span', 'xsel-pre'), label) : null
   select.after(trigger)
   select.hidden = true
   const id = `xsel-${++seq}`
@@ -37,6 +42,7 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
   // Mirror everything the trigger shows from the select. Cheap, so it just runs on any change.
   const sync = () => {
     label.textContent = select.selectedOptions[0]?.textContent ?? ''
+    if (pre) pre.textContent = rich!.prefix!()
     for (const a of ['title', 'aria-label']) {
       const v = select.getAttribute(a)
       if (v == null) trigger.removeAttribute(a); else trigger.setAttribute(a, v)
@@ -135,7 +141,7 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
     menu.tabIndex = -1
     list = menu
     box = null
-    if (rich?.search && select.options.length > SEARCH_FROM) {
+    if (rich?.search && select.options.length >= (rich.searchFrom ?? SEARCH_FROM + 1)) {
       menu.classList.add('xsel-search')
       box = menu.appendChild(make('input', 'xsel-find'))
       box.type = 'search'

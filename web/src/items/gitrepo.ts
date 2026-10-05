@@ -96,11 +96,12 @@ export function fill(v: RepoView, st: GitState, host: Host) {
   v.head.replaceChildren(chev, make('span', 'gp', repoName(v.repo)), make('span', 'gd', slash > 0 ? v.repo.slice(0, slash + 1) : ''))
   const had = v.line.contains(document.activeElement) ? document.activeElement as HTMLElement : null
   const gb = make('span', 'gb', st.repo ? many ? sync : `${st.branch}${sync ? ' ' + sync : ''}` : 'unreadable')
-  gb.title = gb.textContent ?? '' // the whole branch when the line is too narrow for it
+  // the whole branch when the line is too narrow for it, and what the arrows mean
+  gb.title = [many ? '' : st.branch ?? '', st.ahead ? `${st.ahead} to push` : '', st.behind ? `${st.behind} to pull` : ''].filter(Boolean).join(' · ')
   const tail = make('span', 'gtail') // the second line, under the name: the branch, or the picker standing in for it
   if (v.wt) tail.dataset.wt = '' // showing a worktree, not the repo's own checkout: commits land there, so it stands out
   tail.append(...(many ? [picker(v, host)] : []), gb)
-  v.line.replaceChildren(v.head, ...(st.total ? [make('span', 'n', String(st.total))] : []), tail)
+  v.line.replaceChildren(v.head, ...(st.total ? [make('span', 'n', `${st.total} changed`)] : []), tail)
   if (had?.isConnected && had !== document.activeElement) had.focus() // moving the fold button or picker drops its focus
   v.head.title = st.repo ? `${v.dir || project.name}: ${st.total ? `${st.total} changed file${st.total === 1 ? '' : 's'}` : 'clean'}` : st.error ?? ''
   fold(v)
