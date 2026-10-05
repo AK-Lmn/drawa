@@ -211,7 +211,7 @@ Settings that follow you to every project and browser live in `~/.drawa/config.j
 | `theme` | `system` | `system` follows your computer's light or dark mode; `light` or `dark` fixes it. |
 | `lightScheme`, `darkScheme` | `claude-light`, `claude-dark` | The color scheme for each mode: the ids in `web/src/lib/theme.ts`, such as `rose-pine-dawn`, `catppuccin-mocha` or `nord`. |
 | `symbols` | `auto` | `auto` reads code symbols with universal-ctags when it's installed; `off` never runs it. |
-| `vim` | `off` | `on` gives the file editor and scratchpads Vim motions (`:w` saves, `:q` stops editing, `:q!` drops unsaved changes). |
+| `vim` | `off` | `on` gives the file editor and scratchpads Vim motions (`:w` saves, `:q` stops editing, `:q!` drops unsaved changes). Yanks and deletes go to the system clipboard, and `p` pastes what you copied elsewhere (once the browser lets the page read the clipboard). |
 
 Fonts and which key sends a message are kept per browser.
 

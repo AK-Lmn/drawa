@@ -295,9 +295,11 @@ body:not(.drawing) #stage:not(.hand) .inode-b .ink-shape .ink-line{pointer-event
 .pvnode-ed .cm-content{caret-color:var(--ink)}
 .pvnode-ed .cm-cursor{border-left-color:var(--ink)}
 .pvnode-ed .cm-gutters{background:var(--bg);color:var(--muted);border-right:1px solid var(--line)}
-.pvnode-ed .cm-activeLine{background:var(--hover)}
+/* see-through, so a selection (Vim's visual mode too) drawn under the text shows through the current line */
+.pvnode-ed .cm-activeLine{background:color-mix(in oklab,var(--ink) 5%,transparent)}
 .pvnode-ed .cm-activeLineGutter{background:var(--hover);color:var(--ink)}
-.pvnode-ed .cm-selectionBackground,.pvnode-ed .cm-editor.cm-focused .cm-selectionBackground,.pvnode-ed .cm-content ::selection{background:var(--sel)}
+/* as specific as CodeMirror's own focused-selection rule, or its pale default wins and hides light text */
+.pvnode-ed .cm-selectionBackground,.pvnode-ed .cm-editor.cm-focused>.cm-scroller>.cm-selectionLayer .cm-selectionBackground{background:color-mix(in oklab,var(--accent) 32%,var(--bg))}
 .pvnode-ed .cm-matchingBracket,.pvnode-ed .cm-editor.cm-focused .cm-matchingBracket{background:var(--sel);outline:1px solid var(--line-2)}
 .pvnode-ed .cm-selectionMatch{background:color-mix(in oklab,var(--accent) 18%,var(--bg))}
 .pvnode-ed .cm-searchMatch{background:color-mix(in oklab,var(--warn) 22%,var(--bg));outline:1px solid color-mix(in oklab,var(--warn) 50%,var(--bg))}

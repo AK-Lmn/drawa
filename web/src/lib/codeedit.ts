@@ -53,9 +53,22 @@ function loadVim() {
       else quit(ed?.o, true) // nothing to lose, or told to drop it: no Discard dialog
     })
     m.Vim.defineEx('wq', 'wq', async cm => { const ed = of(cm); if (await ed?.o.save()) quit(ed?.o, true) }) // a failed save stays open
+    // the system clipboard is Vim's unnamed register, as with clipboard=unnamedplus: a yank or delete is copied out,
+    // and what was copied elsewhere is what p pastes (read when the editor or the page gets focus again)
+    const regs = m.Vim.getRegisterController(), push = regs.pushText.bind(regs)
+    regs.pushText = (name, op, text, linewise, blockwise) => {
+      push(name, op, text, linewise, blockwise)
+      if (!name || name === '"' || name === '+' || name === '*') { copied = text; navigator.clipboard?.writeText(text).catch(() => {}) }
+    }
+    pull = () => navigator.clipboard?.readText().then(text => {
+      if (text && text !== copied) { copied = text; regs.unnamedRegister.setText(text, text.endsWith('\n')) }
+    }, () => {}) // not allowed (Firefox, or turned down): the register keeps Vim's own yanks
+    addEventListener('focus', () => { const v = activeView(); if (v && owners.has(v)) pull() })
     return m
   })
 }
+let copied = '', pull = (): unknown => undefined
+const activeView = () => { const ed = document.activeElement?.closest<HTMLElement>('.cm-editor'); return ed ? EditorView.findFromDOM(ed) : null }
 // what fills the Vim slot: Vim itself, or without it the keys that leave a scratchpad (Esc is Vim's own when it's on)
 const vimExt = async (on: boolean, o: Opts): Promise<Extension> => on ? (await loadVim()).vim()
   : o.leave ? keymap.of([{ key: 'Escape', run: () => { o.quit(); return true } }]) : []
@@ -88,6 +101,7 @@ export async function codeEditor(parent: HTMLElement, o: Opts): Promise<Editor> 
   // out (the server only opens files with one kind of line ending, so this gives back exactly what was read)
   const crlf = o.text.includes('\r\n'), text = () => crlf ? view.state.sliceDoc().replace(/\n/g, '\r\n') : view.state.sliceDoc()
   owners.set(view, { o, dirty })
+  view.contentDOM.addEventListener('focus', () => { if (vimAsked) pull() })
   return {
     take() { const doc = view.state.doc; return { text: text(), done: () => { saved = doc } } },
     dirty,
