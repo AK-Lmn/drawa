@@ -286,18 +286,58 @@ func TestWorktrees(t *testing.T) {
 	rel := filepath.Join(base, "wt-rel")
 	run(repo, "-c", "worktree.useRelativePaths=true", "worktree", "add", "-q", "-b", "feat-r", rel) // git 2.48+; else absolute
 
-	got := worktrees(repo)
+	// forged entries: git lists any existing folder an admin entry's gitdir names; neither is a worktree
+	plain, other := filepath.Join(base, "plain"), filepath.Join(base, "other")
+	os.MkdirAll(plain, 0o755)
+	os.MkdirAll(other, 0o755)
+	run(other, "init", "-q")
+	for name, target := range map[string]string{"evil": plain, "evil2": filepath.Join(other, ".git")} {
+		adm := filepath.Join(repo, ".git", "worktrees", name)
+		os.MkdirAll(adm, 0o755)
+		os.WriteFile(filepath.Join(adm, "gitdir"), []byte(target+"\n"), 0o644)
+		os.WriteFile(filepath.Join(adm, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644)
+		os.WriteFile(filepath.Join(adm, "commondir"), []byte("../..\n"), 0o644)
+	}
+	if out, _ := exec.Command("git", "-C", repo, "worktree", "list").Output(); !strings.Contains(string(out), plain) {
+		t.Logf("git doesn't list the forged entry here, so the check below proves less: %s", out)
+	}
+
+	got, err := worktrees(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
 	slices.SortFunc(got, func(a, b Worktree) int { return strings.Compare(a.Path, b.Path) })
 	want := []Worktree{{Path: inside, Branch: "feat-a"}, {Path: outside, Branch: ""}, {Path: locked, Branch: "feat-l", Locked: true}, {Path: rel, Branch: "feat-r"}}
 	slices.SortFunc(want, func(a, b Worktree) int { return strings.Compare(a.Path, b.Path) })
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("worktrees = %+v, want %+v", got, want)
 	}
-	if w := worktrees(outside); w != nil {
+	if w, _ := worktrees(outside); w != nil {
 		t.Fatalf("a worktree's own worktrees = %+v, want none", w)
 	}
-	if w := worktrees(base); w != nil {
-		t.Fatalf("not a repo: %+v", w)
+	if w, err := worktrees(base); w != nil || err != nil {
+		t.Fatalf("not a repo: %+v %v", w, err)
+	}
+
+	saved := config.Root
+	config.Root = repo
+	reset := func() { prefixCache.ok, nestedCache.list, stateCache.state, wtCache.list, wtCache.good = false, nil, nil, nil, nil }
+	reset()
+	t.Cleanup(func() { config.Root = saved; reset() })
+	if Check(plain) == nil || Check(filepath.Join(other, ".git")) == nil || Check(outside) != nil {
+		t.Fatal("Check trusts a forged worktree, or not a real one")
+	}
+
+	// git not answering: the last good list stays, uncached; with none ever read, the repo is marked
+	Repos()
+	t.Setenv("PATH", "")
+	wtCache.list = nil
+	if l, failed := worktreeLists(); len(l) != 4 || failed != nil || wtCache.list != nil {
+		t.Fatalf("after a failure = %v %v", l, failed)
+	}
+	wtCache.good = nil
+	if l, failed := worktreeLists(); len(l) != 0 || !reflect.DeepEqual(failed, []string{""}) {
+		t.Fatalf("never read = %v %v", l, failed)
 	}
 }
 
@@ -366,6 +406,10 @@ func TestSiblingWorktree(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "lib-held")); err != nil {
 		t.Fatal("locked worktree gone")
+	}
+	os.WriteFile(filepath.Join(root, "lib-wt", "new.txt"), []byte("x"), 0o644)
+	if r, err := GitOp(map[string]any{"op": "worktree-remove", "repo": "lib-wt"}); err != nil || r["ok"] != false || r["dirty"] != true {
+		t.Fatalf("dirty remove = %v %v", r, err)
 	}
 }
 

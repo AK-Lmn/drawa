@@ -34,7 +34,7 @@ func GitState() map[string]any {
 // out, it has its own list.
 func allStatus() map[string]any {
 	repos := Nested()
-	wts := allWorktrees()
+	wts, failed := worktreeLists()
 	all := make([]map[string]any, 1+len(repos)+len(wts))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 4)
@@ -75,6 +75,11 @@ func allStatus() map[string]any {
 		list, _ := m["worktrees"].([]map[string]any)
 		m["worktrees"] = append(list, all[1+len(repos)+i])
 		own = append(own, w.id)
+	}
+	for _, r := range failed { // the page keeps its pick in a list it couldn't read
+		if m := byID[r]; m != nil {
+			m["worktreesFailed"] = true
+		}
 	}
 	for _, m := range byID {
 		if list, ok := m["worktrees"].([]map[string]any); ok {
