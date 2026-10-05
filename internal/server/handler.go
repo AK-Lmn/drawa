@@ -456,16 +456,10 @@ func doPOST(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	case "/api/file":
-		err := filesx.Save(str(body["path"]), str(body["base"]), str(body["text"]))
-		switch {
-		case err == nil:
+		if err := filesx.Save(str(body["path"]), str(body["base"]), str(body["text"])); err != nil {
+			sendJSON(w, map[string]any{"error": err.Error()}, saveStatus(err))
+		} else {
 			sendJSON(w, map[string]any{"ok": true}, 200)
-		case errors.Is(err, filesx.ErrChanged):
-			sendJSON(w, map[string]any{"error": err.Error()}, 409)
-		case errors.Is(err, config.ErrOutside), errors.Is(err, filesx.ErrReadOnly):
-			sendJSON(w, map[string]any{"error": err.Error()}, 403)
-		default:
-			sendJSON(w, map[string]any{"error": err.Error()}, 500)
 		}
 		return
 	case "/api/git":
@@ -505,4 +499,18 @@ func restartNow(w http.ResponseWriter) {
 		time.Sleep(300 * time.Millisecond) // let the answer reach the page first
 		update.Restart()
 	}()
+}
+
+// saveStatus: 409 tells the page its copy is stale (it then checks whether its save landed after all); 403 is a
+// file it may not write; 404 one that's gone; anything else went wrong on the way.
+func saveStatus(err error) int {
+	switch {
+	case errors.Is(err, filesx.ErrChanged):
+		return 409
+	case errors.Is(err, config.ErrOutside), errors.Is(err, filesx.ErrReadOnly), errors.Is(err, os.ErrPermission):
+		return 403
+	case errors.Is(err, os.ErrNotExist):
+		return 404 // deleted since it was opened
+	}
+	return 500
 }

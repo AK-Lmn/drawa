@@ -14,7 +14,7 @@ import { toggleFull, isFull } from '../canvas/fullview'
 import { openZoom } from '../lib/zoom'
 import { fileOpener } from '../canvas/find'
 import { sourceView, mdView, isMarkdown } from '../panels/files'
-import { toggleEdit, editing } from './fileedit'
+import { toggleEdit, editing, draft } from './fileedit'
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif|bmp|ico)$/i // what /api/raw serves
 interface Saved { path: string; title: string; rect: Rect }
@@ -25,7 +25,7 @@ referable('preview', {
   icon: '◫',
   name: 'file',
   label: el => el.dataset.path ?? '',
-  copy: el => texts.get(el.dataset.path ?? '') ?? '',
+  copy: el => draft(el) ?? texts.get(el.dataset.path ?? '') ?? '', // while editing: what's in the editor
   content: el => ({ text: `File: ${el.dataset.path} (read it if you need its contents)` }),
 })
 

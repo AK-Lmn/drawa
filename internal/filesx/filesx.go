@@ -287,8 +287,14 @@ func Get(rel string) (map[string]any, error) {
 	if bytes.IndexByte(data, 0) >= 0 {
 		return map[string]any{"text": nil}, nil
 	}
-	// editable: the text is the whole file as it is, so the editor may save it (not cut off, not re-encoded)
-	return map[string]any{"text": toUTF8(data[:min(len(data), maxRead)]), "editable": editable(data)}, nil
+	// noEdit: why the editor can't save this text back (cut off, re-encoded, read-only...); absent when it can
+	out := map[string]any{"text": toUTF8(data[:min(len(data), maxRead)])}
+	if why := uneditable(data); why != "" {
+		out["noEdit"] = why
+	} else if !writable(f.Name()) {
+		out["noEdit"] = "it's read-only"
+	}
+	return out, nil
 }
 
 func toUTF8(b []byte) string {
