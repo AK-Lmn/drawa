@@ -5,7 +5,7 @@
 import { make } from '../lib/dom'
 import { saveSoon } from '../lib/store'
 import { cards, meta, type Session } from './session'
-import { meta as agentMeta, metaNow, title, getPref, setPref } from '../lib/agents'
+import { meta as agentMeta, metaNow, title, getPref, setPref, noEffort } from '../lib/agents'
 
 // Claude Code's models come with its other account-wide info (meta, main.ts); another agent's from lib/agents.ts
 const modelsOf = (S: Session) => S.backend === 'claude' ? meta.models : metaNow(S.backend).models
@@ -95,6 +95,15 @@ export function effortPicker(S: Session) {
   return sel
 }
 
+/** A Read more link beside a disabled effort picker, for an agent that says why it has none; null otherwise. */
+export function effortNote(S: Session) {
+  const href = noEffort(S.backend)
+  if (!href) return null
+  const a = make('a', 'effortnote', 'Read more')
+  Object.assign(a, { href, target: '_blank', rel: 'noopener noreferrer', title: `Why ${title(S.backend)} has no effort setting` })
+  return a
+}
+
 const LABELS: Record<string, string> = { xhigh: 'Extra high', minimal: 'Minimal' }
 const label = (e: string) => LABELS[e] ?? e.charAt(0).toUpperCase() + e.slice(1)
 
@@ -111,6 +120,13 @@ function effortsOf(S: Session): [string, string, string][] {
 /** Refills a card's effort options for its current model (picked, restored or arrived late), dropping a level it doesn't offer.
  *  Restored cards' effort is kept until their agent's models are in, so a slow meta doesn't wipe it. */
 function fillEffort(S: Session, sel: HTMLSelectElement) {
+  if (noEffort(S.backend)) { // shown, but off: the agent can't take one (effortNote says why)
+    S.effort = ''
+    sel.replaceChildren(Object.assign(make('option', '', 'Effort: disabled'), { value: '' }))
+    sel.disabled = true
+    sel.title = `${title(S.backend)} can't change effort from Drawa`
+    return
+  }
   const efforts = effortsOf(S)
   sel.replaceChildren(...efforts.map(([value, l, desc]) => Object.assign(make('option', '', l), { value, title: desc })))
   if (efforts.length) { if (!efforts.some(([v]) => v === S.effort)) S.effort = '' }
