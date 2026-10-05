@@ -212,7 +212,10 @@ func TestNestedRepos(t *testing.T) {
 	saved := config.Root
 	config.Root = root
 	prefixCache.ok, nestedCache.list, stateCache.state, wtCache.list = false, nil, nil, nil
-	t.Cleanup(func() { config.Root = saved; prefixCache.ok, nestedCache.list, stateCache.state, wtCache.list = false, nil, nil, nil })
+	t.Cleanup(func() {
+		config.Root = saved
+		prefixCache.ok, nestedCache.list, stateCache.state, wtCache.list = false, nil, nil, nil
+	})
 
 	if got, want := Nested(), []string{"apps/api", "web"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Nested = %v, want %v", got, want)
@@ -321,23 +324,51 @@ func TestWorktrees(t *testing.T) {
 
 	saved := config.Root
 	config.Root = repo
-	reset := func() { prefixCache.ok, nestedCache.list, stateCache.state, wtCache.list, wtCache.good = false, nil, nil, nil, nil }
+	reset := func() {
+		prefixCache.ok, nestedCache.list, stateCache.state, wtCache.list, wtCache.good = false, nil, nil, nil, nil
+	}
 	reset()
 	t.Cleanup(func() { config.Root = saved; reset() })
 	if Check(plain) == nil || Check(filepath.Join(other, ".git")) == nil || Check(outside) != nil {
 		t.Fatal("Check trusts a forged worktree, or not a real one")
 	}
 
-	// git not answering: the last good list stays, uncached; with none ever read, the repo is marked
+	// git not answering: the last good list stays; with none ever read, the repo is marked
 	Repos()
+	path := os.Getenv("PATH")
 	t.Setenv("PATH", "")
 	wtCache.list = nil
-	if l, failed := worktreeLists(); len(l) != 4 || failed != nil || wtCache.list != nil {
+	if l, failed := worktreeLists(); len(l) != 4 || failed != nil {
 		t.Fatalf("after a failure = %v %v", l, failed)
 	}
-	wtCache.good = nil
+	wtCache.list, wtCache.good = nil, nil
 	if l, failed := worktreeLists(); len(l) != 0 || !reflect.DeepEqual(failed, []string{""}) {
 		t.Fatalf("never read = %v %v", l, failed)
+	}
+	// the failure is cached too: with git back, calls within the 3s still get it rather than run git again
+	os.Setenv("PATH", path)
+	if l, failed := worktreeLists(); len(l) != 0 || !reflect.DeepEqual(failed, []string{""}) {
+		t.Fatalf("failure not cached: %v %v", l, failed)
+	}
+	wtCache.list = nil
+	if l, failed := worktreeLists(); len(l) != 4 || failed != nil {
+		t.Fatalf("after expiry = %v %v", l, failed)
+	}
+
+	// a folder whose .git is a link to a real worktree's .git file isn't one (git's validate_worktree wants a file)
+	link := filepath.Join(base, "wt-link")
+	os.MkdirAll(link, 0o755)
+	os.Symlink(filepath.Join(outside, ".git"), filepath.Join(link, ".git"))
+	adm := filepath.Join(repo, ".git", "worktrees", "linked")
+	os.MkdirAll(adm, 0o755)
+	os.WriteFile(filepath.Join(adm, "gitdir"), []byte(filepath.Join(link, ".git")+"\n"), 0o644)
+	os.WriteFile(filepath.Join(adm, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644)
+	os.WriteFile(filepath.Join(adm, "commondir"), []byte("../..\n"), 0o644)
+	if validWorktree(link, filepath.Join(repo, ".git", "worktrees")) {
+		t.Fatal("a .git symlink passes as a worktree")
+	}
+	if got, _ := worktrees(repo); slices.ContainsFunc(got, func(w Worktree) bool { return w.Path == link }) {
+		t.Fatalf("listed the linked folder: %+v", got)
 	}
 }
 
@@ -445,7 +476,10 @@ func TestWorktreeRepos(t *testing.T) {
 	saved := config.Root
 	config.Root = root
 	prefixCache.ok, nestedCache.list, stateCache.state, wtCache.list = false, nil, nil, nil
-	t.Cleanup(func() { config.Root = saved; prefixCache.ok, nestedCache.list, stateCache.state, wtCache.list = false, nil, nil, nil })
+	t.Cleanup(func() {
+		config.Root = saved
+		prefixCache.ok, nestedCache.list, stateCache.state, wtCache.list = false, nil, nil, nil
+	})
 
 	if n := Nested(); len(n) != 0 {
 		t.Fatalf("worktree listed as a nested repo: %v", n)
@@ -470,6 +504,9 @@ func TestWorktreeRepos(t *testing.T) {
 		}
 	}
 	wts, _ := st["worktrees"].([]map[string]any)
+	if len(wts) == 2 && wts[0]["dir"] != outside {
+		wts[0], wts[1] = wts[1], wts[0]
+	}
 	if len(wts) != 2 || wts[0]["dir"] != outside || wts[0]["main"] != "" || wts[0]["branch"] != "feat-out" || wts[1]["dir"] != "wtin" {
 		t.Fatalf("worktrees = %v", wts)
 	}
@@ -484,7 +521,7 @@ func TestWorktreeRepos(t *testing.T) {
 			t.Fatalf("diff outside the worktree: %q", p)
 		}
 	}
-	if r, _ := GitOp(map[string]any{"op": "worktree-remove", "repo": outside}); r["ok"] != false || !strings.Contains(r["out"].(string), "--force") {
+	if r, _ := GitOp(map[string]any{"op": "worktree-remove", "repo": outside}); r["ok"] != false || r["dirty"] != true || !strings.Contains(r["out"].(string), "--force") {
 		t.Fatalf("removed a dirty worktree: %v", r)
 	}
 	if r, err := GitOp(map[string]any{"op": "worktree-remove", "repo": outside, "force": true}); err != nil || r["ok"] != true {

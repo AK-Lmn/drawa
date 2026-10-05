@@ -1,7 +1,6 @@
 package gitx
 
 import (
-	"fmt"
 	"os/exec"
 	"regexp"
 	"slices"
@@ -35,6 +34,8 @@ func GitState() map[string]any {
 func allStatus() map[string]any {
 	repos := Nested()
 	wts, failed := worktreeLists()
+	// ponytail: one git status per worktree each poll, capped at maxWorktrees (40) per repo but with no total cap across
+	// repos; add a global cap, or poll only the checkout picked in the Git window, if many repos each have many.
 	all := make([]map[string]any, 1+len(repos)+len(wts))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 4)
@@ -79,19 +80,6 @@ func allStatus() map[string]any {
 	for _, r := range failed { // the page keeps its pick in a list it couldn't read
 		if m := byID[r]; m != nil {
 			m["worktreesFailed"] = true
-		}
-	}
-	for _, m := range byID {
-		if list, ok := m["worktrees"].([]map[string]any); ok {
-			slices.SortFunc(list, func(a, b map[string]any) int { // changes first, then by branch
-				if ca, cb := total(a) > 0, total(b) > 0; ca != cb {
-					if ca {
-						return -1
-					}
-					return 1
-				}
-				return strings.Compare(fmt.Sprint(a["branch"]), fmt.Sprint(b["branch"]))
-			})
 		}
 	}
 	if files, ok := st["files"].([]map[string]any); ok && len(own) > 0 {

@@ -143,54 +143,97 @@ type linked struct {
 
 var wtCache = struct {
 	sync.Mutex
-	at   time.Time
-	list []linked
-	good map[string][]linked // each repo's last list read
+	at     time.Time
+	list   []linked // nil: not read, or forgotten
+	failed []string
+	good   map[string][]linked // each repo's last list read
+	busy   chan struct{}       // the refresh in flight, closed when it's done
+	gen    int                 // bumped by forgetWorktrees, so a refresh begun before it isn't kept
 }{}
 
 // allWorktrees lists the worktrees of Root's repo and of the Nested ones. Kept as long as the status cache (3s), so
 // Check and the status poll don't run git per request; one the agent just added is usable a few seconds later. A repo
-// whose listing fails keeps its last good list, and the result isn't cached so the next call asks again.
+// whose listing fails keeps its last good list; failures are cached too, so a hung repo costs one timeout per 3s, not
+// one per caller.
 func allWorktrees() []linked {
 	l, _ := worktreeLists()
 	return l
 }
 
-// worktreeLists is allWorktrees, with the repos whose list is unknown (it failed and was never read).
+// worktreeLists is allWorktrees, with the repos whose list is unknown (it failed and was never read). git runs without
+// the lock held: a fresh cache answers at once, and callers that miss wait for the one refresh in flight.
 func worktreeLists() ([]linked, []string) {
+	for {
+		wtCache.Lock()
+		if wtCache.list != nil && time.Since(wtCache.at) <= 3*time.Second {
+			l, f := wtCache.list, wtCache.failed
+			wtCache.Unlock()
+			return l, f
+		}
+		if ch := wtCache.busy; ch != nil {
+			wtCache.Unlock()
+			<-ch
+			continue
+		}
+		ch, gen := make(chan struct{}), wtCache.gen
+		wtCache.busy = ch
+		wtCache.Unlock()
+
+		list, failed := readWorktrees()
+
+		wtCache.Lock()
+		if gen == wtCache.gen {
+			wtCache.list, wtCache.failed, wtCache.at = list, failed, time.Now()
+		}
+		wtCache.busy = nil
+		close(ch)
+		wtCache.Unlock()
+		return list, failed
+	}
+}
+
+// readWorktrees runs git worktree list for every repo, four at a time.
+func readWorktrees() ([]linked, []string) {
+	repos := Repos()
+	lists := make([][]linked, len(repos))
+	errs := make([]error, len(repos))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 4)
+	for i, repo := range repos {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			wts, err := worktrees(top(repo))
+			errs[i] = err
+			mine := []linked{}
+			for j, w := range wts {
+				if j >= maxWorktrees {
+					break
+				}
+				mine = append(mine, linked{wtID(w.Path), repo, w.Locked})
+			}
+			lists[i] = mine
+		}()
+	}
+	wg.Wait()
 	wtCache.Lock()
 	defer wtCache.Unlock()
-	if wtCache.list != nil && time.Since(wtCache.at) <= 3*time.Second {
-		return wtCache.list, nil
-	}
 	if wtCache.good == nil {
 		wtCache.good = map[string][]linked{}
 	}
-	list, failed, ok := []linked{}, []string(nil), true
-	for _, repo := range Repos() {
-		wts, err := worktrees(top(repo))
-		if err != nil {
-			ok = false
-			if last, ok := wtCache.good[repo]; ok {
-				list = append(list, last...)
-			} else {
-				failed = append(failed, repo)
-			}
+	list, failed := []linked{}, []string(nil)
+	for i, repo := range repos {
+		if errs[i] == nil {
+			wtCache.good[repo] = lists[i]
+		} else if last, ok := wtCache.good[repo]; ok {
+			lists[i] = last
+		} else {
+			failed = append(failed, repo)
 			continue
 		}
-		mine := []linked{}
-		for i, w := range wts {
-			if i >= maxWorktrees {
-				break
-			}
-			mine = append(mine, linked{wtID(w.Path), repo, w.Locked})
-		}
-		wtCache.good[repo] = mine
-		list = append(list, mine...)
-	}
-	wtCache.list = nil
-	if ok {
-		wtCache.list, wtCache.at = list, time.Now()
+		list = append(list, lists[i]...)
 	}
 	return list, failed
 }
@@ -199,6 +242,7 @@ func worktreeLists() ([]linked, []string) {
 func forgetWorktrees() {
 	wtCache.Lock()
 	wtCache.list = nil
+	wtCache.gen++
 	wtCache.Unlock()
 	nestedCache.Lock()
 	nestedCache.list = nil // a worktree inside Root may have been hidden from it
