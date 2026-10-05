@@ -43,6 +43,7 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
     if (select.dataset.mode) trigger.dataset.mode = select.dataset.mode; else delete trigger.dataset.mode
     if (select.dataset.loading !== undefined) trigger.dataset.loading = ''; else delete trigger.dataset.loading
     trigger.disabled = select.disabled
+    trigger.hidden = select.dataset.off !== undefined // nothing to pick right now (e.g. a model with no effort levels)
     if (menu) render() // options arrived (or changed) while open
   }
 
@@ -57,7 +58,7 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
   }
   new MutationObserver(sync).observe(select, {
     childList: true, subtree: true, characterData: true,
-    attributes: true, attributeFilter: ['data-mode', 'data-loading', 'title', 'aria-label', 'disabled', 'selected', 'label'],
+    attributes: true, attributeFilter: ['data-mode', 'data-loading', 'data-off', 'title', 'aria-label', 'disabled', 'selected', 'label'],
   })
   select.addEventListener('change', sync)
   sync()

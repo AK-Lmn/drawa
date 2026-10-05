@@ -20,7 +20,7 @@ import { attach } from './live'
 import { setMode, lastMode } from './mode'
 import { setModel, setEffort, renderInfo, seedInfo, lastModel, lastEffort } from './gen'
 import { loadSessions, resume, sessionPath } from './history'
-import { lastAgent, modesOf, installed, title, who, copySidTip } from '../lib/agents'
+import { lastAgent, modesOf, installed, title, who, copySidTip, type Model } from '../lib/agents'
 import { sendCombo, onSendKey } from '../lib/sendkey'
 import { hasDraft, keepImages } from './drafts'
 
@@ -89,7 +89,7 @@ export let cur: Session | undefined // the focused card
  *  same for every card (it's account-wide, not per-conversation), so a card's status line can show it before its
  *  own process has ever run (see gen.ts's seedInfo). */
 export const meta: {
-  models: { value: string; displayName: string; description: string }[]
+  models: Model[]
   commands: { name: string; description: string; argumentHint?: string }[]
   tools?: number; mcpTotal?: number; mcpConnected?: number
   usageUtil?: number; usageResetAt?: number; weeklyUtil?: number; weeklyResetAt?: number
@@ -189,7 +189,7 @@ function emptyState(S: Session) {
     ['--edit', `Files ${name} reads or changes are listed in a Files window beside this card, changed files first.`],
     ['--run', 'Commands it runs collect in a commands window below the card (click its tab to see the output).'],
     ['--write', 'Type / for skills and commands, @ to reference scratchpads, diagrams, plans, notes or files (or drop them on the message box).'],
-    ['--read', 'Read only by default. Change it per session in the message bar (Allow edits, Plan only, Allow everything).'],
+    ['--read', 'Ask first by default. Change it per session in the message bar (Allow edits, Plan only, Allow everything).'],
   ]
   for (const [color, text] of tips) {
     const li = make('li'), i = make('i')
@@ -258,7 +258,7 @@ export function newSession(opts: { rect?: Rect; cid?: string; backend?: string }
   }
   if (!(modesOf(S.backend)?.includes(S.mode) ?? true)) S.mode = 'default' // e.g. Auto, which OpenCode doesn't have
   S.model = lastModel(S.backend) // restored cards set their own afterwards
-  if (S.backend === 'claude') S.effort = lastEffort()
+  S.effort = lastEffort(S.backend) // the picker drops it if the model doesn't offer it
   composer(S, body) // message box, reference chips, / and @ menu
   seedInfo(S) // tools/MCP/usage from the account-wide meta info, if it's already in by now
   card.dataset.id = S.cid // what canvas tools call this card
@@ -364,7 +364,8 @@ export function renderCard(S: Session) {
   if (S.replaying) return // once at the end instead
   const busy = S.pending > 0 || S.bg > 0
   S.card.dataset.state = S.asks.size ? 'asking' : busy ? 'busy' : S.done ? 'done' : 'idle'
-  S.card.querySelector('.t')!.textContent = S.title
+  const t = S.card.querySelector<HTMLElement>('.t')!
+  if (!t.isContentEditable) t.textContent = S.title // being renamed: a busy card re-renders often, don't wipe what you type
   const m = S.card.querySelector<HTMLElement>('.win-h .m')!
   const model = S.reportedModel.replace(/^claude-/, '').replace(/^[\w.-]+\//, '') // opencode reports provider/model
   m.textContent = installed().length > 1 ? [title(S.backend), model].filter(Boolean).join(' · ') : model // which agent, once there's a choice
@@ -388,8 +389,9 @@ export function renderCard(S: Session) {
   S.log.classList.toggle('busy', S.pending > 0)
   S.log.setAttribute('aria-busy', String(S.pending > 0))
   S.stopBtn.hidden = !busy
+  if (!busy || (S.stopBtn.dataset.state === 'stopping' && !S.pending)) delete S.stopBtn.dataset.state // what it stopped is over
   // with no turn running, what's left to stop is background agents: they end with the process (see composer.ts)
-  S.stopBtn.title = S.pending ? `Stop what ${who(S.backend)} is doing` : 'Stop its background agents'
+  S.stopBtn.title = S.stopBtn.dataset.state ? 'Stopping\u2026' : S.pending ? `Stop what ${who(S.backend)} is doing` : 'Stop its background agents'
   S.ta.placeholder = busy ? `${who(S.backend)} is working. Type to queue a message.` : `Message ${who(S.backend)}: / commands, @ files, ! shell · ${sendCombo()} sends`
 }
 

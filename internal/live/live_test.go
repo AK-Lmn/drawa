@@ -256,6 +256,10 @@ func TestTrackTasks(t *testing.T) {
 	if l.working() {
 		t.Fatalf("still working: %v", l.tasks)
 	}
+	l.trackTasks(`{"type":"user","message":{"content":[{"type":"tool_result","content":"Workflow launched in background. Task ID: wlhba8rwq\nSummary: x"}]}}`)
+	if !l.tasks["wlhba8rwq"] {
+		t.Fatalf("workflow not tracked: %v", l.tasks)
+	}
 }
 
 // The canvas MCP config reaches claude as a 0600 file (not on the command line), removed when it exits.
@@ -386,5 +390,24 @@ func TestEffortReplacesIdle(t *testing.T) {
 	b, _ := Start(cid, "test-effort", "", "", "", "low")
 	if b == a || closed != 1 || !a.replaced {
 		t.Fatalf("idle with another effort: same process %v, closed %d", b == a, closed)
+	}
+}
+
+type effortCount struct {
+	closeCount
+	set *string
+}
+
+func (e effortCount) SetEffort(effort string) { *e.set = effort }
+
+// A backend that takes effort per turn is handed the new one and keeps its process.
+func TestEffortSetterKeeps(t *testing.T) {
+	closed, set := 0, ""
+	Register("test-effort2", Kind{Spawn: func(Spec, Sink) (Backend, error) { return effortCount{closeCount{closed: &closed}, &set}, nil }})
+	const cid = "33333333-3333-3333-3333-333333333333"
+	t.Cleanup(func() { Mu.Lock(); delete(Registry, cid); Mu.Unlock(); delete(kinds, "test-effort2") })
+	a, _ := Start(cid, "test-effort2", "", "", "", "high")
+	if b, _ := Start(cid, "test-effort2", "", "", "", "low"); b != a || closed != 0 || set != "low" {
+		t.Fatalf("same %v closed %d set %q", b == a, closed, set)
 	}
 }

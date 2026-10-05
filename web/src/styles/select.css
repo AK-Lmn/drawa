@@ -29,7 +29,6 @@
 .xsel-find:focus{border-color:var(--focus)}
 .xsel-list{min-height:0;overflow:auto;overscroll-behavior:contain}
 .xsel-none{padding:6px 10px;color:var(--muted);font-size:12px}
-@media (prefers-reduced-motion:reduce){.xsel-menu{animation:none}.xsel svg{transition:none}}
 
 .xsel-item{display:grid;grid-template-columns:minmax(0,1fr) 16px;column-gap:14px;align-items:center;padding:8px 10px;border-radius:var(--r-ctl);cursor:pointer;user-select:none}
 .xsel-item+.xsel-item{margin-top:1px}

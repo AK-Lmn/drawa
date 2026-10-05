@@ -26,15 +26,16 @@ export function scaleInto(rs: Rect[], from: Rect, to: Rect, min = { w: 160, h: 1
 
 const overlap = (a: Rect, b: Rect, gap: number) => a.x < b.x + b.w + gap && b.x < a.x + a.w + gap && a.y < b.y + b.h + gap && b.y < a.y + a.h + gap
 
-/** Where a window dropped into a group goes: its drop spot if that overlaps no other window, else the free spot
- *  nearest to it, beside or below one of them inside `area` (or below them all, which is always free). */
+/** Where a window dropped into a group goes: its drop spot unless that overlaps another window, else the free spot
+ *  (`gap` from the others) nearest to it beside, above or below one of them, even past the edge of `area` (the
+ *  frame grows to fit); below them all only if none is free. */
 export function placeIn(rs: Rect[], r: Rect, area: Rect, gap: number): Rect {
-  const free = (c: Rect) => !rs.some(o => overlap(c, o, gap))
-  if (free(r)) return r
-  const bottom = Math.max(area.y, ...rs.map(o => o.y + o.h + gap))
-  const spots = [{ x: area.x, y: area.y }, ...rs.flatMap(o => [{ x: o.x + o.w + gap, y: o.y }, { x: o.x, y: o.y + o.h + gap }])]
-    .map(p => ({ ...r, ...p })).filter(c => c.x + c.w <= area.x + area.w && free(c))
-  spots.push({ ...r, x: area.x, y: bottom })
+  const free = (c: Rect, g: number) => !rs.some(o => overlap(c, o, g))
+  if (free(r, 0)) return r
+  const spots = rs.flatMap(o => [{ x: o.x + o.w + gap, y: r.y }, { x: o.x - r.w - gap, y: r.y }, { x: r.x, y: o.y + o.h + gap }, { x: r.x, y: o.y - r.h - gap },
+    { x: o.x + o.w + gap, y: o.y }, { x: o.x, y: o.y + o.h + gap }])
+    .map(p => ({ ...r, ...p })).filter(c => free(c, gap))
+  spots.push({ ...r, x: area.x, y: Math.max(area.y, ...rs.map(o => o.y + o.h + gap)) })
   const d = (c: Rect) => Math.hypot(c.x - r.x, c.y - r.y)
   return spots.reduce((best, c) => (d(c) < d(best) ? c : best))
 }

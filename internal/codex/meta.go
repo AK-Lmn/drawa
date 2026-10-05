@@ -14,6 +14,9 @@ func models() map[string]any {
 			Description string `json:"description"`
 			Hidden      bool   `json:"hidden"`
 			IsDefault   bool   `json:"isDefault"`
+			Efforts     []struct {
+				ReasoningEffort string `json:"reasoningEffort"`
+			} `json:"supportedReasoningEfforts"`
 		} `json:"data"`
 	}
 	if oneOff("model/list", map[string]any{}, &r) != nil {
@@ -33,10 +36,14 @@ func models() map[string]any {
 		if name == "" {
 			name = m.ID
 		}
-		if m.IsDefault {
-			list = append([]any{map[string]any{"value": "", "displayName": "Default (" + name + ")", "description": "Codex's default"}}, list...)
+		efforts := []string{}
+		for _, e := range m.Efforts {
+			efforts = append(efforts, e.ReasoningEffort)
 		}
-		list = append(list, map[string]any{"value": m.ID, "displayName": name, "description": strings.TrimSpace(m.Description)})
+		if m.IsDefault {
+			list = append([]any{map[string]any{"value": "", "displayName": "Default (" + name + ")", "description": "Codex's default", "efforts": efforts}}, list...)
+		}
+		list = append(list, map[string]any{"value": m.ID, "displayName": name, "description": strings.TrimSpace(m.Description), "efforts": efforts})
 	}
 	return map[string]any{"models": list, "commands": []any{}}
 }

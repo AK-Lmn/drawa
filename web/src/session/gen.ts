@@ -21,12 +21,18 @@ function fillModel(S: Session, sel: HTMLSelectElement) {
   }))
   if (!models.some(o => o.value === S.model)) S.model = '' // e.g. a remembered model the agent no longer offers
   sel.value = S.model // the card's choice, restored or picked before the list arrived
+  if (S.effortSel) fillEffort(S, S.effortSel)
 }
 
 // The last model (per agent: model names don't carry over) and effort you picked: new cards start with them (this browser)
 export const lastModel = (backend: string) => getPref('drawa:model:' + backend)
 // not Auto: it's the /effort command's, not a level Claude can start at (config.Efforts), so a new card couldn't send
-export const lastEffort = () => { const e = getPref('drawa:effort'); return e !== 'auto' && EFFORTS.some(([v]) => v === e) ? e : '' }
+// Claude keeps the old key, so existing users keep their choice
+const effortKey = (backend: string) => backend === 'claude' ? 'drawa:effort' : 'drawa:effort:' + backend
+export const lastEffort = (backend: string) => {
+  const e = getPref(effortKey(backend))
+  return backend !== 'claude' || (e !== 'auto' && EFFORTS.some(([v]) => v === e)) ? e : ''
+}
 
 /** The model picker for a card's message bar: options come from its agent itself (GET /api/meta). A fresh backend
  *  (nothing asked yet this page load) can take a few seconds the first time (its own throwaway process, and for
@@ -49,7 +55,12 @@ export function modelPicker(S: Session) {
     })
   }
   sel.value = S.model
-  sel.onchange = () => { S.model = sel.value; setPref('drawa:model:' + S.backend, S.model); saveSoon() }
+  sel.onchange = () => {
+    S.model = sel.value
+    setPref('drawa:model:' + S.backend, S.model)
+    if (S.effortSel) fillEffort(S, S.effortSel)
+    saveSoon()
+  }
   S.modelSel = sel
   return sel
 }
@@ -78,17 +89,40 @@ export const EFFORTS: [string, string, string][] = [
 export function effortPicker(S: Session) {
   const sel = make('select', 'effortsel')
   sel.setAttribute('aria-label', 'Effort for this session')
-  sel.append(...EFFORTS.map(([value, label, desc]) => Object.assign(make('option', '', label), { value, title: desc })))
-  sel.value = S.effort
-  sel.onchange = () => { S.effort = sel.value; setPref('drawa:effort', S.effort); saveSoon() }
+  sel.onchange = () => { S.effort = sel.value; setPref(effortKey(S.backend), S.effort); saveSoon() }
   S.effortSel = sel
+  fillEffort(S, sel)
   return sel
+}
+
+const LABELS: Record<string, string> = { xhigh: 'Extra high', minimal: 'Minimal' }
+const label = (e: string) => LABELS[e] ?? e.charAt(0).toUpperCase() + e.slice(1)
+
+// Claude's levels are fixed; another agent's come per model from its meta. "Default model" ('') uses the agent's
+// Default entry ('' from other agents, 'default' from Claude) when it lists one; with no levels to offer, the picker hides.
+function effortsOf(S: Session): [string, string, string][] {
+  if (S.backend === 'claude') return EFFORTS
+  const models = modelsOf(S), m = models.find(o => S.model ? o.value === S.model : o.value === '' || o.value === 'default')
+  const levels = m?.efforts ?? []
+  if (!levels.length) return []
+  return [['', 'Default effort', `${title(S.backend)}'s own default effort for the model`], ...levels.map(e => [e, label(e), ''] as [string, string, string])]
+}
+
+/** Refills a card's effort options for its current model (picked, restored or arrived late), dropping a level it doesn't offer.
+ *  Restored cards' effort is kept until their agent's models are in, so a slow meta doesn't wipe it. */
+function fillEffort(S: Session, sel: HTMLSelectElement) {
+  const efforts = effortsOf(S)
+  sel.replaceChildren(...efforts.map(([value, l, desc]) => Object.assign(make('option', '', l), { value, title: desc })))
+  if (efforts.length) { if (!efforts.some(([v]) => v === S.effort)) S.effort = '' }
+  else if (modelsOf(S).length) S.effort = ''
+  if (efforts.length) sel.value = S.effort
+  if (efforts.length) delete sel.dataset.off; else sel.dataset.off = ''
 }
 
 /** Sets a card's effort without an onchange round-trip (restoring a saved card). */
 export function setEffort(S: Session, effort: string) {
   S.effort = effort
-  if (S.effortSel) S.effortSel.value = effort
+  if (S.effortSel) fillEffort(S, S.effortSel)
 }
 
 /** A status line below the message bar: tools available and context used as text, plus a ring badge each for the

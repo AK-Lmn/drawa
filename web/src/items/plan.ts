@@ -7,7 +7,7 @@ import { imageBlock } from '../lib/blobs'
 import { persist } from '../lib/store'
 import { md, enhance } from '../lib/markdown'
 import { markChanges } from './plandiff'
-import { rect, savedRect, freeSpot, changed, centerOn } from '../canvas/canvas'
+import { savedRect, spotBeside, changed, centerOn, type Rect } from '../canvas/canvas'
 import { makeWindow } from '../canvas/window'
 import { link, savedPos, forget } from '../canvas/graph'
 import { setDrawing, clearInk } from '../canvas/ink'
@@ -45,9 +45,11 @@ persist('dismissed', () => [...dismissed], (ids: string[]) => ids.forEach(id => 
 interface Review { v: number; general?: string; comments: { i: string; excerpt: string; text: string }[] }
 const review = (p: Plan): Review | undefined => p.done || (!p.comments.length && !p.general.value.trim()) ? undefined
   : { v: p.version, general: p.general.value || undefined, comments: p.comments.map(c => ({ i: c.el.dataset.for ?? '', excerpt: c.excerpt, text: c.text })) }
-persist('plans', () => Object.fromEntries(all.map(p => ['p:' + p.key, { ...savedRect(p.el), ...(p.el.dataset.name ? { name: p.el.dataset.name } : {}), review: review(p) }])), v => Object.assign(savedPos, v), 0)
+const saved = (p: Plan) => ({ ...savedRect(p.el), ...(p.el.dataset.name ? { name: p.el.dataset.name } : {}), review: review(p) })
+persist('plans', () => Object.fromEntries(all.map(p => ['p:' + p.key, saved(p)])), v => Object.assign(savedPos, v), 0)
 referable('plan', {
   icon: '▤',
+  copy: el => all.find(p => p.el === el)?.md ?? '',
   content: (el, label) => ({ text: `Plan "${label}":\n\n${all.find(p => p.el === el)?.md ?? ''}` }),
 })
 
@@ -55,14 +57,13 @@ referable('plan', {
 function create(S: Session, key: string): Plan {
   const body = make('div', 'pnode-b md'), foot = make('div', 'pnode-f')
   const state = make('span', 'pstate'), general = make('textarea'), row = make('div', 'row')
-  const c = rect(S.card)
   const close = iconButton(ICON.x, `Remove plan from canvas (rejects it if ${who(S.backend)} is still waiting)`, async () => {
     if (p.req && !await confirmBox('Reject this plan?', `${who(S.backend)} is waiting for your review. Removing the plan rejects it.`, 'Reject and remove')) return
     remove(p)
   }, 'closebtn')
   const { el, head } = makeWindow({
     kind: 'plan', cls: 'pnode', title: 'Plan', minW: 320, minH: 280, actions: [close],
-    rect: { ...freeSpot({ x: c.x + c.w + 150, y: c.y - 20, w: 560, h: 680 }), ...savedPos['p:' + key] },
+    rect: (savedPos['p:' + key] as Rect | undefined) ?? spotBeside(S.card, 560, 680, 150, -20), // beside the card (inside its group, if it's in one)
   })
   el.dataset.id = 'p:' + key // stable across reloads, so arrows and pins come back
   head.querySelector('.t')!.after(state)
@@ -317,12 +318,25 @@ async function feedback(p: Plan) {
     setMode(p.S, 'plan')
     if (!await send(p.S, 'Feedback on the plan', [{ type: 'text', text: message.replace('They also drew on the plan: the annotated image follows in their next message.', 'They also drew on the plan: see the annotated image below.') },
       ...(image ? [imageBlock('image/png', image)] : [])])) unanswered(p)
+    else sent(p)
     return
   }
-  if (await respond(p, req, { allow: false, message }) && image) send(p.S, 'Annotated plan (my drawing on it)', [
+  if (!await respond(p, req, { allow: false, message })) return
+  sent(p)
+  if (image) send(p.S, 'Annotated plan (my drawing on it)', [
     { type: 'text', text: 'My drawing on your plan, as an annotated screenshot:' },
     imageBlock('image/png', image),
   ])
+}
+
+/** The feedback got there: empty the box and the comments (only now, so a failed send keeps them to try again) and say so. */
+function sent(p: Plan) {
+  p.general.value = ''
+  for (const c of p.comments) c.el.remove()
+  p.comments = []
+  countComments(p)
+  setState(p, `Feedback sent · waiting for the revised plan`, 'revising')
+  changed()
 }
 
 
@@ -341,7 +355,11 @@ export function planWithdrawn(S: Session, req: string) {
 
 /* ---------- canvas bookkeeping ---------- */
 export function dropPlans(S: Session) {
-  for (const p of all.filter(p => p.S === S)) { p.el.remove(); all.splice(all.indexOf(p), 1) }
+  for (const p of all.filter(p => p.S === S)) {
+    savedPos['p:' + p.key] = saved(p) // a rebuild puts it back where it is now
+    p.el.remove()
+    all.splice(all.indexOf(p), 1)
+  }
   current.delete(S)
 }
 // a deleted selection has asked already (its confirm says what that means for a waiting plan)

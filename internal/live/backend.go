@@ -10,7 +10,7 @@ import (
 // Spec is everything a backend needs to start one card's agent.
 type Spec struct {
 	Cid, Sid, Mode, Model string
-	Effort                string // Claude's reasoning effort (config.Efforts); backends without one ignore it
+	Effort                string // the reasoning effort: Claude's config.Efforts, else one the model lists in its meta "efforts"
 	MCPURL                string // the card's canvas MCP endpoint (it carries the card's token): never put it in argv
 }
 
@@ -38,6 +38,12 @@ type Backend interface {
 // Unsender is a Backend that can take back a message it was sent but hasn't read yet (see Kind.Unsend).
 type Unsender interface {
 	Unsend(id string) (bool, error) // false: already read (or never queued)
+}
+
+// EffortSetter is a Backend that takes the effort per turn (Codex's turn/start, OpenCode's variant): a new effort
+// applies from the next send, where without it Start replaces the idle process.
+type EffortSetter interface {
+	SetEffort(effort string)
 }
 
 // Refused is a backend error meaning the agent turned the request down (a mode it won't switch to mid-turn, say)

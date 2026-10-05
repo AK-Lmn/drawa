@@ -12,7 +12,7 @@ import (
 // session returns the card's session, creating it on the first message.
 func (s *server) session() (string, error) {
 	s.mu.Lock()
-	sid, mode, model, spawned := s.sid, s.mode, s.model, s.spawnMode
+	sid, mode, model, spawned, effort := s.sid, s.mode, s.model, s.spawnMode, s.effort
 	s.mu.Unlock()
 	if sid != "" {
 		return sid, nil
@@ -20,8 +20,11 @@ func (s *server) session() (string, error) {
 	var id string
 	if s.v2 {
 		body := map[string]any{}
-		if provider, mid, ok := strings.Cut(model, "/"); ok {
-			body["model"] = map[string]any{"providerID": provider, "id": mid}
+		if ref := modelRef(model, effort); ref != nil {
+			body["model"] = ref
+			s.mu.Lock()
+			s.sentEffort = effort
+			s.mu.Unlock()
 		}
 		if mode == "plan" {
 			body["agent"] = "plan"
@@ -118,6 +121,17 @@ func (s *server) Send(content any, _ string) error {
 		return err
 	}
 	if s.v2 {
+		s.mu.Lock()
+		model, effort, changed := s.model, s.effort, s.effort != s.sentEffort
+		s.mu.Unlock()
+		if ref := modelRef(model, effort); changed && ref != nil {
+			if err := s.call("POST", "/api/session/"+sid+"/model", map[string]any{"model": ref}, nil); err != nil {
+				return err
+			}
+			s.mu.Lock()
+			s.sentEffort = effort
+			s.mu.Unlock()
+		}
 		text, files := textAndFiles(content)
 		body := map[string]any{"text": text}
 		if len(files) > 0 {
@@ -132,6 +146,9 @@ func (s *server) Send(content any, _ string) error {
 	}
 	if provider, model, ok := strings.Cut(s.model, "/"); ok {
 		body["model"] = map[string]any{"providerID": provider, "modelID": model}
+	}
+	if s.effort != "" {
+		body["variant"] = s.effort
 	}
 	s.mu.Unlock()
 	return s.call("POST", "/session/"+sid+"/prompt_async", body, nil)
@@ -289,16 +306,44 @@ func (s *server) SetModel(model string) error {
 	s.mu.Lock()
 	s.model = model
 	s.tr.SetModel(model)
-	sid, v2 := s.sid, s.v2
+	sid, v2, effort := s.sid, s.v2, s.effort
 	s.mu.Unlock()
 	if !v2 || sid == "" {
 		return nil
 	}
-	provider, id, ok := strings.Cut(model, "/")
-	if !ok {
+	ref := modelRef(model, effort)
+	if ref == nil {
 		return nil // "Default": no v2 endpoint to un-set an existing session's model
 	}
-	return s.call("POST", "/api/session/"+sid+"/model", map[string]any{"model": map[string]any{"id": id, "providerID": provider}}, nil)
+	if err := s.call("POST", "/api/session/"+sid+"/model", map[string]any{"model": ref}, nil); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.sentEffort = effort
+	s.mu.Unlock()
+	return nil
+}
+
+// SetEffort: v1 sends the variant with every prompt; v2 sets it on the session at the next Send.
+func (s *server) SetEffort(effort string) {
+	s.mu.Lock()
+	s.effort = effort
+	s.mu.Unlock()
+}
+
+// modelRef is v2's ModelRef for "provider/model" with its variant, nil for "Default".
+// ponytail: so on v2, Default can't carry a variant (the ref needs a model id); pass the default model's id from
+// meta if that matters (#122).
+func modelRef(model, effort string) map[string]any {
+	provider, id, ok := strings.Cut(model, "/")
+	if !ok {
+		return nil
+	}
+	ref := map[string]any{"providerID": provider, "id": id}
+	if effort != "" {
+		ref["variant"] = effort
+	}
+	return ref
 }
 
 func (s *server) interrupt() error {

@@ -76,6 +76,7 @@
 .diff .del{background:var(--del-bg);color:var(--ink)}.diff .del::before{color:var(--del)}
 .diff .sep{display:block;width:auto;height:auto;text-align:center;color:var(--muted);background:var(--hover)}
 .diff .sep::before{content:none}
+.diff .sep.more{cursor:pointer}.diff .sep.more:hover{color:var(--ink)}.diff .sep.more:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 /* unified diffs (panels/diff.ts unified()): the new file's line numbers in a gutter before the +/− column */
 .diff.num>div[data-s]{grid-template-columns:var(--ln) 22px max-content}
 .diff.num>div[data-s]::before{content:attr(data-n);grid-column:1;padding-right:4px;text-align:right;color:var(--muted);border-right:1px solid var(--line)}

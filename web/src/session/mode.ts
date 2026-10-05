@@ -1,13 +1,13 @@
 // Permission mode, per session card: what that card's Claude may do without asking. Picked in the card's message
 // bar; a change applies to its running Claude process right away (Claude reports the switch back as a status line).
-import { make } from '../lib/dom'
+import { make, toast } from '../lib/dom'
 import { post } from '../lib/api'
 import { saveSoon } from '../lib/store'
 import { modesOf } from '../lib/agents'
 import type { Session } from './session'
 
 export const MODES: [string, string, string][] = [
-  ['default', 'Read only', 'Asks before editing files or running commands'],
+  ['default', 'Ask first', 'Asks before editing files or running commands'],
   ['acceptEdits', 'Allow edits', 'Edits files without asking; still asks before other commands'],
   ['auto', 'Auto', 'Claude Code approves safe actions itself and asks only before risky ones'],
   ['plan', 'Plan only', 'Explores and writes a plan for you to review; changes nothing'],
@@ -47,5 +47,10 @@ export function setMode(S: Session, mode: string, tell = true) {
   saveSoon()
 }
 
-/** Claude refused a switch: show the mode it's really in again. */
-export const modeRefused = (S: Session) => setMode(S, S.confirmedMode ?? 'default', false)
+/** Claude refused a switch: show the mode it's really in again, and say so (the dropdown alone flips back unnoticed). */
+export function modeRefused(S: Session) {
+  const want = label(S.mode), now = S.confirmedMode ?? 'default'
+  setMode(S, now, false)
+  toast(`Could not switch to ${want}: still in ${label(now)}.`)
+}
+const label = (m: string) => MODES.find(([v]) => v === m)?.[1] ?? m

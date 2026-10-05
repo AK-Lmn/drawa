@@ -1,11 +1,11 @@
 // A card's message box: the textarea with send / stop, the "/" (skills, commands) and "@" (canvas items) menu,
 // and the chips for canvas items attached to the next message (typed with @ or dropped on the box).
-import { make, ICON, ping } from '../lib/dom'
+import { make, ICON, ping, toast } from '../lib/dom'
 import { api, post, q as enc } from '../lib/api'
 import { centerOn, onDrop, onCanvas } from '../canvas/canvas'
 import { link, unlink, onForget } from '../canvas/graph'
 import { canvasRefs, refOf, refIcon, type Ref } from '../canvas/refs'
-import { cards, focus, meta, clearSession, type Session } from './session'
+import { cards, focus, meta, clearSession, renderCard, type Session } from './session'
 import { send } from './live'
 import { readImages, thumb, type Pasted } from './images'
 import { textRefs } from './uploads'
@@ -40,10 +40,9 @@ export function composer(S: Session, body: HTMLElement) {
   sendBtn.type = 'submit'
   sendBtn.innerHTML = ICON.up
   sendBtn.setAttribute('aria-label', 'Send')
-  // effort is Claude Code's (--effort); other agents get only a model picker
-  const modelSel = modelPicker(S), effortSel = S.backend === 'claude' ? effortPicker(S) : null, pick = modePicker(S)
+  const modelSel = modelPicker(S), effortSel = effortPicker(S), pick = modePicker(S)
   const gen = make('div', 'gensel') // model + effort, then the status line (text and rings together) below them
-  gen.append(...[modelSel, effortSel].filter(x => x !== null), infoBadge(S))
+  gen.append(modelSel, effortSel, infoBadge(S))
   form.append(ta, pick, stopBtn, sendBtn)
   chips.hidden = true
   const dock = make('div', 'dock') // the card's footer: attached references above a clearly bordered message field
@@ -52,12 +51,22 @@ export function composer(S: Session, body: HTMLElement) {
   onSendKey(label) // ponytail: never unregistered; a closed card's closure is tiny, add an off() if cards churn by thousands
   dock.append(chips, gen, form)
   body.append(dock)
-  for (const sel of [modelSel, effortSel, pick]) if (sel) enhance(sel) // the custom dropdowns, once they're in the page
+  for (const sel of [modelSel, effortSel, pick]) enhance(sel) // the custom dropdowns, once they're in the page
   form.onclick = e => { if (e.target === form) ta.focus() } // the whole field is the click target
   Object.assign(S, { ta, stopBtn, chips })
 
   // a turn is interrupted; background agents alone can only be stopped by closing the process (the next message resumes it)
-  stopBtn.onclick = () => post(S.pending ? 'interrupt' : 'close', { cid: S.cid }).catch(() => {})
+  // "stopping" lasts until the card goes quiet (renderCard clears it); a failed request says so and allows a retry
+  stopBtn.onclick = () => {
+    if (stopBtn.dataset.state) return
+    stopBtn.dataset.state = S.pending ? 'stopping' : 'closing' // a turn, or (none running) the background agents
+    renderCard(S)
+    post(S.pending ? 'interrupt' : 'close', { cid: S.cid }).catch(e => {
+      delete stopBtn.dataset.state
+      renderCard(S)
+      toast(`Could not stop ${who(S.backend)}: ${(e as Error).message}`)
+    })
+  }
   form.onsubmit = e => {
     e.preventDefault()
     const p = ta.value.trim()

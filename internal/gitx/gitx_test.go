@@ -462,3 +462,12 @@ func TestWorktreeRepos(t *testing.T) {
 		t.Fatalf("worktrees after remove = %v", wts)
 	}
 }
+
+// A commit's diff takes a hash only: never an option, a range or a revision expression.
+func TestGitShowRejects(t *testing.T) {
+	for _, h := range []string{"--output=x", "HEAD", "abc", "a1b2c3..d4e5f6", "a1b2c3^", "A1B2C3D"} {
+		if _, err := GitShow("", h); err == nil {
+			t.Fatalf("GitShow accepted %q", h)
+		}
+	}
+}

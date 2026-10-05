@@ -11,7 +11,6 @@ import { makeWindow, removeButton, winTitle } from '../canvas/window'
 import { referable } from '../canvas/refs'
 import { inkBox } from '../canvas/ink'
 import { toggleFull, isFull } from '../canvas/fullview'
-import { openZoom } from '../lib/zoom'
 import { fileOpener } from '../canvas/find'
 import { sourceView, mdView, isMarkdown } from '../panels/files'
 
@@ -24,14 +23,17 @@ referable('preview', {
   icon: '◫',
   name: 'file',
   label: el => el.dataset.path ?? '',
+  copy: el => texts.get(el.dataset.path ?? '') ?? '',
   content: el => ({ text: `File: ${el.dataset.path} (read it if you need its contents)` }),
 })
 
 /** A text file as shown: Markdown rendered, anything else as code. `lines`: only that many (Ctrl+K's preview), from
  *  the start or from a little above `at`, a line to mark (shown as source then, even for Markdown). */
+const texts = new Map<string, string>() // each open file's text as last read, for its copy button
 async function textView(path: string, lines?: number, at?: number) {
   try {
     let { text } = await api<{ text: string | null }>('file?path=' + q(path)), first = 1
+    if (text != null && !lines) texts.set(path, text)
     if (text != null && lines) {
       first = Math.max(1, (at ?? 1) - 20)
       text = text.split('\n', first - 1 + lines).slice(first - 1).join('\n')
@@ -54,7 +56,7 @@ function picture(el: HTMLElement, host: HTMLElement, again: boolean) {
   const img = make('img', 'inode-img')
   img.alt = winTitle(el)
   img.onload = () => inkBox(host.dataset.ink!, host, img.naturalWidth, img.naturalHeight)
-  img.onclick = () => (isFull(el) ? openZoom(img) : toggleFull(el)) // as a picture window: full view, then zoom and pan
+  img.onclick = () => { if (!isFull(el)) toggleFull(el) } // as a picture window: full view, where it zooms and pans
   img.onerror = () => { if (img.isConnected) fill(host, make('p', 'none', "This picture can't be read: moved, deleted, or over 20 MB.")) }
   img.src = '/api/raw?path=' + q(el.dataset.path!) + (again ? '&v=' + Date.now() : '')
   return img

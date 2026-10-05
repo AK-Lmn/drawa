@@ -79,16 +79,19 @@ export function iconButton(icon: string, label: string, onClick: () => void, cls
 
 /** Copies `text()` to the clipboard; the icon turns into a check for a moment to confirm. */
 export function copyButton(text: () => string, label = 'Copy') {
-  const flash = (ok: boolean) => {
+  const flash = (ok: boolean, why = 'Copy failed (the browser blocked the clipboard)') => {
     b.innerHTML = ok ? ICON.check : ICON.x
     b.classList.add(ok ? 'on' : 'failed')
-    b.dataset.tip = ok ? label : 'Copy failed (the browser blocked the clipboard)'
+    b.dataset.tip = ok ? label : why
     setTimeout(() => { b.innerHTML = ICON.copy; b.classList.remove('on', 'failed'); b.dataset.tip = label }, 1600)
   }
   // no clipboard outside secure pages (plain http on a LAN address): say so instead of doing nothing
   const b = iconButton(ICON.copy, label, () => {
+    const t = text()
+    // nothing yet (no result, an image or binary file): keep the user's clipboard rather than empty it
+    if (!t) return flash(false, 'Nothing to copy yet')
     if (!navigator.clipboard?.writeText) return flash(false)
-    navigator.clipboard.writeText(text()).then(() => flash(true), () => flash(false))
+    navigator.clipboard.writeText(t).then(() => flash(true), () => flash(false))
   }, 'copybtn')
   return b
 }
