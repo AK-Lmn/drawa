@@ -2,8 +2,8 @@
 // here is in the page until someone edits a file. Colors come from the theme's --syn-* tokens (styles/items.css
 // styles the rest), so it follows light, dark and every scheme without redrawing.
 import { EditorView, basicSetup } from 'codemirror'
-import { Compartment, type Extension, type Text } from '@codemirror/state'
-import { keymap } from '@codemirror/view'
+import { Compartment, Prec, type Extension, type Text } from '@codemirror/state'
+import { keymap, placeholder } from '@codemirror/view'
 import { indentWithTab } from '@codemirror/commands'
 import { HighlightStyle, LanguageDescription, syntaxHighlighting } from '@codemirror/language'
 import { languages } from '@codemirror/language-data'
@@ -12,11 +12,16 @@ import { tags as t } from '@lezer/highlight'
 /** `take()`: the text to save, and `done()` to call once it's saved; `dirty()`: changed since the last save;
  *  `text()`: what the editor holds now. */
 export interface Editor {
-  take(): { text: string; done(): void }; dirty(): boolean; text(): string; goto(line: number): void
-  setVim(on: boolean): Promise<void>; focus(): void; destroy(): void
+  take(): { text: string; done(): void }; dirty(): boolean; text(): string; setText(text: string): void
+  goto(line: number): void; setVim(on: boolean): Promise<void>; focus(): void; destroy(): void
 }
-/** `save()` answers whether the text reached the disk; `quit(force)` stops editing (force: drop unsaved changes). */
-interface Opts { path: string; text: string; vim: boolean; save(): Promise<boolean>; quit(force?: boolean): void }
+/** `save()` answers whether the text reached the disk; `quit(force)` stops editing (force: drop unsaved changes).
+ *  `path`: picks the language. `change(text)`: kept as you type (a scratchpad), so nothing is ever unsaved. `leave`:
+ *  Esc (without Vim) and Ctrl/Cmd+Enter stop editing. `label`, `hint`: its accessible name and empty placeholder. */
+interface Opts {
+  path: string; text: string; vim: boolean; save(): Promise<boolean>; quit(force?: boolean): void
+  change?(text: string): void; leave?: boolean; label?: string; hint?: string
+}
 
 // the same token groups as highlight.js's colors in styles/markdown.css
 const colors = HighlightStyle.define([
@@ -51,7 +56,9 @@ function loadVim() {
     return m
   })
 }
-const vimExt = async (on: boolean): Promise<Extension> => on ? (await loadVim()).vim() : []
+// what fills the Vim slot: Vim itself, or without it the keys that leave a scratchpad (Esc is Vim's own when it's on)
+const vimExt = async (on: boolean, o: Opts): Promise<Extension> => on ? (await loadVim()).vim()
+  : o.leave ? keymap.of([{ key: 'Escape', run: () => { o.quit(); return true } }]) : []
 
 export async function codeEditor(parent: HTMLElement, o: Opts): Promise<Editor> {
   const lang = LanguageDescription.matchFilename(languages, o.path), vimSlot = new Compartment()
@@ -59,12 +66,19 @@ export async function codeEditor(parent: HTMLElement, o: Opts): Promise<Editor> 
     parent,
     doc: o.text,
     extensions: [
-      vimSlot.of(await vimExt(o.vim)), // before the other keymaps, so Vim sees keys first
+      vimSlot.of(await vimExt(o.vim, o)), // before the other keymaps, so Vim sees keys first
       basicSetup,
-      keymap.of([{ key: 'Mod-s', preventDefault: true, run: () => { void o.save(); return true } }, indentWithTab]),
+      Prec.high(keymap.of([ // above basicSetup's own Mod-Enter (insert a blank line)
+        { key: 'Mod-s', preventDefault: true, run: () => { void o.save(); return true } },
+        ...(o.leave ? [{ key: 'Mod-Enter', run: () => { o.quit(); return true } }] : []),
+        indentWithTab,
+      ])),
       lang ? await lang.load() : [],
       syntaxHighlighting(colors),
-      EditorView.contentAttributes.of({ 'aria-label': `Editing ${o.path}` }),
+      EditorView.contentAttributes.of({ 'aria-label': o.label ?? `Editing ${o.path}` }),
+      o.hint ? placeholder(o.hint) : [],
+      // kept as you type: what's kept is never unsaved, so :q never refuses
+      o.change ? EditorView.updateListener.of(u => { if (u.docChanged) { saved = u.state.doc; o.change!(text()) } }) : [],
     ],
   })
   // eq() skips the parts an edit didn't touch, so asking is cheap even for a big file
@@ -78,6 +92,7 @@ export async function codeEditor(parent: HTMLElement, o: Opts): Promise<Editor> 
     take() { const doc = view.state.doc; return { text: text(), done: () => { saved = doc } } },
     dirty,
     text,
+    setText(t) { view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: t } }) },
     goto(line) {
       const at = view.state.doc.line(Math.min(Math.max(1, line), view.state.doc.lines)).from
       view.dispatch({ selection: { anchor: at }, effects: EditorView.scrollIntoView(at, { y: 'center' }) })
@@ -85,7 +100,7 @@ export async function codeEditor(parent: HTMLElement, o: Opts): Promise<Editor> 
     },
     async setVim(on) {
       vimAsked = on
-      const ext = await vimExt(on)
+      const ext = await vimExt(on, o)
       if (!gone && vimAsked === on) view.dispatch({ effects: vimSlot.reconfigure(ext) }) // the newest choice wins
     },
     focus: () => view.focus(),

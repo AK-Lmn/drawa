@@ -64,11 +64,20 @@ function picture(el: HTMLElement, host: HTMLElement, again: boolean) {
   return img
 }
 
+/** The file's line under `y` in a code view, from its height and line count (one layout read, on a double-click). */
+function lineAt(host: HTMLElement, y: number) {
+  const code = host.querySelector('.src code'), n = host.querySelector('.src .ln')?.textContent?.split('\n').length
+  if (!code || !n) return 0 // rendered Markdown: no line to map to, the editor starts at the top
+  const r = code.getBoundingClientRect()
+  return Math.min(n, Math.max(1, Math.floor((y - r.top) / (r.height / n)) + 1))
+}
+
 const toLine = new WeakMap<HTMLElement, (line: number) => void>()
 
 export function preview(o: { path: string; title?: string; rect: Rect; line?: number }) {
   const key = 'pv:' + o.path, image = IMAGE.test(o.path)
-  const pencil = iconButton(ICON.pencil, 'Edit the file', () => toggleEdit(el, host, o.path, pencil, () => load()))
+  const edit = () => toggleEdit(el, host, o.path, pencil, () => load())
+  const pencil = iconButton(ICON.pencil, 'Edit the file', edit)
   const { el, body } = makeWindow({
     kind: 'preview', cls: 'pvnode', title: o.title || o.path.split('/').pop()!, rect: o.rect, minW: 200, minH: 120,
     actions: [...(image ? [] : [pencil]), iconButton(ICON.reload, 'Read the file again', () => load(true), 'pv-reload'), removeButton('Remove from canvas')],
@@ -82,6 +91,13 @@ export function preview(o: { path: string; title?: string; rect: Rect; line?: nu
   if (image) body.classList.add('inode-b')
   host.append(make('p', 'none', 'Reading…'))
   body.append(host)
+  // double-click the text to edit it, as in a Markdown window, with the cursor on the line clicked
+  if (!image) host.addEventListener('dblclick', async e => {
+    if (editing(el) || (e.target as Element).closest('a, button, .mermaid')) return
+    const line = lineAt(host, e.clientY)
+    await edit()
+    if (line && editing(el)) editAt(el, line)
+  })
   let loads = 0, at = o.line // only the newest read is shown, when the reload button is pressed while one is still coming
   const load = async (again = false) => {
     if (editing(el)) return // the editor holds the file until you stop editing

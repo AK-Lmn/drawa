@@ -248,8 +248,10 @@
 /* a Markdown doc: rendered like a reply, scrolls inside; editing swaps in its source */
 .mdoc-b{position:relative;flex:1;min-height:0;overflow:auto;padding:4px 18px 16px;cursor:text}
 .mdoc-md{margin:0}
-.mdoc-ed{flex:1;min-height:0;margin:8px;padding:9px 11px;border:1px solid var(--field-edge);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:12.5px/1.55 var(--mono);font-variant-ligatures:none;tab-size:2;resize:none;outline:none;cursor:text}
-.mdoc-ed:focus{border-color:var(--focus)}
+/* the source editor: the file editor's look (.pvnode-ed), in a field of its own that scrolls */
+.mdoc-ed{flex:1;min-height:0;margin:8px;overflow:auto;border:1px solid var(--field-edge);border-radius:var(--r-ctl);background:var(--bg);cursor:text}
+.mdoc-ed:focus-within{border-color:var(--focus)}
+.mdoc-ed .cm-placeholder{color:var(--muted)}
 
 /* ---------- groups (items/group.ts): a frame behind its windows ---------- */
 /* always under its windows; only the tab takes the pointer, the body lets clicks and the selection box through */
