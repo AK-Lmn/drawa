@@ -77,6 +77,8 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
         const body = item.appendChild(make('div', 'xsel-row'))
         body.append(...rich.row(o))
         const a = rich.action?.(o)
+        // an option's children are presentational to screen readers: the row says what its button (a Tab away) does
+        if (a) item.setAttribute('aria-description', `${a.label}: press Tab`)
         if (a) item.append(iconButton(a.icon, a.label, () => { close(true); a.run() }, 'xsel-act'))
         return item
       }

@@ -96,6 +96,9 @@ function draw(st: GitState) {
     if (!t && repo in picks && s.repo && !s.worktreesFailed) { delete picks[repo]; changed() }
     return t ? [t.dir!, repo, t] : [repo, repo, s]
   })
+  // picking a worktree swaps the repo's view for another: its picker or fold button keeps the focus it had
+  const was = [...w.views.values()].find(v => v.line.contains(document.activeElement))
+  const ctl = was && (was.head === document.activeElement ? 'head' : 'pick')
   for (const dir of w.views.keys()) if (!shown.some(([d]) => d === dir)) w.views.delete(dir)
   const views = shown.map(([dir, repo, s]) => {
     let v = w.views.get(dir)
@@ -120,6 +123,8 @@ function draw(st: GitState) {
   }
   w.single = single
   place(views, single)
+  const now = was && !was.line.isConnected && views.find(v => v.repo === was.repo)
+  if (now) (ctl === 'head' ? now.head : now.pick?.nextElementSibling as HTMLElement | undefined)?.focus()
   for (const v of w.views.values()) if (single || isOpen(v)) v.gh.wake()
 }
 
