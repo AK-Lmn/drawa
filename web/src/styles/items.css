@@ -71,8 +71,8 @@
 .gnote{flex:none;margin:0;padding:6px 12px;border-bottom:1px solid var(--line)}
 /* repos in subfolders: a group each, its head the sticky line (its sections scroll under it) and its commit box inside */
 .ghl{display:none}
-.grouped .ghl{position:sticky;top:0;z-index:var(--z-sticky);display:flex;flex-wrap:wrap;align-items:center;column-gap:8px;padding:0 10px 0 6px;background:var(--bg);font:12.5px var(--mono);color:var(--ink);cursor:pointer}
-.grouped .ghl:hover{background:var(--hover)}
+.grouped .ghl{position:sticky;top:0;z-index:var(--z-sticky);display:flex;flex-wrap:wrap;align-items:center;column-gap:8px;padding:0 10px 0 6px;background:var(--code);font:12.5px var(--mono);color:var(--ink);cursor:pointer}
+.grouped .ghl:hover{background:var(--hover)} /* a repo's head sits on a faint surface (opaque: it sticks), so its files read as under it */
 /* every repo's head is two lines: chevron, name and count, then its branch (or the picker) under the name */
 .ghead{display:flex;align-items:center;gap:8px;flex:1 1 0;max-width:100%;min-width:0;height:32px;padding:0;background:none;text-align:left;font:inherit;color:inherit}
 .ghead .gp{flex:0 1 auto;max-width:none;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis} /* .gp's 60% is for file rows */
