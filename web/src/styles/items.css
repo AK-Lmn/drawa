@@ -78,8 +78,8 @@
 .ghead{display:flex;align-items:center;gap:8px;flex:0 1 auto;max-width:100%;min-width:0;height:32px;padding:0;background:none;text-align:left;font:inherit;color:inherit}
 .ghead .gp{flex:0 1 auto;max-width:none;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis} /* .gp's 60% is for file rows */
 .ghead .gd{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.gtail{display:flex;align-items:center;gap:8px;flex:1 1 auto;min-width:0;height:32px}
-.ghl .gb{flex:0 1 auto;min-width:0;margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;color:var(--muted)}
+.gtail{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex:1 1 auto;min-width:0;height:32px} /* a right column, wrapped or not */
+.ghl .gb{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;color:var(--muted)}
 .ghl .n{flex:none;min-width:18px;text-align:right;font-size:11.5px;color:var(--edit)}
 .gchev{flex:none;display:grid;place-items:center;width:16px;color:var(--muted)}
 .gchev svg{width:13px;height:13px}
@@ -94,9 +94,11 @@
 .grouped .glog>summary,.grouped .gc{padding-left:28px}
 /* a repo's checkouts (its own and its worktrees): a compact picker after its name, two-line rows */
 .gpick{flex:0 1 auto;min-width:0;display:flex}
-.gpick .xsel{min-width:0;height:22px;padding:0 4px 0 7px;gap:3px;font:11.5px var(--mono)}
+/* the picker reads as the branch it stands in for; its edge shows when you reach for it */
+.gpick .xsel{min-width:0;height:22px;padding:0 3px 0 6px;gap:3px;border-color:transparent;background:none;font:11.5px var(--mono);font-weight:400;color:var(--muted)}
+.gpick .xsel:hover,.gpick .xsel:focus-visible,.gpick .xsel[aria-expanded=true]{border-color:var(--field-edge);color:var(--ink)}
 .gpick .xsel svg{width:12px;height:12px;flex:none}
-.gpick .xsel-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gpick .xsel-label{max-width:none;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .xsel-rich .xsel-item{grid-template-columns:16px minmax(0,1fr) auto;column-gap:8px;padding:4px 6px 4px 8px}
 .xsel-rich .xsel-item>svg{grid-column:1;grid-row:1}
 .xsel-row{min-width:0}
