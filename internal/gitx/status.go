@@ -1,6 +1,7 @@
 package gitx
 
 import (
+	"fmt"
 	"os/exec"
 	"regexp"
 	"slices"
@@ -28,29 +29,70 @@ func GitState() map[string]any {
 	return stateCache.state
 }
 
-// allStatus is Root's status and its nested repos', a few at a time. A nested repo that isn't yet tracked by Root's
-// own shows there as an untracked folder: that row is left out, the repo has its own list.
+// allStatus is Root's status and its nested repos', each with its linked worktrees' in "worktrees", a few at a time. A
+// nested repo or worktree that isn't yet tracked by Root's own shows there as an untracked folder: that row is left
+// out, it has its own list.
 func allStatus() map[string]any {
-	st := gitStatus("")
 	repos := Nested()
-	nested := make([]map[string]any, len(repos))
+	wts := allWorktrees()
+	all := make([]map[string]any, 1+len(repos)+len(wts))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 4)
-	for i, repo := range repos {
+	for i := range all {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			nested[i] = gitStatus(repo)
-			nested[i]["dir"] = repo
+			switch {
+			case i == 0:
+				all[i] = gitStatus("", false)
+			case i <= len(repos):
+				all[i] = gitStatus(repos[i-1], false)
+				all[i]["dir"] = repos[i-1]
+			default:
+				w := wts[i-1-len(repos)]
+				all[i] = gitStatus(w.id, true)
+				all[i]["dir"], all[i]["main"] = w.id, w.main
+				if w.locked {
+					all[i]["locked"] = true
+				}
+			}
 		}()
 	}
 	wg.Wait()
-	if files, ok := st["files"].([]map[string]any); ok && len(repos) > 0 {
+	st, nested := all[0], all[1:1+len(repos)]
+	byID := map[string]map[string]any{"": st}
+	for i, r := range repos {
+		byID[r] = nested[i]
+	}
+	own := slices.Clone(repos)
+	for i, w := range wts {
+		m := byID[w.main]
+		if m == nil { // Nested was searched again in between
+			continue
+		}
+		list, _ := m["worktrees"].([]map[string]any)
+		m["worktrees"] = append(list, all[1+len(repos)+i])
+		own = append(own, w.id)
+	}
+	for _, m := range byID {
+		if list, ok := m["worktrees"].([]map[string]any); ok {
+			slices.SortFunc(list, func(a, b map[string]any) int { // changes first, then by branch
+				if ca, cb := total(a) > 0, total(b) > 0; ca != cb {
+					if ca {
+						return -1
+					}
+					return 1
+				}
+				return strings.Compare(fmt.Sprint(a["branch"]), fmt.Sprint(b["branch"]))
+			})
+		}
+	}
+	if files, ok := st["files"].([]map[string]any); ok && len(own) > 0 {
 		kept := files[:0]
 		for _, f := range files {
-			if p := f["path"].(string); f["x"] != "?" || !slices.Contains(repos, strings.TrimSuffix(p, "/")) {
+			if p := f["path"].(string); f["x"] != "?" || !slices.Contains(own, strings.TrimSuffix(p, "/")) {
 				kept = append(kept, f)
 			}
 		}
@@ -60,6 +102,8 @@ func allStatus() map[string]any {
 	st["nested"] = nested
 	return st
 }
+
+func total(m map[string]any) int { n, _ := m["total"].(int); return n }
 
 const GitFiles = 500 // files listed in the Git window; the rest are counted
 
@@ -138,8 +182,9 @@ func prefix() string {
 }
 
 // gitStatus reports a repo's branch, ahead/behind, changed files (staged / unstaged / untracked with line counts),
-// and recent commits. File paths are relative to Root whichever repo they're in.
-func gitStatus(repo string) map[string]any {
+// and recent commits. File paths are relative to Root whichever repo they're in, except a worktree's (wt), which may
+// be outside Root: relative to the worktree's folder.
+func gitStatus(repo string, wt bool) map[string]any {
 	if _, err := exec.LookPath("git"); err != nil { // not "no repo": the Git window mustn't offer a git init that can't run
 		return map[string]any{"repo": false, "missing": true, "error": "git isn't installed. Get it from https://git-scm.com/downloads, then reopen this window."}
 	}
@@ -206,7 +251,7 @@ func gitStatus(repo string) map[string]any {
 		shown = shown[:GitFiles]
 	}
 	for _, f := range shown {
-		if repo != "" {
+		if repo != "" && !wt {
 			f.Path = repo + "/" + f.Path
 		}
 		fileList = append(fileList, map[string]any{

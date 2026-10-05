@@ -36,7 +36,7 @@ func Nested() []string {
 	nestedCache.Lock()
 	defer nestedCache.Unlock()
 	if nestedCache.list == nil || time.Since(nestedCache.at) > 30*time.Second {
-		nestedCache.list = findRepos(config.Root)
+		nestedCache.list = dropWorktrees(findRepos(config.Root))
 		nestedCache.at = time.Now()
 	}
 	return nestedCache.list
@@ -84,14 +84,34 @@ func Repos() []string {
 func Check(repo string) error { _, err := repoDir(repo); return err }
 
 // Path is repo's folder (Root for ""); check it first.
-func Path(repo string) string { return filepath.Join(config.Root, filepath.FromSlash(repo)) }
+// A worktree outside Root has its absolute path as its id.
+func Path(repo string) string {
+	if p := filepath.FromSlash(repo); filepath.IsAbs(p) {
+		return filepath.Clean(p)
+	}
+	return filepath.Join(config.Root, filepath.FromSlash(repo))
+}
 
-// repoDir checks repo names Root ("") or one of the Nested repos: the page can only point git at a folder Drawa found.
+// repoDir checks repo names Root ("") or one of the Nested repos, or a linked worktree of one of them: the page can
+// only point git at a folder Drawa found.
 func repoDir(repo string) (string, error) {
-	if repo == "" || slices.Contains(Nested(), repo) {
+	if repo == "" || slices.Contains(Nested(), repo) || isWorktree(repo) {
 		return repo, nil
 	}
 	return "", ErrNoRepo
+}
+
+// pathIn turns p from the page into a path relative to repo's folder. A worktree's paths are already relative to it
+// (it may be outside Root); anyone else's are relative to Root.
+func pathIn(repo, p string, wt bool) (string, error) {
+	if wt {
+		return config.Within(Path(repo), p)
+	}
+	rel, err := rootRel(p)
+	if err != nil {
+		return "", err
+	}
+	return inRepo(repo, rel)
 }
 
 // inRepo turns rel (relative to Root, from rootRel) into a path relative to repo, the folder git runs in for it. A path

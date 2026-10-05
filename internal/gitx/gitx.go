@@ -3,6 +3,7 @@
 package gitx
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,10 +89,7 @@ func GitDiff(repo, rel string, staged bool) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if rel, err = rootRel(rel); err != nil {
-		return nil, err
-	}
-	if rel, err = inRepo(repo, rel); err != nil {
+	if rel, err = pathIn(repo, rel, isWorktree(repo)); err != nil {
 		return nil, err
 	}
 	args := []string{"diff"}
@@ -162,12 +160,9 @@ func GitOp(body map[string]any) (map[string]any, error) {
 			}
 		}
 	}
+	wt := isWorktree(repo)
 	for i, p := range paths {
-		rel, err := rootRel(p)
-		if err != nil {
-			return nil, err
-		}
-		if paths[i], err = inRepo(repo, rel); err != nil {
+		if paths[i], err = pathIn(repo, p, wt); err != nil {
 			return nil, err
 		}
 	}
@@ -205,6 +200,22 @@ func GitOp(body map[string]any) (map[string]any, error) {
 			return nil, ErrNoRepo // a nested repo is one already
 		}
 		ok, out = git(Opts{}, "init")
+	case "worktree-remove":
+		w, found := worktreeOf(repo)
+		if !found { // Root's repo and nested ones aren't linked worktrees
+			return nil, ErrNoRepo
+		}
+		if w.locked {
+			return nil, errors.New("this worktree is locked: unlock it with git worktree unlock first")
+		}
+		args := []string{"worktree", "remove"}
+		if force, _ := body["force"].(bool); force {
+			args = append(args, "--force")
+		}
+		// from the main repo: git won't remove the worktree it runs in. The branch stays; git's refusal (changes,
+		// untracked files) is the reply as it is
+		ok, out = GitOpts(Opts{Repo: w.main}, append(args, Path(repo))...)
+		forgetWorktrees()
 	case "message":
 		backend, _ := body["backend"].(string)
 		return GitMessage(repo, backend), nil

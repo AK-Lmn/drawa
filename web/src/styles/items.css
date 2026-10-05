@@ -66,16 +66,18 @@
 .gempty{padding:28px 20px;text-align:center}.gempty p{margin:0 0 14px;color:var(--muted);font-size:13px}
 .gnote{flex:none;margin:0;padding:6px 12px;border-bottom:1px solid var(--line)}
 /* repos in subfolders: a group each, its head the sticky line (its sections scroll under it) and its commit box inside */
-.ghead{display:none}
-.grouped .ghead{position:sticky;top:0;z-index:var(--z-sticky);display:flex;align-items:center;gap:8px;width:100%;height:32px;padding:0 10px 0 6px;background:var(--bg);text-align:left;font:12.5px var(--mono);color:var(--ink)}
-.grouped .ghead:hover{background:var(--hover)}
+.ghl{display:none}
+.grouped .ghl{position:sticky;top:0;z-index:var(--z-sticky);display:flex;align-items:center;gap:8px;height:32px;padding:0 10px 0 6px;background:var(--bg);font:12.5px var(--mono);color:var(--ink);cursor:pointer}
+.grouped .ghl:hover{background:var(--hover)}
+.ghead{display:flex;align-items:center;gap:8px;flex:0 1 auto;min-width:0;height:100%;padding:0;background:none;text-align:left;font:inherit;color:inherit}
+.ghead .gd{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ghead .gp{font-weight:600}
-.ghead .gb{flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;color:var(--muted)}
-.ghead .n{flex:none;min-width:18px;text-align:right;font-size:11.5px;color:var(--edit)}
+.ghl .gb{flex:none;margin-left:auto;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;color:var(--muted)}
+.ghl .n{flex:none;min-width:18px;text-align:right;font-size:11.5px;color:var(--edit)}
 .gchev{flex:none;display:grid;place-items:center;width:16px;color:var(--muted)}
 .gchev svg{width:13px;height:13px}
 .ghead[aria-expanded=false] .gchev svg{transform:rotate(-90deg)}
-.ghead[aria-expanded=false]~*{display:none}
+.ghl:has(>.ghead[aria-expanded=false])~*{display:none}
 .ggroup+.ggroup{border-top:1px solid var(--line)}
 .grouped .gsec{position:static;padding-left:28px}
 .grouped .grow{padding-left:22px}
@@ -83,6 +85,22 @@
 .ggroup .gfoot{padding:4px 10px 10px 28px;border-top:0;background:none}
 .ggroup .glog{margin-top:4px}
 .grouped .glog>summary,.grouped .gc{padding-left:28px}
+/* a repo's checkouts (its own and its worktrees): a compact picker after its name, two-line rows */
+.gpick{flex:0 1 auto;min-width:0;display:flex}
+.gpick .xsel{min-width:0;height:22px;padding:0 4px 0 7px;gap:3px;font:11.5px var(--mono)}
+.gpick .xsel svg{width:12px;height:12px}
+.xsel-rich .xsel-item{grid-template-columns:16px minmax(0,1fr) auto;column-gap:8px;padding:4px 6px 4px 8px}
+.xsel-rich .xsel-item>svg{grid-column:1;grid-row:1}
+.xsel-row{min-width:0}
+.gpt{display:flex;align-items:baseline;gap:8px}
+.gpb{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:12.5px var(--mono)}
+.gpn{flex:none;font-size:11.5px;color:var(--muted)}
+.gpl{flex:none;margin-left:auto;padding:0 4px;border:1px solid var(--line);border-radius:var(--r-tag);font-size:10.5px;color:var(--muted)}
+/* the folder takes no width of its own: the branch line sets the menu's, and a long path loses its start */
+.gpf{width:0;min-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left;font-size:11px;color:var(--muted)}
+.gpf>span{direction:ltr;unicode-bidi:embed}
+.xsel-act{width:24px;height:24px;border-radius:0}
+.xsel-act:hover,.xsel-act:focus-visible{color:var(--danger);background:color-mix(in oklab,var(--danger) 14%,transparent)}
 
 /* Files window: every file a session touched, grouped by folder, changed files first */
 .flist{flex:1;min-height:0;overflow:auto;padding:4px 0 8px}
