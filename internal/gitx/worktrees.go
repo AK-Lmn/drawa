@@ -178,23 +178,30 @@ func worktreeLists() ([]linked, []string) {
 		ch, gen := make(chan struct{}), wtCache.gen
 		wtCache.busy = ch
 		wtCache.Unlock()
-
-		list, failed := readWorktrees()
-
-		wtCache.Lock()
-		if gen == wtCache.gen {
-			wtCache.list, wtCache.failed, wtCache.at = list, failed, time.Now()
-		}
-		wtCache.busy = nil
-		close(ch)
-		wtCache.Unlock()
-		return list, failed
+		return refreshWorktrees(ch, gen)
 	}
 }
 
-// readWorktrees runs git worktree list for every repo, four at a time.
+// refreshWorktrees reads the lists and stores them; busy is cleared in a defer, so a panic can't leave waiters stuck.
+func refreshWorktrees(ch chan struct{}, gen int) ([]linked, []string) {
+	defer func() {
+		wtCache.Lock()
+		wtCache.busy = nil
+		close(ch)
+		wtCache.Unlock()
+	}()
+	list, failed := readWorktrees()
+	wtCache.Lock()
+	if gen == wtCache.gen {
+		wtCache.list, wtCache.failed, wtCache.at = list, failed, time.Now()
+	}
+	wtCache.Unlock()
+	return list, failed
+}
+
+// readWorktrees runs git worktree list for every candidate repo, four at a time.
 func readWorktrees() ([]linked, []string) {
-	repos := Repos()
+	repos := candidates()
 	lists := make([][]linked, len(repos))
 	errs := make([]error, len(repos))
 	var wg sync.WaitGroup
@@ -280,21 +287,4 @@ func top(repo string) string {
 		}
 	}
 	return dir
-}
-
-// dropWorktrees leaves out of found (repos in Root's subfolders) the linked worktrees of Root's repo or of another
-// found one: they're listed under their repo. A worktree whose repo isn't listed stays a repo of its own.
-func dropWorktrees(found []string) []string {
-	var paths []string
-	dirs := []string{top("")}
-	for _, f := range found {
-		dirs = append(dirs, Path(f))
-	}
-	for _, d := range dirs {
-		wts, _ := worktrees(d) // ponytail: a listing that fails hides nothing; the repo shows twice until it answers
-		for _, w := range wts {
-			paths = append(paths, real(w.Path))
-		}
-	}
-	return slices.DeleteFunc(found, func(f string) bool { return slices.Contains(paths, real(Path(f))) })
 }

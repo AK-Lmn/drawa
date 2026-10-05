@@ -30,13 +30,31 @@ var nestedCache = struct {
 }{}
 
 // Nested lists the git repositories in folders below Root (slash-separated, relative to Root, sorted): cloned repos
-// side by side in a workspace folder, or repos inside the project's own. Root's own repo isn't one of them. Searched
-// again every 30 seconds at most, so a repo cloned meanwhile shows up soon after.
+// side by side in a workspace folder, or repos inside the project's own. Root's own repo isn't one of them, nor is a
+// linked worktree of a listed repo (it's listed under its repo). A worktree whose listing failed shows as a repo of its
+// own until git answers.
 func Nested() []string {
+	found := found()
+	// Ordering: found() walks folders under nestedCache's lock but runs no git; the worktree lists come from
+	// worktreeLists' own cache (one refresh in flight, failures cached), read after that lock is released. Its refresh
+	// asks candidates(), never Nested, so neither waits on the other.
+	var wts []string
+	for _, l := range allWorktrees() {
+		wts = append(wts, real(Path(l.id)))
+	}
+	if len(wts) == 0 {
+		return found
+	}
+	return slices.DeleteFunc(slices.Clone(found), func(f string) bool { return slices.Contains(wts, real(Path(f))) })
+}
+
+// found is every folder below Root holding a .git, worktrees included. Searched again every 30 seconds at most, so a
+// repo cloned meanwhile shows up soon after.
+func found() []string {
 	nestedCache.Lock()
 	defer nestedCache.Unlock()
 	if nestedCache.list == nil || time.Since(nestedCache.at) > 30*time.Second {
-		nestedCache.list = dropWorktrees(findRepos(config.Root))
+		nestedCache.list = findRepos(config.Root)
 		nestedCache.at = time.Now()
 	}
 	return nestedCache.list
@@ -69,15 +87,20 @@ func findRepos(root string) []string {
 }
 
 // Repos are the repositories the Git and GitHub windows offer: "" (Root's own) when Root is in one, then Nested.
-func Repos() []string {
+func Repos() []string { return repos(Nested()) }
+
+// candidates are the repos whose worktrees are listed: Repos before worktrees are left out of it.
+func candidates() []string { return repos(found()) }
+
+func repos(nested []string) []string {
 	prefix()
 	prefixCache.Lock()
 	own := prefixCache.ok // known once git answered: Root is in a repo (a failure isn't cached, so a git init shows up)
 	prefixCache.Unlock()
 	if own {
-		return append([]string{""}, Nested()...)
+		return append([]string{""}, nested...)
 	}
-	return Nested()
+	return nested
 }
 
 // Check is repoDir's verdict alone, for callers that run other programs in a repo (gh).

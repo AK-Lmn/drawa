@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"drawa/internal/config"
@@ -550,5 +551,52 @@ func TestGitShowRejects(t *testing.T) {
 		if _, err := GitShow("", h); err == nil {
 			t.Fatalf("GitShow accepted %q", h)
 		}
+	}
+}
+
+// Nested and Check share the worktree cache: a slow git costs one listing per repo per refresh, not one per call, and
+// no lock is held while it runs.
+func TestNestedGitOncePerRefresh(t *testing.T) {
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("no git")
+	}
+	root, _ := filepath.EvalSymlinks(t.TempDir())
+	for _, d := range []string{"", "sub"} {
+		cmd := exec.Command("git", "init", "-q", filepath.Join(root, d))
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("init: %v %s", err, out)
+		}
+	}
+	bin, log := t.TempDir(), filepath.Join(t.TempDir(), "log")
+	script := "#!/bin/sh\ncase \" $* \" in *\" worktree \"*) echo x >> " + log + "; sleep 0.3;; esac\nexec " + real + " \"$@\"\n"
+	os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	saved := config.Root
+	config.Root = root
+	reset := func() {
+		prefixCache.ok, nestedCache.list, stateCache.state, wtCache.list, wtCache.good = false, nil, nil, nil, nil
+	}
+	reset()
+	t.Cleanup(func() { config.Root = saved; reset() })
+
+	var wg sync.WaitGroup
+	for range 10 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if n := Nested(); !reflect.DeepEqual(n, []string{"sub"}) {
+				t.Errorf("Nested = %v", n)
+			}
+			if Check("sub") != nil || Check("nope") == nil {
+				t.Error("Check")
+			}
+		}()
+	}
+	wg.Wait()
+	b, _ := os.ReadFile(log)
+	if n := strings.Count(string(b), "x"); n != 2 { // Root's repo and sub, once each
+		t.Fatalf("git worktree ran %d times", n)
 	}
 }
