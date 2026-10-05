@@ -67,6 +67,15 @@ function loadVim() {
       seen = text // the first read only learns what's there: a clipboard from before the editor opened isn't news
     }, () => {}) // not allowed (Firefox, or turned down): the register keeps Vim's own yanks
     addEventListener('focus', () => { const v = activeView(); if (v && owners.has(v)) pull() })
+    // Vim's own messages: "N lines yanked" only from 3 lines up, as Vim's 'report' does (it said "1 lines yanked" for a
+    // word), in the muted color; anything else (an unknown command) in the theme's danger color, not a raw red
+    const open = m.CodeMirror.prototype.openNotification
+    m.CodeMirror.prototype.openNotification = function (n: Node, o: Parameters<typeof open>[1]) {
+      const msg = n instanceof HTMLElement && n.classList.contains('cm-vim-message') ? n : null, y = /^(\d+) lines yanked/.exec(msg?.textContent ?? '')
+      if (y && +y[1] < 3) return () => {}
+      if (msg) msg.style.color = y ? 'var(--muted)' : 'var(--danger)'
+      return open.call(this, n, o)
+    }
     return m
   })
 }
