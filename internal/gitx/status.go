@@ -96,8 +96,6 @@ func allStatus() map[string]any {
 	return st
 }
 
-func total(m map[string]any) int { n, _ := m["total"].(int); return n }
-
 const GitFiles = 500 // files listed in the Git window; the rest are counted
 
 var aheadRe = regexp.MustCompile(`ahead (\d+)`)
