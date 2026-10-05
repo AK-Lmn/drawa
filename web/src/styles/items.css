@@ -312,6 +312,7 @@ body:not(.drawing) #stage:not(.hand) .inode-b .ink-shape .ink-line{pointer-event
 .pvnode-ed .cm-button{background:var(--bg);background-image:none;color:var(--ink);border:1px solid var(--line-2);border-radius:var(--r-ctl)}
 .pvnode-ed .cm-button:hover{background:var(--hover)}
 .pvnode-ed .cm-panel.cm-search [name=close]{color:var(--muted)}
+.pvnode-ed .cm-yanked{background:color-mix(in oklab,var(--accent) 40%,var(--bg));border-radius:var(--r-tag)}
 .pvnode-ed .cm-fat-cursor{background:var(--accent) !important;color:var(--on-accent) !important}
 .pvnode-ed .cm-editor:not(.cm-focused) .cm-fat-cursor{background:none !important;outline:1px solid var(--accent)}
 .pvnode-ed .cm-tooltip{background:var(--bg);color:var(--ink);border:1px solid var(--line-2);border-radius:var(--r-box)}

@@ -2,8 +2,8 @@
 // here is in the page until someone edits a file. Colors come from the theme's --syn-* tokens (styles/items.css
 // styles the rest), so it follows light, dark and every scheme without redrawing.
 import { EditorView, basicSetup } from 'codemirror'
-import { Compartment, Prec, type Extension, type Text } from '@codemirror/state'
-import { keymap, placeholder } from '@codemirror/view'
+import { Compartment, Prec, StateEffect, StateField, type Extension, type Text } from '@codemirror/state'
+import { Decoration, keymap, placeholder, type DecorationSet } from '@codemirror/view'
 import { indentWithTab } from '@codemirror/commands'
 import { HighlightStyle, LanguageDescription, syntaxHighlighting } from '@codemirror/language'
 import { languages } from '@codemirror/language-data'
@@ -35,6 +35,18 @@ const colors = HighlightStyle.define([
   { tag: t.emphasis, fontStyle: 'italic' },
 ])
 
+// what was just yanked, marked for a moment (Neovim's highlight-on-yank): which text Vim took, at a glance
+const flash = StateEffect.define<{ from: number; to: number }[]>()
+const yankMark = Decoration.mark({ class: 'cm-yanked' })
+const yanked = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update: (marks, tr) => {
+    for (const e of tr.effects) if (e.is(flash)) return Decoration.set(e.value.filter(r => r.to > r.from).map(r => yankMark.range(r.from, r.to)), true)
+    return marks.map(tr.changes)
+  },
+  provide: f => EditorView.decorations.from(f),
+})
+
 // :w, :q, :q! and :wq go to the editor they were typed in. Vim's ex commands are global, so they're defined once.
 const owners = new WeakMap<EditorView, { o: Opts; dirty(): boolean }>()
 let vimMod: Promise<typeof import('@replit/codemirror-vim')> | undefined
@@ -60,6 +72,7 @@ function loadVim() {
     const regs = m.Vim.getRegisterController(), push = regs.pushText.bind(regs)
     regs.pushText = (name, op, text, linewise, blockwise) => {
       push(name, op, text, linewise, blockwise)
+      if (op === 'yank') markYank(m)
       if (!name || name === '"' || name === '+' || name === '*') navigator.clipboard?.writeText(text).then(() => { seen = text }, () => {})
     }
     pull = () => navigator.clipboard?.readText().then(text => {
@@ -80,6 +93,21 @@ function loadVim() {
   })
 }
 let seen: string | undefined, pull = (): unknown => undefined
+/** Flash what a yank took: while Vim's yank runs, the editor's selections are exactly the yanked ranges. */
+function markYank(m: typeof import('@replit/codemirror-vim')) {
+  const view = activeView(), cm = view && m.getCM(view)
+  if (!view || !cm) return
+  const ranges = cm.listSelections().map(s => {
+    const a = cm.indexFromPos(s.anchor), b = cm.indexFromPos(s.head)
+    return { from: Math.min(a, b), to: Math.max(a, b) }
+  })
+  // after Vim's own update (it's mid-command now), and gone again shortly after
+  setTimeout(() => {
+    if (!owners.has(view)) return
+    view.dispatch({ effects: flash.of(ranges) })
+    setTimeout(() => { if (owners.has(view)) view.dispatch({ effects: flash.of([]) }) }, 250)
+  })
+}
 const activeView = () => { const ed = document.activeElement?.closest<HTMLElement>('.cm-editor'); return ed ? EditorView.findFromDOM(ed) : null }
 // what fills the Vim slot: Vim itself, or without it the keys that leave a scratchpad (Esc is Vim's own when it's on)
 const vimExt = async (on: boolean, o: Opts): Promise<Extension> => on ? (await loadVim()).vim()
@@ -100,6 +128,7 @@ export async function codeEditor(parent: HTMLElement, o: Opts): Promise<Editor> 
       ])),
       lang ? await lang.load() : [],
       syntaxHighlighting(colors),
+      yanked,
       EditorView.contentAttributes.of({ 'aria-label': o.label ?? `Editing ${o.path}` }),
       o.hint ? placeholder(o.hint) : [],
       // kept as you type: what's kept is never unsaved, so :q never refuses
@@ -130,6 +159,6 @@ export async function codeEditor(parent: HTMLElement, o: Opts): Promise<Editor> 
       if (!gone && vimAsked === on) view.dispatch({ effects: vimSlot.reconfigure(ext) }) // the newest choice wins
     },
     focus: () => view.focus(),
-    destroy: () => { gone = true; view.destroy() },
+    destroy: () => { gone = true; owners.delete(view); view.destroy() },
   }
 }
