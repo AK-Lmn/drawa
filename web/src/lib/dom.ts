@@ -63,6 +63,9 @@ export const closestAt = <T extends Element = HTMLElement>(x: number, y: number,
 export const typing = (t: EventTarget | null) => t instanceof Element && !!t.closest(EDITABLE)
 /** May a single-key shortcut run: not while typing, not while a dialog is open. */
 export const shortcutOk = (e: KeyboardEvent) => !typing(e.target) && !document.querySelector('dialog[open]')
+/** What has focus inside `el` (not `el` itself), if anything. Moving an element in the page takes focus away, so
+ *  whatever moves a window (full view, pinning, sticking to the screen) hands it back to this afterwards. */
+export const focusedIn = (el: HTMLElement) => el.contains(document.activeElement) && document.activeElement !== el ? document.activeElement as HTMLElement : null
 
 /** A square icon button; the click doesn't reach the window under it (no drag, no focus steal). */
 /** A toggle or segmented-tab button's state: .on for the eye, aria-pressed for a screen reader. */

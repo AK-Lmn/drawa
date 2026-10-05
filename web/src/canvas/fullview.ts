@@ -1,6 +1,6 @@
 // Full view: any window can be lifted out to fill the screen (its tab's ⤢ button), still live: a session keeps
 // streaming and takes typing. Esc or the same button puts it back exactly where it was (canvas or sidebar).
-import { $, make, shortcutOk } from '../lib/dom'
+import { $, make, shortcutOk, focusedIn } from '../lib/dom'
 import { changed, stage, onChange, holder } from './canvas'
 import { redraw } from './graph'
 import { setToggle } from './dock'
@@ -23,13 +23,10 @@ export const anyFull = () => !!open
 // the window in full view was closed (its ×): take the dimmed layer down with it
 onChange(() => { if (open && !open.el.isConnected) exitFull() })
 
-/** What has focus inside `el`: moving a window to or from full view takes focus away, so it's handed back after. */
-const focusIn = (el: HTMLElement) => el.contains(document.activeElement) && document.activeElement !== el ? document.activeElement as HTMLElement : null
-
 export function toggleFull(el: HTMLElement) {
   if (open?.el === el) return exitFull()
   exitFull() // one at a time
-  const had = focusIn(el) // typing in it (a file being edited, a note): keep typing in full view
+  const had = focusedIn(el) // typing in it (a file being edited, a note): keep typing in full view
   const spot = document.createComment('full view') // holds its place (canvas or sidebar) while it's lifted out
   const min = el.classList.contains('min')
   el.replaceWith(spot)
@@ -55,7 +52,7 @@ export function exitFull(keys = false) {
   document.body.classList.remove('has-full')
   if (!el.isConnected) { spot.remove(); return } // closed while in full view: it stays closed
   el.classList.remove('full')
-  const had = focusIn(el)
+  const had = focusedIn(el)
   spot.replaceWith(el)
   if (min) collapse(el)
   sync(el)
