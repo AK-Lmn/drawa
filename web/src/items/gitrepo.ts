@@ -1,13 +1,13 @@
 // One repository in the Git window: its staged / changed / untracked files (click one for its diff), stage and unstage,
 // recent commits, and its commit box (Claude can write the message), push and pull. With repos in subfolders the
 // window shows one of these per repo, each a group you can fold; with only the project's own, just its lists.
-import { make, ICON, iconButton, button, confirmBox, toast, project } from '../lib/dom'
+import { make, ICON, iconButton, button, confirmBox, project } from '../lib/dom'
 import { api, post, q } from '../lib/api'
 import { changed } from '../canvas/canvas'
 import { unified, openable, openFileButton } from '../panels/diff'
 import { writer, setWriter, who, installed, blurb, chooser } from '../lib/agents'
-import { enhance } from '../lib/select'
 import { ghStrip, type Strip } from './gitgh'
+import { picker } from './gitwt'
 
 export interface GitFile { path: string; x: string; y: string; staged: [number, number]; unstaged: [number, number] }
 export interface GitState {
@@ -15,6 +15,7 @@ export interface GitState {
   files?: GitFile[]; total?: number; log?: { hash: string; subject: string; when: string; author: string }[]
   dir?: string // a nested repo's folder, relative to the project
   nested?: GitState[] // the project's own state only: the repos in its subfolders
+  worktreesFailed?: boolean // its worktree list couldn't be read this time: unknown, not empty
   worktrees?: GitState[] // its linked worktrees: dir is their id (relative, or absolute when outside the project)
   main?: string // a worktree's: the repo it belongs to ('' the project's own)
   locked?: boolean; head?: string // a worktree's: git won't remove it; its commit, when detached
@@ -47,9 +48,9 @@ export const folds: Record<string, boolean> = {}
 /** The worktree each repo shows, by repo (none: its own checkout). */
 export const picks: Record<string, string> = {}
 
-type GitReply = { ok?: boolean; out?: string; message?: string; error?: string }
+type GitReply = { ok?: boolean; out?: string; message?: string; error?: string; dirty?: boolean }
 /** A git action. Never throws: a dead server comes back as a failed reply. */
-const gitPost = (body: object): Promise<GitReply> =>
+export const gitPost = (body: object): Promise<GitReply> =>
   post('git', body).catch(e => ({ ok: false, out: (e as Error).message, error: (e as Error).message }))
 
 export const repoName = (dir: string) => dir.split('/').pop() || project.name
@@ -94,9 +95,11 @@ export function fill(v: RepoView, st: GitState, host: Host) {
   const slash = v.repo.lastIndexOf('/'), sync = syncText(st), many = v.checkouts.length > 1
   v.head.replaceChildren(chev, make('span', 'gp', repoName(v.repo)), make('span', 'gd', slash > 0 ? v.repo.slice(0, slash + 1) : ''))
   // with worktrees the picker names the branch; the line keeps the sync and the count
+  const had = v.line.contains(document.activeElement) ? document.activeElement as HTMLElement : null
   v.line.replaceChildren(v.head, ...(many ? [picker(v, host)] : []),
     make('span', 'gb', st.repo ? many ? sync : `${st.branch}${sync ? ' ' + sync : ''}` : 'unreadable'),
     ...(st.total ? [make('span', 'n', String(st.total))] : []))
+  if (had?.isConnected && had !== document.activeElement) had.focus() // moving the fold button or picker drops its focus
   v.head.title = st.repo ? `${v.dir || project.name}: ${st.total ? `${st.total} changed file${st.total === 1 ? '' : 's'}` : 'clean'}` : st.error ?? ''
   fold(v)
   v.gh.el.hidden = !st.repo // pull request status means nothing without a repository
@@ -295,63 +298,3 @@ async function writeMessage(v: RepoView, b: HTMLButtonElement, agent: string) {
 
 /** A worktree's folder for messages: its path in the project, or the last two parts of one outside it. */
 export const wtFolder = (dir: string) => dir.startsWith('/') ? '…/' + dir.split('/').slice(-2).join('/') : dir
-
-/** A checkout's branch, or the commit it's on when detached. */
-const branchOf = (st: GitState) => !st.branch || /no branch|detached|^HEAD/i.test(st.branch) ? `detached ${st.head?.slice(0, 7) ?? ''}`.trim() : st.branch
-
-/** The repo's checkouts as a dropdown: its own, then those with changes, then by branch. Picking one shows it here. */
-function picker(v: RepoView, host: Host) {
-  const own = v.checkouts[0], id = (c: GitState) => c.dir ?? '' // the project's own repo has none
-  const list = [own, ...v.checkouts.slice(1).sort((a, b) => +!a.total - +!b.total || branchOf(a).localeCompare(branchOf(b)))]
-  // rows look up the latest fill's checkouts: the options are replaced on every refresh
-  const find = (o: HTMLOptionElement) => v.checkouts.find(c => id(c) === o.value)
-  if (!v.pick) {
-    v.pick = make('select')
-    v.pick.setAttribute('aria-label', 'Checkout shown: the repository or one of its worktrees')
-    v.pick.title = 'Checkout shown'
-    v.pick.onchange = () => {
-      if (v.pick!.value === v.repo) delete picks[v.repo]; else picks[v.repo] = v.pick!.value
-      changed()
-      host.redraw()
-    }
-    const sel = v.pick
-    const box = make('span', 'gpick')
-    box.append(sel)
-    enhance(sel, {
-      row: o => {
-        const c = find(o)
-        if (!c) return []
-        const top = make('div', 'gpt'), dir = make('div', 'gpf'), mine = c === v.checkouts[0]
-        top.append(make('span', 'gpb', branchOf(c)), make('span', 'gpn', [mine ? '(repo)' : '', c.total ? `${c.total} changed` : ''].filter(Boolean).join(' ')),
-          ...(c.locked ? [make('span', 'gpl', 'locked')] : []))
-        const path = mine ? (v.repo || project.root) : c.dir!
-        dir.append(make('span', '', path))
-        dir.title = path
-        return [top, dir]
-      },
-      search: o => { const c = find(o); return c ? `${branchOf(c)} ${c === v.checkouts[0] ? (v.repo || project.root) : c.dir}` : '' },
-      empty: 'No worktrees match',
-      action: o => {
-        const c = find(o)
-        return !c || c === v.checkouts[0] || c.locked ? null : { icon: ICON.x, label: 'Remove worktree', run: () => removeWorktree(c, host) }
-      },
-    })
-  }
-  v.pick.replaceChildren(...list.map(c => Object.assign(make('option', '', branchOf(c)), { value: id(c) })))
-  v.pick.value = v.dir
-  return v.pick.parentElement!
-}
-
-// No Undo here, unlike other removals: git deletes the folder, and changes in it that weren't committed are gone.
-async function removeWorktree(c: GitState, host: Host) {
-  const what = `${c.dir} (branch ${branchOf(c)})`
-  if (!await confirmBox('Remove this worktree?', `Deletes the folder ${what}. The branch and its commits are kept.`, 'Remove')) return
-  let r = await gitPost({ op: 'worktree-remove', repo: c.dir, force: false })
-  if (!r.ok && /modified|untracked|uncommitted|dirty|--force/i.test(r.out ?? r.error ?? '')) {
-    if (!await confirmBox('Remove it anyway?', `${what} has uncommitted or untracked changes that will be lost.`, 'Remove and lose changes')) return
-    r = await gitPost({ op: 'worktree-remove', repo: c.dir, force: true })
-  }
-  if (r.ok) toast(`Removed the worktree ${wtFolder(c.dir!)}.`)
-  else toast(r.out || r.error || 'Removing the worktree failed')
-  host.refresh() // a picked one that's gone falls back to its repo's own checkout
-}

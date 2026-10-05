@@ -89,10 +89,11 @@ function draw(st: GitState) {
       refresh()
     }))
   }
-  // each repo shows the checkout picked for it: its own, or one of its worktrees (gone: its own again)
+  // each repo shows the checkout picked for it: its own, or one of its worktrees. A pick that's gone is forgotten; one
+  // missing from a status or worktree list that couldn't be read is kept, and its repo's own shown meanwhile
   const shown = repos.map(([repo, s]): [string, string, GitState] => {
     const t = s.worktrees?.find(t => t.dir === picks[repo])
-    if (!t && repo in picks) { delete picks[repo]; changed() }
+    if (!t && repo in picks && s.repo && !s.worktreesFailed) { delete picks[repo]; changed() }
     return t ? [t.dir!, repo, t] : [repo, repo, s]
   })
   for (const dir of w.views.keys()) if (!shown.some(([d]) => d === dir)) w.views.delete(dir)
