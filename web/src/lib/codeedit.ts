@@ -5,7 +5,7 @@ import { EditorView, basicSetup } from 'codemirror'
 import { Compartment, EditorState, Prec, StateEffect, StateField, type Extension, type Text } from '@codemirror/state'
 import { Decoration, keymap, placeholder, type DecorationSet } from '@codemirror/view'
 import { indentWithTab } from '@codemirror/commands'
-import { HighlightStyle, LanguageDescription, syntaxHighlighting } from '@codemirror/language'
+import { HighlightStyle, LanguageDescription, syntaxHighlighting, syntaxTree } from '@codemirror/language'
 import { languages } from '@codemirror/language-data'
 import { tags as t } from '@lezer/highlight'
 
@@ -54,6 +54,7 @@ let vimMod: Promise<typeof import('@replit/codemirror-vim')> | undefined
 type VimCM = { cm6: EditorView; openNotification(n: Node, o: { bottom?: boolean; duration?: number }): void }
 function loadVim() {
   return vimMod ??= import('@replit/codemirror-vim').then(m => {
+    getCM = m.getCM
     const of = (cm: { cm6: EditorView }) => owners.get(cm.cm6)
     // quit after Vim has finished with the command: destroying the editor inside it breaks Vim's own cleanup
     const quit = (o: Opts | undefined, force: boolean) => setTimeout(() => o?.quit(force))
@@ -66,6 +67,11 @@ function loadVim() {
       else quit(ed?.o, true) // nothing to lose, or told to drop it: no Discard dialog
     })
     m.Vim.defineEx('wq', 'wq', async cm => { const ed = of(cm); if (await ed?.o.save()) quit(ed?.o, true) }) // a failed save stays open
+    // gd / gD, which the package doesn't have: the first use of the name under the cursor in the current function
+    // (gd: usually where it's declared) or in the file (gD), skipping comments. A motion, so dgd and the like work too.
+    m.Vim.defineMotion('declaration', (cm, head, args) => declaration(cm.cm6, cm.indexFromPos(head), !!(args as { local?: boolean }).local) ?? head)
+    m.Vim.mapCommand('gd', 'motion', 'declaration', { local: true }, {})
+    m.Vim.mapCommand('gD', 'motion', 'declaration', { local: false }, {})
     // the system clipboard is Vim's unnamed register, as with clipboard=unnamedplus: a yank or delete is copied out,
     // and what was copied elsewhere is what p pastes (read when the editor or the page gets focus again). `seen` is
     // the clipboard as last known: only a change to it since (a copy in another app) replaces the register, so a
@@ -109,6 +115,24 @@ function markYank(m: typeof import('@replit/codemirror-vim')) {
     setTimeout(() => { if (owners.has(view)) view.dispatch({ effects: flash.of([]) }) }, 250)
   })
 }
+const FUNCTION = /Func|Method|Lambda|Arrow|Closure/, COMMENT = /Comment/
+/** Where Vim's gd (`local`: from the start of the outermost function around `at`) or gD (from the top of the file)
+ *  lands for the name at `at`, as a position the Vim package understands; null when there's no name there.
+ *  ponytail: Vim also makes the name the search pattern, so n goes to its next use; add when someone misses it. */
+function declaration(view: EditorView, at: number, local: boolean) {
+  const { state } = view, word = state.wordAt(at), cm = getCM(view)
+  if (!word || !cm) return null
+  const tree = syntaxTree(state)
+  let from = 0
+  if (local) for (let n: { from: number; name: string; parent: unknown } | null = tree.resolveInner(at, 1); n; n = n.parent as typeof n)
+    if (FUNCTION.test(n.name)) from = n.from // the outermost wins, as Vim's [[ finds the function's start
+  const name = state.sliceDoc(word.from, word.to), re = new RegExp(`(?<![\\w$])${name.replace(/[$]/g, '\\$&')}(?![\\w$])`, 'g')
+  const text = state.sliceDoc(from)
+  for (let mt; (mt = re.exec(text));)
+    if (!COMMENT.test(tree.resolveInner(from + mt.index, 1).name)) return cm.posFromIndex(from + mt.index)
+  return null
+}
+let getCM: typeof import('@replit/codemirror-vim').getCM = () => null
 const activeView = () => { const ed = document.activeElement?.closest<HTMLElement>('.cm-editor'); return ed ? EditorView.findFromDOM(ed) : null }
 // what fills the Vim slot: Vim itself, or without it the keys that leave a scratchpad (Esc is Vim's own when it's on)
 const vimExt = async (on: boolean, o: Opts): Promise<Extension> => on ? (await loadVim()).vim()
