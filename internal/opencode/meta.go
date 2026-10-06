@@ -1,6 +1,8 @@
 package opencode
 
 import (
+	"bytes"
+	"encoding/json"
 	"sort"
 	"time"
 
@@ -27,8 +29,9 @@ func metaV1(s *server) map[string]any {
 			ID     string `json:"id"`
 			Name   string `json:"name"`
 			Models map[string]struct {
-				Name string `json:"name"`
-				Cost *struct {
+				Name     string          `json:"name"`
+				Variants json.RawMessage `json:"variants"` // an object: its key order is the levels' order
+				Cost     *struct {
 					Input  float64 `json:"input"`
 					Output float64 `json:"output"`
 				} `json:"cost"`
@@ -41,7 +44,13 @@ func metaV1(s *server) map[string]any {
 	}
 	models := []any{}
 	for provider, model := range providers.Default {
-		models = append(models, map[string]any{"value": "", "displayName": "Default (" + model + ")", "description": provider + " · OpenCode's default"})
+		efforts := []string{}
+		for _, p := range providers.Providers {
+			if p.ID == provider {
+				efforts = keys(p.Models[model].Variants)
+			}
+		}
+		models = append(models, map[string]any{"value": "", "displayName": "Default (" + model + ")", "description": provider + " · OpenCode's default", "efforts": efforts})
 		break
 	}
 	for _, p := range providers.Providers {
@@ -60,7 +69,7 @@ func metaV1(s *server) map[string]any {
 			if name == "" {
 				name = id
 			}
-			models = append(models, map[string]any{"value": p.ID + "/" + id, "displayName": name, "description": desc, "group": p.Name})
+			models = append(models, map[string]any{"value": p.ID + "/" + id, "displayName": name, "description": desc, "group": p.Name, "efforts": keys(m.Variants)})
 		}
 	}
 	var cmds []struct {
@@ -80,7 +89,10 @@ type v2ModelList struct {
 		ID         string `json:"id"`
 		ProviderID string `json:"providerID"`
 		Name       string `json:"name"`
-		Cost       []struct {
+		Variants   []struct {
+			ID string `json:"id"`
+		} `json:"variants"`
+		Cost []struct {
 			Input  float64 `json:"input"`
 			Output float64 `json:"output"`
 		} `json:"cost"`
@@ -133,6 +145,7 @@ func metaV2(s *server) map[string]any {
 			name = def.Data.ProviderID
 		}
 		models = append(models, map[string]any{"value": "", "displayName": "Default (" + def.Data.ID + ")", "description": name + " · OpenCode's default"})
+		// ponytail: no "efforts" here: v2's model ref needs a model id to carry a variant (see modelRef)
 	}
 	sort.Slice(list.Data, func(i, j int) bool {
 		if list.Data[i].ProviderID != list.Data[j].ProviderID {
@@ -153,7 +166,11 @@ func metaV2(s *server) map[string]any {
 		if len(m.Cost) > 0 && m.Cost[0].Input == 0 && m.Cost[0].Output == 0 {
 			desc += " · free"
 		}
-		models = append(models, map[string]any{"value": m.ProviderID + "/" + m.ID, "displayName": name, "description": desc, "group": group})
+		efforts := []string{}
+		for _, v := range m.Variants {
+			efforts = append(efforts, v.ID)
+		}
+		models = append(models, map[string]any{"value": m.ProviderID + "/" + m.ID, "displayName": name, "description": desc, "group": group, "efforts": efforts})
 	}
 	var cmds struct {
 		Data []struct {
@@ -167,4 +184,22 @@ func metaV2(s *server) map[string]any {
 		commands = append(commands, map[string]any{"name": c.Name, "description": c.Description})
 	}
 	return map[string]any{"models": models, "commands": commands}
+}
+
+// keys is a JSON object's keys in their order ([] for anything else): v1 lists a model's variants as an object.
+func keys(raw json.RawMessage) []string {
+	out := []string{}
+	d := json.NewDecoder(bytes.NewReader(raw))
+	if t, err := d.Token(); err != nil || t != json.Delim('{') {
+		return out
+	}
+	for d.More() {
+		k, err := d.Token()
+		var skip json.RawMessage
+		if err != nil || d.Decode(&skip) != nil {
+			return out
+		}
+		out = append(out, k.(string))
+	}
+	return out
 }

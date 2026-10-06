@@ -29,9 +29,12 @@ func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[s
 	var lv *live.Live
 	if r.URL.Path == "/api/send" {
 		sid, model, effort := str(body["sid"]), str(body["model"]), str(body["effort"])
-		if (sid != "" && !kind.SidOK(sid)) || (model != "" && !modelRe.MatchString(model)) || (effort != "" && !config.Efforts[effort]) {
+		if (sid != "" && !kind.SidOK(sid)) || (model != "" && !modelRe.MatchString(model)) || !effortOK(kindName, effort) {
 			http.Error(w, "", 400)
 			return
+		}
+		if effort != "" && kindName != "" && kindName != live.Default && !live.Accepts(kindName, model, effort) {
+			effort = "" // a level the picked model doesn't take: its own default rather than an error
 		}
 		var err error
 		if lv, err = live.Start(cid, kindName, sid, str(body["mode"]), model, effort); err != nil {
@@ -165,4 +168,18 @@ func startError(k live.Kind, err error) string {
 		return fmt.Sprintf("%s isn't installed (no %s on PATH). To use it, %s, then send again.", k.Title, k.Bin, k.Install)
 	}
 	return fmt.Sprintf("%s didn't start: %v", k.Title, err)
+}
+
+var effortRe = regexp.MustCompile(`^[a-z0-9_-]{1,20}$`)
+
+// effortOK: Claude's spawn flag takes a fixed set; other backends' levels are per model (their meta's "efforts"),
+// so only the charset is checked here.
+func effortOK(kind, effort string) bool {
+	if effort == "" {
+		return true
+	}
+	if kind == "" || kind == live.Default {
+		return config.Efforts[effort]
+	}
+	return effortRe.MatchString(effort)
 }

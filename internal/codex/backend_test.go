@@ -177,3 +177,21 @@ func TestLeavingBypass(t *testing.T) {
 		t.Error("didn't stop a turn starting with full access")
 	}
 }
+
+// The card's effort rides on turn/start, and a new one set meanwhile applies from the next turn (#123).
+func TestEffortOnTurnStart(t *testing.T) {
+	for _, effort := range []string{"high", "low"} {
+		s, b := testServer("default")
+		s.SetEffort(effort)
+		done := make(chan error)
+		go func() { done <- s.Send("hi", "") }()
+		got := written(s, b)
+		if !strings.Contains(got, `"method":"turn/start"`) || !strings.Contains(got, `"effort":"`+effort+`"`) {
+			t.Fatalf("effort %s not sent: %s", effort, got)
+		}
+		s.handle([]byte(`{"id":1,"result":{"turn":{"id":"u1"}}}`))
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+}

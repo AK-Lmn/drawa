@@ -106,6 +106,11 @@ func (s *server) Send(content any, id string) error {
 	if model != "" {
 		params["model"] = model
 	}
+	s.mu.Lock()
+	if s.effort != "" { // ponytail: Codex keeps a turn's effort for the next ones; "" can't take it back (#123)
+		params["effort"] = s.effort
+	}
+	s.mu.Unlock()
 	// the mode is read here, with startingMode set in the same step: a SetMode lands either before (this turn
 	// starts in the new mode) or after (it sees startingMode, and stops the turn if that leaves full access)
 	s.mu.Lock()
@@ -210,6 +215,13 @@ func (s *server) SetModel(model string) error {
 		s.tr.SetModel(model)
 	}
 	return nil
+}
+
+// SetEffort takes effect from the next turn/start, which carries it (turn/steer has no effort field).
+func (s *server) SetEffort(effort string) {
+	s.mu.Lock()
+	s.effort = effort
+	s.mu.Unlock()
 }
 
 func (s *server) Interrupt() error {

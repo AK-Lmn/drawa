@@ -76,6 +76,7 @@ type server struct {
 	mode         string
 	sentMode     string     // the mode Codex has now (thread start, or the last turn/start that changed it)
 	model        string     // "" for Codex's default
+	effort       string     // the reasoning effort each turn/start carries, "" for the model's default
 	defaultModel string     // what that default is, from thread/start
 	startModel   string     // the model the thread started on, if one was picked
 	start        sync.Mutex // one thread start at a time
@@ -94,7 +95,7 @@ func spawn(s live.Spec, sink live.Sink) (live.Backend, error) {
 	if err != nil {
 		return nil, err
 	}
-	srv := &server{tr: newTranslator("", s.Model), pending: map[int]chan reply{}, mode: s.Mode, model: s.Model, mcp: s.MCPURL, sink: sink}
+	srv := &server{tr: newTranslator("", s.Model), pending: map[int]chan reply{}, mode: s.Mode, model: s.Model, effort: s.Effort, mcp: s.MCPURL, sink: sink}
 	srv.tr.SetSid(s.Sid) // a saved thread is resumed on the first message, so opening a card doesn't start anything
 	p, stdin, err := live.StartProc(append([]string{"codex", "app-server"}, args...), nil, sink.Exited)
 	if err != nil {

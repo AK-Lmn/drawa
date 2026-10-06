@@ -10,7 +10,7 @@ import (
 // Spec is everything a backend needs to start one card's agent.
 type Spec struct {
 	Cid, Sid, Mode, Model string
-	Effort                string // Claude's reasoning effort (config.Efforts); backends without one ignore it
+	Effort                string // the reasoning effort: Claude's config.Efforts, else one the model lists in its meta "efforts"
 	MCPURL                string // the card's canvas MCP endpoint (it carries the card's token): never put it in argv
 }
 
@@ -38,6 +38,12 @@ type Backend interface {
 // Unsender is a Backend that can take back a message it was sent but hasn't read yet (see Kind.Unsend).
 type Unsender interface {
 	Unsend(id string) (bool, error) // false: already read (or never queued)
+}
+
+// EffortSetter is a Backend that takes the effort per turn (Codex's turn/start, OpenCode's variant): a new effort
+// applies from the next send, where without it Start replaces the idle process.
+type EffortSetter interface {
+	SetEffort(effort string)
 }
 
 // Refused is a backend error meaning the agent turned the request down (a mode it won't switch to mid-turn, say)
@@ -81,6 +87,10 @@ type Kind struct {
 	// descriptions. (true, its reply) or (false, the error). nil: it can't; Write picks another backend.
 	OneShot func(prompt, text string) (bool, string)
 	Warn    func() string // a note for preflight when its CLI is installed (e.g. an untested version), or ""
+	// NoEffort: it can't take a reasoning effort from Drawa; a link saying why, which the page shows beside a disabled
+	// effort picker. "": it takes one (or has no levels to offer, and the picker hides).
+	NoEffort string
+	TextOnly bool // it can't take images: the page won't attach one to its messages
 }
 
 var kinds = map[string]Kind{} // written only by init()s, so read without a lock
