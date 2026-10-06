@@ -67,6 +67,8 @@
   <label for="symbols">Code symbols</label>
   <select id="symbols"></select>
   <p class="where" id="symbols-status"></p>
+  <label for="vim">Editor</label>
+  <select id="vim"></select>
   <p class="where">Saved in ~/.drawa/config.json, for every project. Fonts and the send key are kept in this browser.</p>
   <hr>
   <label for="font-ui">Interface font</label>
@@ -119,6 +121,7 @@
 <aside id="inspector" class="panel" hidden aria-label="File inspector">
   <div class="bar">
     <span id="ipath" class="path"></span>
+    <button id="iedit" class="btn" title="Edit this file in its window on the canvas">Edit</button>
     <button id="iclose" class="icon" aria-label="Close inspector" title="Close (Esc)"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
   </div>
   <div class="bar tabs"><div class="seg"><button data-r="changes" class="on">Changes <span id="nchg" class="count"></span></button><button data-r="viewer">File</button></div><button id="foldall" class="btn" title="Collapse or expand every diff">Collapse all</button></div>

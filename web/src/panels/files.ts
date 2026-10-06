@@ -6,6 +6,7 @@ import { md, enhance, enhanceMarked, highlighter } from '../lib/markdown'
 import { files, pin, refreshSelection, setInspector } from '../canvas/sessionwins'
 import { inFile, type Change } from './diff'
 import { centerOn } from '../canvas/canvas'
+import { openFileAt } from '../canvas/find'
 
 const expanded = new Set<string>()
 export let inspecting: string | null = null
@@ -57,6 +58,7 @@ export function openInspector(path: string, tab?: 'changes' | 'viewer', focus?: 
   inspecting = path
   inspector.hidden = false
   $('#ipath').replaceChildren(pathEl('', path))
+  $('#iedit').onclick = () => openFileAt(path, line, true) // in its window on the canvas: one editor, with its saving and Vim motions
   $('#nchg').textContent = changes.length ? String(changes.length) : ''
   $('#changes').replaceChildren(...(changes.length ? changes : [make('p', 'none', 'No open session has changed this file.')]))
   changes.forEach(c => inFile(c)) // numbered, in the file: once each, when first shown (not for every replayed edit)
@@ -143,6 +145,9 @@ export function mdView(p: string, text: string) {
   }
   return out
 }
+
+/** A file was just saved (items/fileedit.ts): the File tab showing it reads it again. */
+export const saved = (p: string) => { if (inspecting === p && !inspector.hidden && !$('#viewer').hidden) view(p) }
 
 export async function view(p: string, at?: number) {
   const viewer = $('#viewer')
