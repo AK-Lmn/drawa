@@ -60,7 +60,7 @@ No Claude subscription? [OpenCode](https://opencode.ai) is an open-source coding
 | **Sub-agents** | Own window | Own window | One row, not their own window | – |
 | **Auto mode** | ✓ | – | – | – |
 | **Effort setting** | ✓ | – | – (uses its default) | – (models name their own level) |
-| **Usage windows in the status line** | ✓ | – | – | – |
+| **Usage windows in the status line** | ✓ | – | ✓ (ChatGPT plan; none with an API key) | – |
 | **Take back a queued message** | ✓ | – | – | – |
 | **Memory per session** | Its own `claude` process | About 300 MB (its own `opencode` server) | About 250 MB (its own `codex app-server`) | Its own `agy` process |
 

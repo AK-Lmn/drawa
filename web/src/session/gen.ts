@@ -192,7 +192,10 @@ function ring(el: HTMLElement | undefined, pctEl: HTMLElement | undefined, util:
  *  already reported fresher ones. Called for a brand-new card, and again for every open card once /api/meta
  *  answers (it can take a while the first time: it spins up its own throwaway `claude` process). */
 export function seedInfo(S: Session) {
-  if (S.toolCount || meta.tools == null || S.backend !== 'claude') return // Claude Code's account and usage windows
+  if (S.backend !== 'claude') return void agentMeta(S.backend).then(m => { // Codex's usage windows come with its model list
+    if (S.usageResetAt == null && S.weeklyResetAt == null) renderInfo(Object.assign(S, { usageUtil: m.usageUtil, usageResetAt: m.usageResetAt, weeklyUtil: m.weeklyUtil, weeklyResetAt: m.weeklyResetAt }))
+  })
+  if (S.toolCount || meta.tools == null) return // Claude Code's account and usage windows
   S.toolCount = meta.tools
   S.mcpTotal = meta.mcpTotal ?? 0
   S.mcpConnected = meta.mcpConnected ?? 0
@@ -206,15 +209,15 @@ export function seedInfo(S: Session) {
 export function renderInfo(S: Session) {
   const el = S.infoEl
   if (!el) return
-  el.hidden = !S.toolCount
-  if (!S.toolCount) return
+  el.hidden = !S.toolCount && S.usageResetAt == null && S.weeklyResetAt == null
+  if (el.hidden) return
   const pct = S.ctx.max ? Math.min(100, Math.round((S.ctx.used / S.ctx.max) * 100)) : 0
-  const parts = [`${S.toolCount} tools loaded`]
+  const parts = S.toolCount ? [`${S.toolCount} tools loaded`] : []
   if (S.mcpTotal) parts.push(`${S.mcpConnected}/${S.mcpTotal} MCP servers`)
   if (S.ctx.used) parts.push(`${pct}% context`)
   S.infoText!.textContent = parts.join(' · ')
-  S.infoText!.title = `${S.toolCount} tools available${S.mcpTotal ? ` (${S.mcpConnected} of ${S.mcpTotal} MCP servers connected)` : ''}.` +
-    (S.ctx.used ? ` Context: ${S.ctx.used.toLocaleString()} of ${S.ctx.max.toLocaleString()} tokens used (${pct}%).` : '')
+  S.infoText!.title = (S.toolCount ? `${S.toolCount} tools available${S.mcpTotal ? ` (${S.mcpConnected} of ${S.mcpTotal} MCP servers connected)` : ''}. ` : '') +
+    (S.ctx.used ? `Context: ${S.ctx.used.toLocaleString()} of ${S.ctx.max.toLocaleString()} tokens used (${pct}%).` : '')
   ring(S.ring5h, S.ring5hPct, S.usageUtil, S.usageResetAt, '5-hour usage limit')
   ring(S.ring7d, S.ring7dPct, S.weeklyUtil, S.weeklyResetAt, 'Weekly usage limit')
 }
