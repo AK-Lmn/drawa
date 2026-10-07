@@ -131,6 +131,8 @@ export async function sourceView(p: string, text: string | null, { first = 1, at
   return src
 }
 
+const NON_RELATIVE_URL = /^([a-z][\w+.-]*:|\/|#)/i
+
 /** A Markdown file rendered, its relative pictures and links resolved from the file's folder. */
 export function mdView(p: string, text: string) {
   const out = make('div', 'md mdview')
@@ -139,12 +141,12 @@ export function mdView(p: string, text: string) {
   const dir = 'http://p/' + p.slice(0, p.lastIndexOf('/') + 1)
   for (const img of out.querySelectorAll('img')) {
     const s = img.getAttribute('src') ?? ''
-    if (!s || /^([a-z][\w+.-]*:|\/|#)/i.test(s)) continue
+    if (!s || NON_RELATIVE_URL.test(s)) continue
     try { img.src = '/api/raw?path=' + q(decodeURIComponent(new URL(s, dir).pathname.slice(1))) } catch { /* a stray % in the path: left as written */ }
   }
   for (const a of out.querySelectorAll('a[href]')) {
     const href = a.getAttribute('href')?.trim() ?? ''
-    if (!href || /^([a-z][\w+.-]*:|\/|#)/i.test(href)) continue
+    if (!href || NON_RELATIVE_URL.test(href)) continue
     try {
       const url = new URL(href, dir)
       if (url.origin !== 'http://p') continue // backslashes can also start an external URL
