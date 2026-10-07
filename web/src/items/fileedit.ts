@@ -6,7 +6,7 @@
 // the layout if that ever bites.
 import { api, post, q } from '../lib/api'
 import { $, make, toast, confirmBox, pressed } from '../lib/dom'
-import { enhance } from '../lib/select'
+import { segmented } from '../lib/select'
 import { prefs, setPrefs, onPrefs } from '../lib/prefs'
 import { command } from '../lib/keys'
 import { onForget } from '../canvas/graph'
@@ -122,10 +122,10 @@ command({ label: 'Save the file you’re editing (or :w with Vim motions on)', g
 
 // the Settings panel's control
 const sel = $<HTMLSelectElement>('#vim')
-sel.replaceChildren(...([['off', 'Plain editor'], ['on', 'Vim motions']] as const)
+sel.replaceChildren(...([['off', 'Plain'], ['on', 'Vim']] as const)
   .map(([value, textContent]) => Object.assign(document.createElement('option'), { value, textContent })))
 sel.onchange = () => setPrefs({ vim: sel.value === 'on' ? 'on' : 'off' })
-enhance(sel)
+segmented(sel)
 const sync = () => { sel.value = prefs().vim }
 onPrefs(sync)
 sync()

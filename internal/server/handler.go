@@ -155,7 +155,7 @@ func prefsAnswer(p map[string]any, err error) map[string]any {
 // it isn't, or when your settings turn symbols off.
 func symbolsRoute(q url.Values) (any, int, error) {
 	if !q.Has("q") && !q.Has("def") {
-		return map[string]any{"installed": symbols.Installed()}, 200, nil
+		return map[string]any{"installed": symbols.Installed(), "install": symbols.Install()}, 200, nil
 	}
 	if p, _ := prefs.Load(); p["symbols"] == "off" {
 		return []symbols.Symbol{}, 200, nil

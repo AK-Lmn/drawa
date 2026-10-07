@@ -56,31 +56,36 @@
 </header>
 
 <div id="settings" class="float" hidden role="dialog" aria-label="Settings">
-  <label for="theme-mode">Theme</label>
-  <select id="theme-mode"></select>
-  <label for="scheme-light">Light scheme</label>
-  <select id="scheme-light"></select>
-  <label for="scheme-dark">Dark scheme</label>
-  <select id="scheme-dark"></select>
-  <label for="ui-mode">Interface</label>
-  <select id="ui-mode"></select>
-  <label for="symbols">Code symbols</label>
-  <select id="symbols"></select>
-  <p class="where" id="symbols-status"></p>
-  <label for="vim">Editor</label>
-  <select id="vim"></select>
-  <p class="where">Saved in ~/.drawa/config.json, for every project. Fonts and the send key are kept in this browser.</p>
-  <hr>
-  <label for="font-ui">Interface font</label>
-  <select id="font-ui"></select>
-  <input id="font-ui-custom" placeholder="Installed font name, e.g. IBM Plex Sans" hidden>
-  <label for="font-code">Code font</label>
-  <select id="font-code"></select>
-  <input id="font-code-custom" placeholder="Installed font name, e.g. Fira Code" hidden>
-  <p class="preview">The quick brown fox <code>const x = 42</code></p>
-  <hr>
-  <label for="send-key">Send messages with</label>
-  <select id="send-key"></select>
+  <section>
+    <h3>Appearance</h3>
+    <label for="theme-mode">Theme</label>
+    <select id="theme-mode"></select>
+    <label for="scheme-light">Light colors</label>
+    <select id="scheme-light"></select>
+    <label for="scheme-dark">Dark colors</label>
+    <select id="scheme-dark"></select>
+    <label for="ui-mode">Interface</label>
+    <select id="ui-mode"></select>
+  </section>
+  <section>
+    <h3>Fonts</h3>
+    <label for="font-ui">Text</label>
+    <div><select id="font-ui"></select><input id="font-ui-custom" placeholder="Installed font, e.g. IBM Plex Sans" hidden></div>
+    <label for="font-code">Code</label>
+    <div><select id="font-code"></select><input id="font-code-custom" placeholder="Installed font, e.g. Fira Code" hidden></div>
+    <p class="preview">The quick brown fox <code>const x = 42</code></p>
+  </section>
+  <section>
+    <h3>Editor</h3>
+    <label for="send-key">Send with</label>
+    <select id="send-key"></select>
+    <label for="symbols">Symbols</label>
+    <select id="symbols"></select>
+    <p class="where" id="symbols-status"></p>
+    <label for="vim">Motions</label>
+    <select id="vim"></select>
+  </section>
+  <p class="saved">Appearance, symbols and Vim motions sync through <code>~/.drawa/config.json</code>, for every project. Fonts and the send key stay in this browser.</p>
 </div>
 
 <div id="inkbar" class="float" hidden role="toolbar" aria-label="Drawing tools">
