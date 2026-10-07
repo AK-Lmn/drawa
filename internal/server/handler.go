@@ -185,7 +185,7 @@ func agents() []map[string]any {
 		}
 		sort.Strings(modes)
 		out = append(out, map[string]any{"name": name, "title": k.Title, "blurb": k.Blurb, "installed": err == nil, "install": k.Install,
-			"modes": modes, "canWrite": k.OneShot != nil, "canUnsend": k.Unsend, "resume": k.Resume})
+			"modes": modes, "canWrite": k.OneShot != nil, "canUnsend": k.Unsend, "resume": k.Resume, "noEffort": k.NoEffort, "textOnly": k.TextOnly})
 	}
 	return out
 }
@@ -455,6 +455,13 @@ func doPOST(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, map[string]any{"prefs": p}, 200)
 		}
 		return
+	case "/api/file":
+		if err := filesx.Save(str(body["path"]), str(body["base"]), str(body["text"])); err != nil {
+			sendJSON(w, map[string]any{"error": err.Error()}, saveStatus(err))
+		} else {
+			sendJSON(w, map[string]any{"ok": true}, 200)
+		}
+		return
 	case "/api/git":
 		out, err := gitx.GitOp(body)
 		if err != nil {
@@ -492,4 +499,20 @@ func restartNow(w http.ResponseWriter) {
 		time.Sleep(300 * time.Millisecond) // let the answer reach the page first
 		update.Restart()
 	}()
+}
+
+// saveStatus: 409 tells the page its copy is stale (it then checks whether its save landed after all); 403 is a
+// file it may not write; 404 one that's gone; 413 text too big to open again; anything else went wrong on the way.
+func saveStatus(err error) int {
+	switch {
+	case errors.Is(err, filesx.ErrChanged):
+		return 409
+	case errors.Is(err, config.ErrOutside), errors.Is(err, filesx.ErrReadOnly), errors.Is(err, os.ErrPermission):
+		return 403
+	case errors.Is(err, os.ErrNotExist):
+		return 404 // deleted since it was opened
+	case errors.Is(err, filesx.ErrTooBig):
+		return 413
+	}
+	return 500
 }

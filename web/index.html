@@ -82,8 +82,10 @@
     <label for="symbols">Symbols</label>
     <select id="symbols"></select>
     <p class="where" id="symbols-status"></p>
+    <label for="vim">Motions</label>
+    <select id="vim"></select>
   </section>
-  <p class="saved">Appearance and symbols sync through <code>~/.drawa/config.json</code>, for every project. Fonts and the send key stay in this browser.</p>
+  <p class="saved">Appearance, symbols and Vim motions sync through <code>~/.drawa/config.json</code>, for every project. Fonts and the send key stay in this browser.</p>
 </div>
 
 <div id="inkbar" class="float" hidden role="toolbar" aria-label="Drawing tools">
@@ -124,6 +126,7 @@
 <aside id="inspector" class="panel" hidden aria-label="File inspector">
   <div class="bar">
     <span id="ipath" class="path"></span>
+    <button id="iedit" class="btn" title="Edit this file in its window on the canvas">Edit</button>
     <button id="iclose" class="icon" aria-label="Close inspector" title="Close (Esc)"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
   </div>
   <div class="bar tabs"><div class="seg"><button data-r="changes" class="on">Changes <span id="nchg" class="count"></span></button><button data-r="viewer">File</button></div><button id="foldall" class="btn" title="Collapse or expand every diff">Collapse all</button></div>
