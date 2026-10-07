@@ -155,7 +155,7 @@ It also prints a QR code of the Network link, so a phone can open it with its ca
   <img src="docs/readme/files-light.png" alt="A session card wired to its files window: dom.ts edited (+2 −1), keys.ts read, and a commands window below">
 </picture>
 
-- **Review in place.** An edit waiting for approval shows its diff inside the card. Click any file for its changes from every session, plus the file itself with Markdown and Mermaid preview.
+- **Review in place.** An edit waiting for approval shows its diff inside the card. Click any file for its changes from every session, plus the file itself with Markdown and Mermaid preview. Relative links in Markdown open the linked project file in the viewer; heading fragments on file links are ignored.
 
 <img src="docs/readme/review-dark.png" alt="An edit to dom.ts waiting for approval, its diff shown inside the card above Deny, Always allow and Allow">
 
