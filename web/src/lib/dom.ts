@@ -23,6 +23,7 @@ export const ICON = {
   pin: svg('<path d="M6 2.5h4M7 2.5v4L4.5 9h7L9 6.5v-4M8 9v4.5"/>'),
   copy: svg('<rect x="5.5" y="5.5" width="8" height="8" rx="1"/><path d="M10.5 5.5v-3h-8v8h3"/>'),
   check: svg('<path d="M3.5 8.5l3 3 6-7"/>'),
+  download: svg('<path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/>'),
   crop: svg('<path d="M4.5 1.5v10h10M1.5 4.5h10v10"/>'),
   float: svg('<rect x="2" y="3" width="12" height="10" rx="1"/><rect x="7.5" y="7.5" width="5" height="4" fill="currentColor" stroke="none"/>'),
   full: svg('<path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/>'),
@@ -35,6 +36,15 @@ export const ICON = {
   moon: svg('<path d="M13 9.5A5.5 5.5 0 0 1 6.5 3a5.5 5.5 0 1 0 6.5 6.5z"/>'),
   sparkle: svg('<path d="M8 1.5c.4 3.3 1.8 5.4 5.5 6.5-3.7 1.1-5.1 3.2-5.5 6.5-.4-3.3-1.8-5.4-5.5-6.5 3.7-1.1 5.1-3.2 5.5-6.5z"/><path d="M13 1.8v2.4M11.8 3h2.4"/>'),
   grip: svg('<circle cx="6" cy="4" r=".9"/><circle cx="10" cy="4" r=".9"/><circle cx="6" cy="8" r=".9"/><circle cx="10" cy="8" r=".9"/><circle cx="6" cy="12" r=".9"/><circle cx="10" cy="12" r=".9"/>'),
+}
+
+/** Save `blob` as a file named `name` (characters file systems refuse become dashes). */
+export function saveFile(blob: Blob, name: string) {
+  const a = make('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = name.replace(/[\\/:*?"<>|]+/g, '-').trim() || 'download'
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000) // some browsers start a big download late
 }
 
 /** A v4 UUID. `crypto.randomUUID()` only works in secure contexts (https, or localhost) — this app is also

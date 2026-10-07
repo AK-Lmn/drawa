@@ -386,8 +386,9 @@ export function nextColumn(w: number, h: number): Rect {
   const y = all.length ? Math.min(...all.map(r => r.y)) : 0
   return freeSpot({ x, y, w, h })
 }
-/** Where a window made beside `from` goes instead of a free spot, or null (items/group.ts: inside `from`'s group). */
-let spawnHook: (from: HTMLElement, w: number, h: number) => Rect | null = () => null
+/** Where a window made beside `from` (an item) or at `from` (a spot: a drop, a paste) goes instead of a free spot,
+ *  or null (items/group.ts: inside the group `from` is in). */
+let spawnHook: (from: HTMLElement | Rect, w: number, h: number) => Rect | null = () => null
 export const spawnIn = (f: typeof spawnHook) => { spawnHook = f }
 /** Beside an item (right of it, top-aligned), or the middle of the view when there's none. */
 export function spotBeside(el: HTMLElement | null | undefined, w: number, h: number, dx = 150, dy = 0): Rect {
@@ -395,6 +396,8 @@ export function spotBeside(el: HTMLElement | null | undefined, w: number, h: num
   const r = rect(el)
   return spawnHook(el, w, h) ?? freeSpot({ x: r.x + r.w + dx, y: r.y + dy, w, h })
 }
+/** At `r`, or the nearest free spot below it; inside the group whose frame holds `r`'s corner or middle. */
+export const spotAt = (r: Rect): Rect => spawnHook(r, r.w, r.h) ?? freeSpot(r)
 export const toWorld = (cx: number, cy: number) => ({ x: (cx - view.x) / view.k, y: (cy - view.y) / view.k })
 export const viewCenter = () => ({ x: (innerWidth / 2 - view.x) / view.k, y: (innerHeight / 2 - view.y) / view.k })
 

@@ -50,7 +50,7 @@ The app scales through these registration points. A new feature should plug into
 | A button on the bar by a selection | `selectionAction(label, tip, fn, when?)` (`when(els)`: shown only for selections it applies to) | `canvas/select.ts` |
 | Drawings that move along when an item is dragged (the selection's, a group's) | `inkWith(fn)` (`fn(el)` returns canvas strokes; `inkOf(els)` gathers them, each once) | `canvas/inksel.ts` |
 | React to drawings just drawn, written or dragged (a group taking in what lands in its frame) | `onInkPlaced(fn)` | `canvas/ink.ts` |
-| Windows made beside an item land somewhere else (inside the item's group) | `spawnIn(fn)` (`fn(from, w, h)` returns the spot or null; `spotBeside()` asks it) | `canvas/canvas.ts` |
+| Windows made beside an item or at a spot land somewhere else (inside the item's group, or the group whose frame holds the spot) | `spawnIn(fn)` (`fn(from, w, h)`: `from` is an item, or a spot (a drop, a paste); returns the spot or null; `spotBeside()` and `spotAt()` ask it) | `canvas/canvas.ts` |
 | An item whose empty space is canvas (a group's frame): pans in Hand mode, with the middle button or when locked; Shift+drag draws a selection box; a selection box picks it only when it holds all of it | class `frame` on the item | `canvas/nav.ts`, `canvas/select.ts` |
 | Pressing a window's tab to drag it leaves focus where it is (typing carries on after the drag; a message box isn't one) | attribute `data-keep-focus` on the box holding the focus (`codeEditor()` sets it) | `canvas/canvas.ts` (`draggable`) |
 
