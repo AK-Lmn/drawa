@@ -11,7 +11,7 @@ import { command } from '../lib/keys'
 import { follow, watchRows, unwatch, rowAt, adopt, onHost } from './inkrows'
 import { startLink } from './links'
 import { SHAPES, outlinePoints, fillPath, constrain, type Shape } from './shapegeom'
-import { added, erase, changing, undo } from './inkundo'
+import { added, erase, changing, undo, redo } from './inkundo'
 
 // a stroke with `t` is text: p[0] is its top-left corner, s its font size (both in the same units as a stroke's)
 // In a host marked data-ink-rows (a chat log), `a` is the row the stroke was drawn over and `o` that row's offsetTop
@@ -130,7 +130,7 @@ const pick = (t: Tool) => setTool(tool === t ? 'pen' : t) // picking the tool th
 const KEYS: Record<string, Tool> = { r: 'rect', Digit2: 'rect', Digit3: 'diamond', o: 'ellipse', Digit4: 'ellipse', a: 'arrow', Digit5: 'arrow', l: 'line', Digit6: 'line', p: 'pen', Digit7: 'pen', t: 'text', Digit8: 'text', e: 'eraser', Digit0: 'eraser' }
 export const toolKey = (e: KeyboardEvent): Tool | null => KEYS[e.key.toLowerCase()] ?? KEYS[e.code] ?? null
 for (const [label, keys] of [['Pen', 'P 7'], ['Arrow between items', 'A 5'], ['Eraser', 'E 0'], ['Text', 'T 8'], ['Rectangle', 'R 2'],
-  ['Diamond', '3'], ['Ellipse', 'O 4'], ['Line', 'L 6'], ['Undo', 'Ctrl+Z'], ['Stop drawing', 'Esc']])
+  ['Diamond', '3'], ['Ellipse', 'O 4'], ['Line', 'L 6'], ['Undo', 'Ctrl+Z'], ['Redo', 'Ctrl+Shift+Z Ctrl+Y'], ['Stop drawing', 'Esc']])
   command({ label, group: 'Draw', keys: keys.split(' ') })
 
 /* ---------- input: left button draws (or erases); middle button and wheel still pan the canvas ---------- */
@@ -281,7 +281,9 @@ function eraseAt(e: PointerEvent, gone: Stroke[]) {
 
 addEventListener('keydown', e => {
   if (!drawing || e.defaultPrevented || !shortcutOk(e)) return
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo() }
+  const mod = e.ctrlKey || e.metaKey
+  if (mod && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); redo() }
+  else if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); undo() }
   else if (e.key === 'Escape') { e.preventDefault(); setDrawing(false) }
   else if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
   const t = toolKey(e)
@@ -304,6 +306,7 @@ for (const b of bar.querySelectorAll<HTMLButtonElement>('[data-ink]')) {
     else if (isShape(kind as Tool)) return pick(kind as Shape)
     else if (kind === 'fill') { fill = !fill; b.classList.toggle('on', fill); b.setAttribute('aria-pressed', String(fill)); return }
     else if (kind === 'undo') return undo()
+    else if (kind === 'redo') return redo()
     else if (kind === 'clear') {
       if (strokes.length) confirmBox('Erase all drawing?', 'Every stroke on the canvas is removed. Undo (Ctrl+Z) brings them back.', 'Erase all').then(ok => { if (ok) erase(...strokes) })
       return
