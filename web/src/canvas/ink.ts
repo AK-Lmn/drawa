@@ -4,7 +4,7 @@
 // A host marked data-ink-fit shows something that scales with the window (an image, a diagram): its strokes are
 // stored in units of its width (FIT across), so they stay on the same spot at any size, full view included.
 import { getStroke } from 'perfect-freehand'
-import { $, confirmBox, shortcutOk, closestAt, perFrame } from '../lib/dom'
+import { $, confirmBox, shortcutOk, closestAt, perFrame, uuid } from '../lib/dom'
 import { toWorld, view, changed, onChange, track } from './canvas'
 import { persist } from '../lib/store'
 import { command } from '../lib/keys'
@@ -96,8 +96,9 @@ function paintText(s: Stroke) {
 export function remove(...gone: Stroke[]) {
   if (!gone.length) return
   const out = new Set(gone)
-  for (const s of gone) s.el?.remove()
-  const keep = strokes.filter(s => !out.has(s))
+  const ids = new Set(gone.map(s => s.id).filter(Boolean))
+  for (const s of strokes) if (out.has(s) || (s.id && ids.has(s.id))) s.el?.remove()
+  const keep = strokes.filter(s => !out.has(s) && (!s.id || !ids.has(s.id)))
   strokes.length = 0
   strokes.push(...keep)
   changed()
@@ -144,7 +145,7 @@ capture.addEventListener('pointerdown', e => {
   const at = placeAt(e), { host, scale } = at
   if (isShape(tool)) return drawShape(e, tool, at)
   // size is in screen px at the moment of drawing, so a stroke looks the same weight at any zoom (or in full view)
-  const s: Stroke = { c: color, s: size * scale, sim: e.pointerType !== 'pen', p: [at.pt(e)], host, h: host?.dataset.ink, ...rowAt(host, e) }
+  const s: Stroke = { id: uuid(), c: color, s: size * scale, sim: e.pointerType !== 'pen', p: [at.pt(e)], host, h: host?.dataset.ink, ...rowAt(host, e) }
   strokes.push(s)
   paint(s)
   const repaint = perFrame(() => paint(s))
@@ -165,7 +166,7 @@ const listen = (e: PointerEvent, mv: (ev: PointerEvent) => void, up: () => void)
 function drawShape(e: PointerEvent, sh: Shape, at: Place) {
   const { host } = at
   let { pt, scale } = at, a = pt(e).slice(0, 2)
-  const s: Stroke = { c: color, s: size * scale, sim: false, p: [a, a], sh, ...(fill && sh !== 'line' ? { f: true } : {}), host, h: host?.dataset.ink, ...rowAt(host, e) }
+  const s: Stroke = { id: uuid(), c: color, s: size * scale, sim: false, p: [a, a], sh, ...(fill && sh !== 'line' ? { f: true } : {}), host, h: host?.dataset.ink, ...rowAt(host, e) }
   strokes.push(s)
   const redraw = perFrame(() => paint(s))
   listen(e, ev => {
@@ -240,7 +241,7 @@ function writeAt(e: PointerEvent) {
   const box = old?.el?.getBoundingClientRect()
   const at = box ? { clientX: box.left, clientY: box.top } : { clientX: e.clientX, clientY: e.clientY - (TEXT_PX[size] ?? 18) * 0.6 }
   const { host, pt, scale } = placeAt(at)
-  const s: Stroke = old ?? { c: color, s: (TEXT_PX[size] ?? 18) * scale, sim: false, p: [pt(at).slice(0, 2)], t: '', host, h: host?.dataset.ink, ...rowAt(host, at) }
+  const s: Stroke = old ?? { id: uuid(), c: color, s: (TEXT_PX[size] ?? 18) * scale, sim: false, p: [pt(at).slice(0, 2)], t: '', host, h: host?.dataset.ink, ...rowAt(host, at) }
   const px = s.s / scale // font size on screen now
   const ta = editor = document.body.appendChild(document.createElement('textarea'))
   ta.className = `ink-editor ink-c-${s.c}`
@@ -331,10 +332,14 @@ export function clearInk(host: HTMLElement) {
 }
 
 /* ---------- persistence (saved with the canvas layout) ---------- */
-type Saved = Omit<Stroke, 'el' | 'host' | 'row' | 'bb'>
+export type Saved = Omit<Stroke, 'el' | 'host' | 'row' | 'bb'>
+export const saveStroke = ({ c, s, sim, p, h, t, sh, f, a, o, k, rid, id, g }: Stroke): Saved => ({
+  c, s: +s.toFixed(2), sim, h, ...(id ? { id } : {}), ...(g ? { g } : {}),
+  p: p.map(q => q.map(n => +n.toFixed(1))), ...(t != null ? { t } : {}),
+  ...(sh ? { sh, ...(f ? { f } : {}) } : {}), ...(a != null ? { a, o: Math.round(o!), k, ...(rid ? { rid } : {}) } : {})
+})
 const ink = () => [
-  ...strokes.filter(s => !s.host || s.host.isConnected) // a closed window's ink goes with it
-    .map(({ c, s, sim, p, h, t, sh, f, a, o, k, rid, id, g }): Saved => ({ c, s: +s.toFixed(2), sim, h, ...(id ? { id } : {}), ...(g ? { g } : {}), p: p.map(q => q.map(n => +n.toFixed(1))), ...(t != null ? { t } : {}), ...(sh ? { sh, ...(f ? { f } : {}) } : {}), ...(a != null ? { a, o: Math.round(o!), k, ...(rid ? { rid } : {}) } : {}) })),
+  ...strokes.filter(s => !s.host || s.host.isConnected).map(saveStroke), // a closed window's ink goes with it
   ...waiting,
 ]
 // strokes whose window isn't on the canvas (yet): kept and written back, so a window that loads late (or failed to
