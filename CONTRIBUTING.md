@@ -48,6 +48,8 @@ cd drawa/web && npm install && npm run build
 cd .. && go run . /path/to/project
 ```
 
+`npm install` also turns on the pre-commit hook in `.githooks/`: it runs Biome on the frontend files you commit, fixing formatting and safe lint issues in files you staged whole (skip it once with `git commit --no-verify`). The same checks run on every pull request (`.github/workflows/checks.yml`).
+
 When run from source, the server rebuilds and restarts itself whenever a `.go` file changes. A build that fails to compile keeps the old server running.
 
 For hot reload of the UI:
@@ -99,8 +101,9 @@ sequenceDiagram
 ## Before you open a pull request
 
 ```sh
+(cd web && npm run lint)    # Biome: formatting and lint (npm run fix applies the safe fixes)
 (cd web && npm run build)   # tsc + Vite build, must pass with no new errors
-(cd web && for f in src/*/*.check.ts; do npx --yes tsx "$f"; done)   # pure-logic checks, e.g. the window-group geometry
+(cd web && for f in $(find src -name '*.check.ts'); do npx --yes tsx "$f"; done)   # pure-logic checks, e.g. the window-group geometry
 go vet ./... && go test ./...
 ```
 

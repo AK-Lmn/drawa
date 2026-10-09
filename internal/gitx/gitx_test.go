@@ -572,7 +572,10 @@ func TestRefs(t *testing.T) {
 	config.Root = repo
 	t.Cleanup(func() { config.Root = saved })
 
-	got, more := Refs("fooBar") // untracked files count: what you just wrote is searched too
+	got, more, _, err := Refs("", "fooBar") // untracked files count: what you just wrote is searched too
+	if err != nil {
+		t.Fatal(err)
+	}
 	want := []Ref{{"a.go", 1, "func fooBar() {}"}, {"b.go", 2, "fooBar()"}}
 	for i := 1; i <= 20; i++ { // a colon in the path, and 20 a file at most
 		want = append(want, Ref{"d:x/c.go", i, "fooBar"})
@@ -580,13 +583,47 @@ func TestRefs(t *testing.T) {
 	if !reflect.DeepEqual(got, want) || !more { // c.go's last 10 are left out
 		t.Fatalf("Refs = %v (more %v), want %v (more)", got, more, want)
 	}
-	if _, more := Refs("fooBarBaz"); more {
+	if _, more, _, _ := Refs("", "fooBarBaz"); more {
 		t.Error("a complete list says there are more")
 	}
 	for _, bad := range []string{"", "-e", "1x", "a b", "--open-files-in-pager=sh"} {
-		if r, _ := Refs(bad); len(r) != 0 {
+		if r, _, _, _ := Refs("", bad); len(r) != 0 {
 			t.Errorf("Refs(%q) = %v, want none", bad, r)
 		}
+	}
+}
+
+// A diff from a repo in a subfolder searches that repo, with paths from Root (the page opens them); a project folder
+// that isn't a repo says the search couldn't run instead of finding nothing.
+func TestRefsNested(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	root, _ := filepath.EvalSymlinks(t.TempDir())
+	app := filepath.Join(root, "app")
+	os.MkdirAll(app, 0o755)
+	os.WriteFile(filepath.Join(app, "w.ts"), []byte("export function loadWidget() {}\nloadWidget()\n"), 0o644)
+	cmd := exec.Command("git", "init", "-q")
+	cmd.Dir = app
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v %s", err, out)
+	}
+	saved := config.Root
+	config.Root = root
+	reset := func() { prefixCache.ok, nestedCache.list, stateCache.state, wtCache.list = false, nil, nil, nil }
+	t.Cleanup(func() { config.Root = saved; reset() })
+	reset()
+
+	got, _, outside, err := Refs("app", "loadWidget")
+	want := []Ref{{"app/w.ts", 1, "export function loadWidget() {}"}, {"app/w.ts", 2, "loadWidget()"}}
+	if err != nil || outside || !reflect.DeepEqual(got, want) {
+		t.Fatalf("Refs(app) = %v, outside %v, err %v; want %v", got, outside, err, want)
+	}
+	if r, _, _, err := Refs("", "loadWidget"); err == nil || len(r) != 0 {
+		t.Fatalf("Refs in a folder that isn't a repo = %v, err %v; want an error", r, err)
+	}
+	if _, _, _, err := Refs("elsewhere", "loadWidget"); err == nil {
+		t.Fatal("Refs searched a folder that isn't one of the project's repos")
 	}
 }
 

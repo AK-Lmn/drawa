@@ -1,16 +1,18 @@
 // Small DOM helpers and the page's fixed elements.
 
-export const $ = <T extends Element = HTMLElement>(sel: string) => document.querySelector(sel) as T
+export const $ = <T extends Element = HTMLElement>(sel: string) => document.querySelector(sel) as T;
 
+/** A new element with an optional class and text. Buttons are type=button, so none submits a form by accident. */
 export function make<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string | null) {
-  const e = document.createElement(tag)
-  if (e instanceof HTMLButtonElement) e.type = 'button' // never a form's submit button by accident
-  if (cls) e.className = cls
-  if (text != null) e.textContent = text
-  return e
+  const e = document.createElement(tag);
+  if (e instanceof HTMLButtonElement) e.type = 'button'; // never a form's submit button by accident
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
 }
 
-const svg = (d: string) => `<svg viewBox="0 0 16 16">${d}</svg>`
+/** An inline 16×16 SVG icon from its path markup. */
+const svg = (d: string) => `<svg viewBox="0 0 16 16">${d}</svg>`;
 export const ICON = {
   x: svg('<path d="M4 4l8 8M12 4l-8 8"/>'),
   trash: svg('<path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 9h6.6l.7-9M6.8 7v4M9.2 7v4"/>'), // a bin: removes something for good
@@ -25,182 +27,249 @@ export const ICON = {
   check: svg('<path d="M3.5 8.5l3 3 6-7"/>'),
   download: svg('<path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/>'),
   crop: svg('<path d="M4.5 1.5v10h10M1.5 4.5h10v10"/>'),
-  float: svg('<rect x="2" y="3" width="12" height="10" rx="1"/><rect x="7.5" y="7.5" width="5" height="4" fill="currentColor" stroke="none"/>'),
+  float: svg(
+    '<rect x="2" y="3" width="12" height="10" rx="1"/><rect x="7.5" y="7.5" width="5" height="4" fill="currentColor" stroke="none"/>',
+  ),
   full: svg('<path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/>'),
   collapse: svg('<path d="M3.5 8h9"/>'),
   more: svg('<circle cx="3.5" cy="8" r=".9"/><circle cx="8" cy="8" r=".9"/><circle cx="12.5" cy="8" r=".9"/>'),
   reload: svg('<path d="M13 8a5 5 0 1 1-1.46-3.54M13.5 2.5v3h-3"/>'),
   open: svg('<path d="M4 6.5 8 10.5l4-4"/>'),
   file: svg('<path d="M9 2.5H4.5v11h7V5zM9 2.5V5h2.5M6.5 8.5h3M6.5 10.5h3"/>'), // open a file in its window
-  sun: svg('<circle cx="8" cy="8" r="2.8"/><path d="M8 1.8v1.4M8 12.8v1.4M1.8 8h1.4M12.8 8h1.4M3.6 3.6l1 1M11.4 11.4l1 1M3.6 12.4l1-1M11.4 4.6l1-1"/>'),
+  sun: svg(
+    '<circle cx="8" cy="8" r="2.8"/><path d="M8 1.8v1.4M8 12.8v1.4M1.8 8h1.4M12.8 8h1.4M3.6 3.6l1 1M11.4 11.4l1 1M3.6 12.4l1-1M11.4 4.6l1-1"/>',
+  ),
   moon: svg('<path d="M13 9.5A5.5 5.5 0 0 1 6.5 3a5.5 5.5 0 1 0 6.5 6.5z"/>'),
-  sparkle: svg('<path d="M8 1.5c.4 3.3 1.8 5.4 5.5 6.5-3.7 1.1-5.1 3.2-5.5 6.5-.4-3.3-1.8-5.4-5.5-6.5 3.7-1.1 5.1-3.2 5.5-6.5z"/><path d="M13 1.8v2.4M11.8 3h2.4"/>'),
-  grip: svg('<circle cx="6" cy="4" r=".9"/><circle cx="10" cy="4" r=".9"/><circle cx="6" cy="8" r=".9"/><circle cx="10" cy="8" r=".9"/><circle cx="6" cy="12" r=".9"/><circle cx="10" cy="12" r=".9"/>'),
-}
+  sparkle: svg(
+    '<path d="M8 1.5c.4 3.3 1.8 5.4 5.5 6.5-3.7 1.1-5.1 3.2-5.5 6.5-.4-3.3-1.8-5.4-5.5-6.5 3.7-1.1 5.1-3.2 5.5-6.5z"/><path d="M13 1.8v2.4M11.8 3h2.4"/>',
+  ),
+  grip: svg(
+    '<circle cx="6" cy="4" r=".9"/><circle cx="10" cy="4" r=".9"/><circle cx="6" cy="8" r=".9"/><circle cx="10" cy="8" r=".9"/><circle cx="6" cy="12" r=".9"/><circle cx="10" cy="12" r=".9"/>',
+  ),
+};
 
 /** Save `blob` as a file named `name` (characters file systems refuse become dashes). */
 export function saveFile(blob: Blob, name: string) {
-  const a = make('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = name.replace(/[\\/:*?"<>|]+/g, '-').trim() || 'download'
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(a.href), 60000) // some browsers start a big download late
+  const a = make('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name.replace(/[\\/:*?"<>|]+/g, '-').trim() || 'download';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000); // some browsers start a big download late
 }
 
 /** A v4 UUID. `crypto.randomUUID()` only works in secure contexts (https, or localhost) — this app is also
  *  opened over plain http from another device's browser on the network, where `getRandomValues` still works. */
 export function uuid() {
-  const b = crypto.getRandomValues(new Uint8Array(16))
-  b[6] = (b[6] & 0x0f) | 0x40
-  b[8] = (b[8] & 0x3f) | 0x80
-  const h = [...b].map(x => x.toString(16).padStart(2, '0'))
-  return `${h[0]}${h[1]}${h[2]}${h[3]}-${h[4]}${h[5]}-${h[6]}${h[7]}-${h[8]}${h[9]}-${h.slice(10).join('')}`
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = [...b].map(x => x.toString(16).padStart(2, '0'));
+  return `${h[0]}${h[1]}${h[2]}${h[3]}-${h[4]}${h[5]}-${h[6]}${h[7]}-${h[8]}${h[9]}-${h.slice(10).join('')}`;
 }
 
 /** At most `max` characters, saying so at the end. The result stays within `max`, so clipping it again changes nothing. */
-export const clip = (text: string, max: number, note = '\n… (truncated)') => (text.length > max ? text.slice(0, max - note.length) + note : text)
+export const truncate = (text: string, max: number, note = '\n… (truncated)') =>
+  text.length > max ? text.slice(0, max - note.length) + note : text;
 
 /** Elements you type into: keys there aren't shortcuts, and pasting there isn't the canvas's. */
-export const EDITABLE = 'input, textarea, select, [contenteditable="plaintext-only"], [contenteditable="true"]'
+export const EDITABLE = 'input, textarea, select, [contenteditable="plaintext-only"], [contenteditable="true"]';
 /** Put a fixed-position element at (x, y), moved just enough to stay on screen (`top`: the lowest top allowed). */
 export function keepOnScreen(el: HTMLElement, x: number, y: number, top = 8) {
-  el.style.left = `${Math.max(8, Math.min(innerWidth - el.offsetWidth - 8, x))}px`
-  el.style.top = `${Math.max(top, Math.min(innerHeight - el.offsetHeight - 8, y))}px`
+  el.style.left = `${Math.max(8, Math.min(innerWidth - el.offsetWidth - 8, x))}px`;
+  el.style.top = `${Math.max(top, Math.min(innerHeight - el.offsetHeight - 8, y))}px`;
 }
 /** The nearest `sel` at a screen point, looking through everything stacked there (overlays included). */
 export const closestAt = <T extends Element = HTMLElement>(x: number, y: number, sel: string) =>
-  document.elementsFromPoint(x, y).map(el => el.closest<T>(sel)).find(Boolean) ?? null
+  document
+    .elementsFromPoint(x, y)
+    .map(el => el.closest<T>(sel))
+    .find(Boolean) ?? null;
 /** Is this event target a field being typed in? */
-export const typing = (t: EventTarget | null) => t instanceof Element && !!t.closest(EDITABLE)
+export const typing = (t: EventTarget | null) => t instanceof Element && !!t.closest(EDITABLE);
 /** May a single-key shortcut run: not while typing, not while a dialog is open. */
-export const shortcutOk = (e: KeyboardEvent) => !typing(e.target) && !document.querySelector('dialog[open]')
+export const shortcutOk = (e: KeyboardEvent) => !typing(e.target) && !document.querySelector('dialog[open]');
 /** What has focus inside `el` (not `el` itself), if anything. Moving an element in the page takes focus away, so
  *  whatever moves a window (full view, pinning, sticking to the screen) hands it back to this afterwards. */
-export const focusedIn = (el: HTMLElement) => el.contains(document.activeElement) && document.activeElement !== el ? document.activeElement as HTMLElement : null
+export const focusedIn = (el: HTMLElement) =>
+  el.contains(document.activeElement) && document.activeElement !== el ? (document.activeElement as HTMLElement) : null;
 
 /** A square icon button; the click doesn't reach the window under it (no drag, no focus steal). */
 /** A toggle or segmented-tab button's state: .on for the eye, aria-pressed for a screen reader. */
-export const pressed = (b: Element, on: boolean) => { b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)) }
+export const pressed = (b: Element, on: boolean) => {
+  b.classList.toggle('on', on);
+  b.setAttribute('aria-pressed', String(on));
+};
 
+/** A button showing only an icon, named by `label` (its tooltip and accessible name); its click doesn't reach the
+ *  window under it. */
 export function iconButton(icon: string, label: string, onClick: () => void, cls = '') {
-  const b = make('button', 'icon' + (cls ? ' ' + cls : ''))
-  b.innerHTML = icon
-  b.title = label
-  b.setAttribute('aria-label', label)
-  b.onclick = e => { e.stopPropagation(); onClick() }
-  return b
+  const b = make('button', `icon${cls ? ` ${cls}` : ''}`);
+  b.innerHTML = icon;
+  b.title = label;
+  b.setAttribute('aria-label', label);
+  b.onclick = e => {
+    e.stopPropagation();
+    onClick();
+  };
+  return b;
 }
 
 /** Copies `text()` to the clipboard; the icon turns into a check for a moment to confirm. */
 export function copyButton(text: () => string, label = 'Copy') {
   const flash = (ok: boolean, why = 'Copy failed (the browser blocked the clipboard)') => {
-    b.innerHTML = ok ? ICON.check : ICON.x
-    b.classList.add(ok ? 'on' : 'failed')
-    b.dataset.tip = ok ? label : why
-    setTimeout(() => { b.innerHTML = ICON.copy; b.classList.remove('on', 'failed'); b.dataset.tip = label }, 1600)
-  }
+    b.innerHTML = ok ? ICON.check : ICON.x;
+    b.classList.add(ok ? 'on' : 'failed');
+    b.dataset.tip = ok ? label : why;
+    setTimeout(() => {
+      b.innerHTML = ICON.copy;
+      b.classList.remove('on', 'failed');
+      b.dataset.tip = label;
+    }, 1600);
+  };
   // no clipboard outside secure pages (plain http on a LAN address): say so instead of doing nothing
-  const b = iconButton(ICON.copy, label, () => {
-    const t = text()
-    // nothing yet (no result, an image or binary file): keep the user's clipboard rather than empty it
-    if (!t) return flash(false, 'Nothing to copy yet')
-    if (!navigator.clipboard?.writeText) return flash(false)
-    navigator.clipboard.writeText(t).then(() => flash(true), () => flash(false))
-  }, 'copybtn')
-  return b
+  const b = iconButton(
+    ICON.copy,
+    label,
+    () => {
+      const t = text();
+      // nothing yet (no result, an image or binary file): keep the user's clipboard rather than empty it
+      if (!t) return flash(false, 'Nothing to copy yet');
+      if (!navigator.clipboard?.writeText) return flash(false);
+      navigator.clipboard.writeText(t).then(
+        () => flash(true),
+        () => flash(false),
+      );
+    },
+    'copybtn',
+  );
+  return b;
 }
 
 /** A text button (.btn), optionally with a modifier class like primary. */
 export function button(label: string, cls: string, onClick: () => void) {
-  const b = make('button', 'btn' + (cls ? ' ' + cls : ''), label)
-  b.onclick = onClick
-  return b
+  const b = make('button', `btn${cls ? ` ${cls}` : ''}`, label);
+  b.onclick = onClick;
+  return b;
 }
 
 /** The folder Claude works in, set once at boot from the server. */
-export const project = { root: '', name: '' }
-export const rel = (p: string) => (p && p.startsWith(project.root + '/') ? p.slice(project.root.length + 1) : p)
+export const project = { root: '', name: '' };
+/** A path relative to the project folder (unchanged when it's outside it). */
+export const relPath = (p: string) => (p?.startsWith(`${project.root}/`) ? p.slice(project.root.length + 1) : p);
 
 /** "5m ago", "3d ago", or the date once it's two months old. `t`: unix seconds, or an ISO date ('' gives ''). */
 export const ago = (t: number | string) => {
-  if (typeof t === 'string') { if (!t) return ''; t = Date.parse(t) / 1000 }
-  const s = Date.now() / 1000 - t
-  return s < 60 ? 'just now' : s < 3600 ? `${(s / 60) | 0}m ago` : s < 86400 ? `${(s / 3600) | 0}h ago` : s < 86400 * 60 ? `${(s / 86400) | 0}d ago` : new Date(t * 1000).toLocaleDateString()
-}
+  if (typeof t === 'string') {
+    if (!t) return '';
+    t = Date.parse(t) / 1000;
+  }
+  const s = Date.now() / 1000 - t;
+  return s < 60
+    ? 'just now'
+    : s < 3600
+      ? `${(s / 60) | 0}m ago`
+      : s < 86400
+        ? `${(s / 3600) | 0}h ago`
+        : s < 86400 * 60
+          ? `${(s / 86400) | 0}d ago`
+          : new Date(t * 1000).toLocaleDateString();
+};
 
 /** A link that opens outside the app, in a new tab. */
 export function extLink(cls: string, text: string, href: string) {
-  const a = make('a', cls, text) as HTMLAnchorElement
-  if (/^https?:\/\//i.test(href)) Object.assign(a, { href, target: '_blank', rel: 'noopener' }) // never javascript: from a server field
-  return a
+  const a = make('a', cls, text) as HTMLAnchorElement;
+  if (/^https?:\/\//i.test(href)) Object.assign(a, { href, target: '_blank', rel: 'noopener' }); // never javascript: from a server field
+  return a;
 }
 
 /** "dir/sub/" muted + "file.ts" emphasized. */
 export function pathEl(cls: string, p: string) {
-  const e = make('span', cls), i = p.lastIndexOf('/') + 1
-  e.append(p.slice(0, i), make('b', '', p.slice(i)))
-  e.title = p
-  return e
+  const e = make('span', cls),
+    i = p.lastIndexOf('/') + 1;
+  e.append(p.slice(0, i), make('b', '', p.slice(i)));
+  e.title = p;
+  return e;
 }
 
 /** Scroll `scroller` so what in it is marked `data-reveal` (a line to show) sits a third of the way down. `scroller`
  *  must be positioned. Offsets rather than screen rects, so it's right at any canvas zoom. */
 export function revealIn(scroller: HTMLElement) {
-  let top = 0, e = scroller.querySelector<HTMLElement>('[data-reveal]')
-  if (!e) return
-  for (; e && e !== scroller; e = e.offsetParent as HTMLElement | null) top += e.offsetTop // reads only: one layout
-  scroller.scrollTop = top - scroller.clientHeight / 3
+  let top = 0,
+    e = scroller.querySelector<HTMLElement>('[data-reveal]');
+  if (!e) return;
+  for (; e && e !== scroller; e = e.offsetParent as HTMLElement | null) top += e.offsetTop; // reads only: one layout
+  scroller.scrollTop = top - scroller.clientHeight / 3;
 }
 
 /** A brief outline flash drawing the eye to an element. Web Animations: no forced layout, safe to call often. */
-let quietUntil = 0
+let quietUntil = 0;
+/** Flash an outline around an element to draw the eye to it (skipped while pings are quieted, e.g. during a replay). */
 export const ping = (el: HTMLElement) => {
-  if (performance.now() < quietUntil || !el.isConnected) return
-  const c = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()
-  const to = reducedMotion() ? '3px' : '9px' // reduced motion: the outline fades where it is instead of spreading
-  el.animate([{ outline: `2px solid ${c}`, outlineOffset: '3px' }, { outline: '2px solid transparent', outlineOffset: to }], { duration: 650, easing: 'cubic-bezier(.22,1,.36,1)' })
-}
-const still = matchMedia('(prefers-reduced-motion: reduce)')
+  if (performance.now() < quietUntil || !el.isConnected) return;
+  const c = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+  const to = reducedMotion() ? '3px' : '9px'; // reduced motion: the outline fades where it is instead of spreading
+  el.animate(
+    [
+      { outline: `2px solid ${c}`, outlineOffset: '3px' },
+      { outline: '2px solid transparent', outlineOffset: to },
+    ],
+    { duration: 650, easing: 'cubic-bezier(.22,1,.36,1)' },
+  );
+};
+const still = matchMedia('(prefers-reduced-motion: reduce)');
 /** Has the user asked for less motion? (For script-driven motion like smooth scrolling; CSS has its own fallback.) */
-export const reducedMotion = () => still.matches
+export const reducedMotion = () => still.matches;
 /** No pings while something rebuilds in bulk (replaying a saved session would flash every file it touched). */
-export const quietPings = (on: boolean) => { quietUntil = on ? Infinity : 0 }
+export const quietPings = (on: boolean) => {
+  quietUntil = on ? Infinity : 0;
+};
 
 /** In-app confirmation (instead of the browser's native confirm()). Resolves true when the action button is chosen. */
 export function confirmBox(title: string, body: string, action: string): Promise<boolean> {
-  const d = $<HTMLDialogElement>('#confirm')
-  d.querySelector('h2')!.textContent = title
-  d.querySelector('p')!.textContent = body
-  d.querySelector<HTMLButtonElement>('button[value=ok]')!.textContent = action
-  d.returnValue = ''
-  d.onclick = e => { if (e.target === d) d.close('') } // click outside the box = cancel
-  d.showModal()
-  return new Promise(res => d.addEventListener('close', () => res(d.returnValue === 'ok'), { once: true }))
+  const d = $<HTMLDialogElement>('#confirm');
+  d.querySelector('h2')!.textContent = title;
+  d.querySelector('p')!.textContent = body;
+  d.querySelector<HTMLButtonElement>('button[value=ok]')!.textContent = action;
+  d.returnValue = '';
+  d.onclick = e => {
+    if (e.target === d) d.close('');
+  }; // click outside the box = cancel
+  d.showModal();
+  return new Promise(res => d.addEventListener('close', () => res(d.returnValue === 'ok'), { once: true }));
 }
 
 /** A short message at the bottom of the screen that goes away by itself: for failures nobody would otherwise see. */
 export function toast(text: string) {
-  const t = stacked(make('p', 'toast', text))
-  setTimeout(() => t.remove(), 6000)
+  const t = stacked(make('p', 'toast', text));
+  setTimeout(() => t.remove(), 6000);
 }
 
 /** A message that stays until the caller removes it (or hides it and shows it again): for states that last, like
  *  "not saving". `actions` are its buttons. Toasts and notices stack instead of covering each other. */
 export function notice(text: string, ...actions: HTMLElement[]) {
-  const n = stacked(make('p', 'toast notice'))
-  n.append(make('span', '', text), ...actions)
-  return n
+  const n = stacked(make('p', 'toast notice'));
+  n.append(make('span', '', text), ...actions);
+  return n;
 }
-let stack: HTMLElement | undefined
+let stack: HTMLElement | undefined;
+/** Add a message to the stack of toasts and notices in the corner. */
 function stacked(el: HTMLElement) {
-  stack ??= document.body.appendChild(make('div', 'float notices'))
-  el.setAttribute('role', 'status')
-  stack.append(el)
-  return el
+  stack ??= document.body.appendChild(make('div', 'float notices'));
+  el.setAttribute('role', 'status');
+  stack.append(el);
+  return el;
 }
 
 /** `f`, run at most once per frame, with the latest arguments: for pointermove, scroll and wheel handlers. */
 export function perFrame<A extends unknown[]>(f: (...a: A) => void) {
-  let raf = 0, last: A
-  return (...a: A) => { last = a; raf ||= requestAnimationFrame(() => { raf = 0; f(...last) }) }
+  let raf = 0,
+    last: A;
+  return (...a: A) => {
+    last = a;
+    if (!raf)
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        f(...last);
+      });
+  };
 }
