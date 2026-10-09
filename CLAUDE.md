@@ -31,7 +31,7 @@ web/src/
     image/     image, crop
     snippet/   snippet, pinmarks (a snippet's source stays marked)
     preview/   preview (a project file opened from Ctrl+K), fileedit (editing it in place, saved through `POST /api/file`, and the Vim setting)
-  panels/      side panels: file tree + inspector, diffs, defs (go to definition from a diff's names)
+  panels/      side panels: file tree + inspector, diffs, defs (a diff's names: go to definition, or in the Git and GitHub windows find references, `/api/refs`, picked ones opening in a small window stuck to the screen), expand (a diff's "show 10 more lines" around its hunks, from the file's new side: `/api/file`, `/api/git/blob` or `/api/gh/blob`)
   styles/      index.css imports tokens.css, then one stylesheet per area
 ```
 

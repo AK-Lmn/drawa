@@ -76,6 +76,15 @@ onChange(() => {
   if (g !== gs) grips.replaceSync(`.grip{--gs:${f}} #world .grip{--gs:${(gs = g)}}`); // floating windows aren't zoomed
 });
 
+/** Take an item off the canvas for good, with no Undo: one the app put there for the moment (a find references peek). */
+export function removeQuietly(el: HTMLElement) {
+  forget(el);
+  dropLinks(el);
+  park(el);
+  drop(el);
+  changed();
+}
+
 // what the Undo toast would bring back: everything removed while it shows (a deleted selection is one undo)
 let undo: {
   toast: HTMLElement;

@@ -146,7 +146,7 @@ const floats = holder(stage.insertBefore(make('div', 'floats'), $('.fullview') ?
 /** Is this window floating over the canvas (pinned to the screen)? */
 export const floating = (el: HTMLElement) => el.classList.contains('floating');
 /** Put a floating window at screen point (x, y), kept on screen with its tab clear of the toolbar. */
-const floatAt = (el: HTMLElement, x: number, y: number) => {
+const setFloatPos = (el: HTMLElement, x: number, y: number) => {
   // a tab stays reachable: below the toolbar only where the window would slide under it, not across the whole width
   const nx = Math.min(Math.max(0, x), innerWidth - 120),
     bar = $('#bar')?.getBoundingClientRect();
@@ -158,22 +158,34 @@ const floatAt = (el: HTMLElement, x: number, y: number) => {
 
 /** Stick a window to the screen where it is now, or put a floating one back on the canvas. */
 export function toggleFloat(el: HTMLElement) {
+  if (!floating(el)) {
+    if (el.classList.contains('full')) exitFull(); // first: it floats where it sits on the canvas, not at full view's corner
+    const b = el.getBoundingClientRect();
+    floatAt(el, b.left, b.top);
+    return;
+  }
+  const had = focusedIn(el); // typing in it: keep typing wherever it lands
+  if (el.classList.contains('full')) exitFull();
+  unfloat(el);
+  bringBack(el);
+  sync(el);
+  redraw();
+  changed();
+  had?.focus({ preventScroll: true });
+}
+
+/** Stick a window to the screen with its top-left at (x, y) in screen pixels; one already stuck there just moves. */
+export function floatAt(el: HTMLElement, x: number, y: number) {
   const had = focusedIn(el); // typing in it: keep typing wherever it floats
   if (el.classList.contains('full')) exitFull();
-  if (floating(el)) {
-    unfloat(el);
-    bringBack(el);
-  } else {
-    const b = el.getBoundingClientRect();
-    if (docked(el)) {
-      el.classList.remove('docked');
-      shown();
-    }
-    el.classList.add('floating');
-    floatAt(el, b.left, b.top);
-    floats.append(el);
-    raiseFloat(el);
+  if (docked(el)) {
+    el.classList.remove('docked');
+    shown();
   }
+  el.classList.add('floating');
+  setFloatPos(el, x, y);
+  if (el.parentElement !== floats) floats.append(el);
+  raiseFloat(el);
   sync(el);
   redraw();
   changed();
@@ -214,7 +226,7 @@ floats.addEventListener('pointerdown', e => {
     el.querySelector<HTMLElement>('.win-h')!,
     e as PointerEvent,
     (dx, dy) => {
-      floatAt(el, sx + dx, sy + dy);
+      setFloatPos(el, sx + dx, sy + dy);
       redraw();
     },
     () => {
@@ -228,7 +240,7 @@ floats.addEventListener('pointerdown', e => {
 // a smaller window (a phone turned, a smaller screen): keep every floating window's tab reachable
 addEventListener('resize', () => {
   for (const el of floats.querySelectorAll<HTMLElement>(':scope > .floating'))
-    floatAt(el, parseFloat(el.style.getPropertyValue('--fx')), parseFloat(el.style.getPropertyValue('--fy')));
+    setFloatPos(el, parseFloat(el.style.getPropertyValue('--fx')), parseFloat(el.style.getPropertyValue('--fy')));
 });
 
 type Float = { id: string; x: number; y: number };
@@ -246,7 +258,7 @@ function restoreFloats() {
     const el = ids.get(f.id);
     if (el && !floating(el)) {
       el.classList.add('floating');
-      floatAt(el, f.x, f.y);
+      setFloatPos(el, f.x, f.y);
       floats.append(el);
       raiseFloat(el);
       sync(el);

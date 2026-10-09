@@ -2,11 +2,12 @@
 // under their lines, and a comment on any line), its checks; merge, close, reopen, mark ready, check out.
 
 import { changed } from '../../canvas/core/view';
-import { api } from '../../lib/api';
+import { api, q } from '../../lib/api';
 import { button, confirmBox, make, toast } from '../../lib/dom';
 import { enhanceMarked } from '../../lib/markdown';
 import { enhance as enhanceSelect } from '../../lib/select';
-import { openable, openFileButton, unified } from '../../panels/diff';
+import { diffPath, openable, openFileButton, unified } from '../../panels/diff';
+import { expandable, textOf } from '../../panels/expand';
 import {
   getChecks,
   getPr,
@@ -259,7 +260,7 @@ function files(p: Pr) {
   return parts.map(part => {
     const d = make('details', 'ghfile'),
       s = make('summary');
-    const path = /^diff --git a\/.+? b\/(.+)$/m.exec(part)?.[1] ?? 'file';
+    const path = diffPath(part) || 'file';
     const body = part.slice(part.search(/^@@/m) >>> 0); // counts from the first hunk: the header's ---/+++ lines aren't changes
     const add = (body.match(/^\+/gm) ?? []).length,
       del = (body.match(/^-/gm) ?? []).length;
@@ -285,6 +286,8 @@ function files(p: Pr) {
         s.querySelector('.ghcount, .a')!.before(openFileButton(disk, () => diff));
         openable(diff, disk);
       });
+    // more of the file around each hunk, at the pull request's newest commit (fetched from GitHub when it isn't here)
+    expandable(diff, textOf(`gh/blob?repo=${q(repo)}&ref=${p.headOid}&path=${q(path)}`));
     for (const c of here.filter(c => !c.outdated)) {
       const r = rows.find(r => r.dataset.line === String(c.line) && r.dataset.side === c.side);
       if (r) under(r, inlineComment(c));
@@ -295,7 +298,7 @@ function files(p: Pr) {
       diff.classList.add('ghcommentable');
       diff.onclick = e => {
         const r = (e.target as HTMLElement).closest<HTMLElement>('.diff>[data-line]');
-        if (r && getSelection()?.isCollapsed !== false) lineForm(p.number, path, r);
+        if (r && !e.defaultPrevented && getSelection()?.isCollapsed !== false) lineForm(p.number, path, r);
       };
     }
     d.append(s, diff);

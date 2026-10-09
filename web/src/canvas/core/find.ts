@@ -7,11 +7,13 @@ import { api, q as enc } from '../../lib/api';
 import { $, make, ping, reducedMotion, revealIn } from '../../lib/dom';
 import { command, commands, MOD } from '../../lib/keys';
 import { enhanceMarked } from '../../lib/markdown';
+import { persist } from '../../lib/store';
 import { type CodeSymbol, findSymbols, symbolsOn } from '../../lib/symbols';
+import { floatAt } from './dock';
 import { bringToFront, hidden, items, onCanvas } from './items';
 import { centerOn } from './placement';
 import { kindName, refIcon, refStatus } from './refs';
-import { expand, focusInput, titleOf } from './window';
+import { expand, focusInput, removeQuietly, titleOf } from './window';
 
 const box = document.body.appendChild(make('div', 'finder'));
 box.hidden = true;
@@ -307,6 +309,48 @@ export function openFileAt(path: string, line?: number, edit = false) {
   const el = openFile?.(path, line, edit);
   if (el) go(el);
   return !!el;
+}
+
+let peekWin: HTMLElement | null = null; // the small window stickFileAt made last: the next pick takes its place
+// still the peek after a reload, so a later pick replaces it rather than leaving one more behind; phase 2: after windows
+persist(
+  'refpeek',
+  () => (peekWin?.isConnected ? (peekWin.dataset.id ?? null) : null),
+  (id: string | null) => {
+    peekWin = id ? (items().find(el => el.dataset.id === id) ?? null) : null;
+  },
+  2,
+);
+/** Open a project file at `line` in a small window stuck to the screen at (x, y), without moving the canvas (a
+ *  diff's find references: you step through them with the list still open). One such window is reused from pick to
+ *  pick. A window the file already has stays where you put it: it's brought into view at the line instead. */
+export function stickFileAt(path: string, line: number, x: number, y: number) {
+  const had = new Set(items()),
+    el = openFile?.(path, line);
+  if (!el) return false;
+  // still the peek: not docked or put on the canvas since, and not holding an edit you haven't finished
+  const ours =
+    peekWin?.isConnected && peekWin.classList.contains('floating') && peekWin.dataset.state !== 'editing'
+      ? peekWin
+      : null;
+  expand(el);
+  if (had.has(el) && el !== ours) {
+    // the user's own window
+    if (onCanvas(el)) {
+      bringToFront(el);
+      centerOn(el);
+    } else el.scrollIntoView({ block: 'nearest', behavior: reducedMotion() ? 'auto' : 'smooth' });
+    setTimeout(() => ping(el), 300);
+    return true;
+  }
+  if (ours && ours !== el) removeQuietly(ours); // only now: a pick that goes to your own window keeps the peek
+  if (el !== ours) {
+    el.style.width = '380px';
+    el.style.height = '260px';
+  }
+  peekWin = el;
+  floatAt(el, x, y);
+  return true;
 }
 
 /** Fly to a window: expand it if collapsed, bring it forward, and put the cursor in it when it takes typing. */
