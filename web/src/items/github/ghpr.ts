@@ -274,6 +274,7 @@ function files(p: Pr) {
     d.open = parts.length <= 8 || here.length > 0;
     const diff = unified(part),
       rows = [...diff.children] as HTMLElement[];
+    diff.dataset.repo = repo; // find references searches the pull request's repo
     // where each row is as GitHub's review comments count it: a removed line by its old number, others by their new
     for (const r of rows)
       if (r.dataset.n || r.dataset.a) {

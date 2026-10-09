@@ -6,7 +6,7 @@
 
 import { openFileAt, stickFileAt } from '../canvas/core/find';
 import { api, q } from '../lib/api';
-import { button, ICON, iconButton, keepOnScreen, make, perFrame, revealIn } from '../lib/dom';
+import { button, ICON, iconButton, keepOnScreen, make, perFrame, revealIn, toast } from '../lib/dom';
 import { type CodeSymbol, definitions, symbolsOn } from '../lib/symbols';
 import { sourceView } from './files';
 
@@ -53,14 +53,17 @@ const hover = perFrame((t: Element | null, x: number, y: number) => {
   row!.classList.add('def-on');
 });
 
-/** What a click on a name in a diff does with it: where it's defined (showDefs), or where it's used (showRefs). */
-type Look = (name: string, x: number, y: number) => void;
+/** What a click on a name in a diff does with it: where it's defined (showDefs), or where it's used (showRefs).
+ *  `row` is the diff row clicked. */
+type Look = (name: string, x: number, y: number, row: Element) => void;
+/** Where a clicked name is defined. */
+const toDefs: Look = (name, x, y) => showDefs(name, x, y);
 /** Make the names in diffs inside `el` lead somewhere: hovering underlines one, clicking runs `look` on it (where
  *  it's defined, or with showRefs where it's used). Such a click is `defaultPrevented`, so a diff's own click (a pull
  *  request's line comment) can skip it. */
-export function definable(el: HTMLElement, look: Look = showDefs) {
+export function definable(el: HTMLElement, look: Look = toDefs) {
   /** Do names lead anywhere now? Where it's used is a text search: no ctags needed. */
-  const on = () => look !== showDefs || symbolsOn();
+  const on = () => look !== toDefs || symbolsOn();
   el.addEventListener('pointermove', e => hover(on() ? (e.target as Element) : null, e.clientX, e.clientY));
   el.addEventListener('pointerleave', () => hover(null, 0, 0));
   el.addEventListener(
@@ -71,7 +74,7 @@ export function definable(el: HTMLElement, look: Look = showDefs) {
       const at = nameAt(e.clientX, e.clientY, row);
       if (!at) return;
       e.preventDefault();
-      look(at.name, e.clientX, e.clientY + 14);
+      look(at.name, e.clientX, e.clientY + 14, row);
     },
     true,
   ); // capturing: before the diff's own click handlers
@@ -119,22 +122,27 @@ export async function showDefs(name: string, x: number, y: number, field?: HTMLE
 
 /** One place a name is used: its file, line and that line's text. */
 type Ref = { path: string; line: number; text: string };
-/** Where `name` is used in the project (a whole-word search, comments and strings too), listed near (x, y). Picking
- *  one opens its file at the line in a small window stuck to the screen beside the list, which stays open to step
- *  through the rest. */
-export async function showRefs(name: string, x: number, y: number) {
+/** Where `name` is used, listed near (x, y): a whole-word search (comments and strings too) of the repo the clicked
+ *  diff `row` is from (its data-repo: the project's own, a nested repo or a worktree). Picking one opens its file at
+ *  the line in a small window stuck to the screen beside the list, which stays open to step through the rest. */
+export async function showRefs(name: string, x: number, y: number, row?: Element) {
   const n = ++asked;
   from = null;
   x0 = x;
   y0 = y;
+  const repo = row?.closest<HTMLElement>('.diff')?.dataset.repo ?? '';
   showBox(defsHeader(name, 'Searching…'));
-  const { refs, more } = await api<{ refs: Ref[]; more: boolean }>(`refs?name=${q(name)}`).catch(() => ({
-    refs: [] as Ref[],
-    more: false,
-  }));
+  let got: { refs: Ref[]; more: boolean; outside?: boolean };
+  try {
+    got = await api(`refs?name=${q(name)}&repo=${q(repo)}`);
+  } catch (e) {
+    if (n === asked) showBox(defsHeader(name, (e as Error).message)); // couldn't search: not the same as no uses
+    return;
+  }
   if (n !== asked) return;
+  const { refs, more, outside } = got;
   if (!refs.length) {
-    showBox(defsHeader(name, 'no uses found in the project'));
+    showBox(defsHeader(name, repo ? `no uses found in ${repo}` : 'no uses found in the project'));
     return;
   }
   const at = new RegExp(`(?<![\\w$])${name.replace(/\$/g, '\\$')}(?![\\w$])`);
@@ -147,7 +155,11 @@ export async function showRefs(name: string, x: number, y: number) {
       else text.textContent = r.text;
       return [make('b', '', `${r.path}:${r.line}`), text];
     },
-    r => stickFileAt(r.path, r.line, ...besideBox()),
+    // a worktree outside the project folder: its files can't be opened from here
+    r =>
+      outside
+        ? toast(`${r.path} is in a worktree outside the project folder: open it from there.`)
+        : stickFileAt(r.path, r.line, ...besideBox()),
   );
   showBox(
     defsHeader(name, more ? `the first ${refs.length} uses` : `${refs.length} use${refs.length > 1 ? 's' : ''}`),

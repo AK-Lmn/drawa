@@ -308,6 +308,7 @@ function fileRow(v: RepoView, f: GitFile, isStaged: boolean, host: Host) {
         `git/diff?repo=${q(v.dir)}&path=${q(f.path)}&staged=${isStaged ? 1 : 0}`,
       );
       const d = wrap.appendChild(unified(diff));
+      d.dataset.repo = v.dir; // find references searches the repo the diff is from
       if (opens) openable(d, proj); // its new side is the file as staged or as it is: line numbers that match it
       if (opens)
         expandable(d, textOf(isStaged ? `git/blob?repo=${q(v.dir)}&rev=&path=${q(f.path)}` : `file?path=${q(proj)}`));
@@ -380,6 +381,7 @@ function commitDiff(v: RepoView, hash: string, patch: string) {
   for (const f of files) {
     const path = diffPath(f);
     const d = unified(f);
+    d.dataset.repo = v.dir; // find references searches the repo the diff is from
     expandable(d, textOf(`git/blob?repo=${q(v.dir)}&rev=${hash}&top=1&path=${q(path)}`)); // a patch's paths are from the repo's top
     box.append(make('div', 'gcf', path), d);
   }

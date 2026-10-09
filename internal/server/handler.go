@@ -538,8 +538,11 @@ func saveStatus(err error) int {
 
 // refsRoute is where a name is used; more: the list stops before the last of them.
 func refsRoute(q url.Values) (any, int, error) {
-	refs, more := gitx.Refs(q.Get("name"))
-	return map[string]any{"refs": refs, "more": more}, 200, nil
+	refs, more, outside, err := gitx.Refs(q.Get("repo"), q.Get("name"))
+	if err != nil {
+		return nil, 0, err
+	}
+	return map[string]any{"refs": refs, "more": more, "outside": outside}, 200, nil
 }
 
 // gitRoute is the shared git status; fresh=1 (the Git window's refresh button) reads it all again first.
