@@ -12,7 +12,7 @@ import { cards, focus, meta, clearSession } from '../card/session';
 import { renderCard } from '../card/render';
 import type { Session } from '../card/types';
 import { send } from '../card/live';
-import { readImages, thumb, type Pasted } from './images';
+import { readImages, thumbnail, type Pasted } from './images';
 import { textRefs } from './uploads';
 import { runShell } from './shell';
 import { modePicker } from '../card/mode';
@@ -64,6 +64,7 @@ export function composer(S: Session, body: HTMLElement) {
   form.append(ta, pick, stopBtn, sendBtn);
   chips.hidden = true;
   const dock = make('div', 'dock'); // the card's footer: attached references above a clearly bordered message field
+  /** Name the send key on the send button. */
   const label = () => {
     sendBtn.title = `Send (${sendCombo()})`;
   }; // the placeholder says it too (renderCard)
@@ -124,6 +125,7 @@ export function composer(S: Session, body: HTMLElement) {
       putBack(S, p, refs, images); // not sent: put it back to try again
     });
   };
+  /** Attach images to the message, each marked "[ImageN]" at the cursor. */
   // images: paste them (Ctrl+V) or drop image files on the message box. Each gets a "[ImageN]" marker inserted at
   // the cursor, like Claude Code's terminal, so a message can say which one it means ("what's wrong in [Image2]").
   const attach = async (files: File[]) => {
@@ -141,6 +143,7 @@ export function composer(S: Session, body: HTMLElement) {
     fit();
     ta.focus();
   };
+  /** Attach dropped or pasted files: images as pictures, other text files by their contents. */
   // anything else: text files go along as their contents (session/composer/uploads.ts)
   const attachAny = async (files: File[]) => {
     const images = files.filter(f => f.type.startsWith('image/'));
@@ -171,6 +174,7 @@ export function composer(S: Session, body: HTMLElement) {
       attachAny(files);
     }
   });
+  /** Grow the message box to fit its text. */
   const fit = () => fitBox(ta);
   ta.oninput = () => {
     fit();
@@ -187,6 +191,7 @@ export function composer(S: Session, body: HTMLElement) {
   });
 }
 
+/** Fit a message box to its text, up to a max height, and switch it to shell mode when it starts with "!". */
 function fitBox(ta: HTMLTextAreaElement) {
   ta.style.height = 'auto';
   ta.style.height = `${ta.scrollHeight}px`;
@@ -196,6 +201,7 @@ function fitBox(ta: HTMLTextAreaElement) {
 
 /* ---------- "/" menu: skills and slash commands; "@" menu: canvas items ---------- */
 let menus = 0; // numbers each card's menu, so its rows' ids are unique on the page
+/** The "/" (skills and commands) and "@" (canvas items and files) menu above a message box. */
 function commandMenu(S: Session, form: HTMLFormElement) {
   const menu = make('div', 'cmds');
   menu.setAttribute('role', 'listbox');
@@ -208,6 +214,7 @@ function commandMenu(S: Session, form: HTMLFormElement) {
   let fileQ: string | null = null,
     found: string[] = [],
     typing = 0;
+  /** Ask for project files matching what's typed after "@", once typing pauses. */
   const searchFiles = (q: string) => {
     if (q === fileQ) return;
     fileQ = q;
@@ -225,6 +232,7 @@ function commandMenu(S: Session, form: HTMLFormElement) {
       120,
     );
   };
+  /** Pick a menu entry, then hand the keys back to the message box. */
   const pick = (i: number) => {
     const it = items[i];
     if (!it) return;
@@ -233,6 +241,7 @@ function commandMenu(S: Session, form: HTMLFormElement) {
     S.ta.focus();
     draw();
   };
+  /** Redraw the menu for what's being typed: "@" lists items and files, "/" commands; hidden otherwise. */
   const draw = () => {
     const before = S.ta.value.slice(0, S.ta.selectionStart);
     const at = /(^|\s)@([^\s@]*)$/.exec(before);
@@ -353,6 +362,8 @@ function commandMenu(S: Session, form: HTMLFormElement) {
 /* ---------- references to canvas items ---------- */
 const noImages = (S: Session) => toast(`Images aren't supported in ${who(S.backend)}: it takes text only.`);
 
+/** Attach a canvas item to the card's next message, with a dashed arrow to it; refused when it's a picture for a
+ *  text-only agent. */
 export function addRef(S: Session, r: Ref) {
   if (textOnly(S.backend) && isPicture(r.kind)) {
     noImages(S);
@@ -370,7 +381,7 @@ export function addRef(S: Session, r: Ref) {
 }
 
 /** A reference chip: click to fly to the item; with `remove`, an × to detach it. */
-export function chip(r: Ref, remove?: () => void) {
+export function refChip(r: Ref, remove?: () => void) {
   const c = make('span', 'chip'),
     label = make('button', '', `${refIcon(r.kind)} ${r.label}`);
   c.dataset.kind = r.kind;
@@ -411,14 +422,15 @@ function dropImage(S: Session, n: number) {
   drawChips(S);
 }
 
+/** Redraw the chips above the message box (images and references), and save the draft. */
 function drawChips(S: Session) {
   saveSoon();
   keepImages(S);
   S.chips.hidden = !S.refs.length && !S.images.length;
   S.chips.replaceChildren(
-    ...S.images.map((img, i) => thumb(img, () => dropImage(S, i + 1))),
+    ...S.images.map((img, i) => thumbnail(img, () => dropImage(S, i + 1))),
     ...S.refs.map(r =>
-      chip(r, () => {
+      refChip(r, () => {
         S.refs.splice(S.refs.indexOf(r), 1);
         if (!S.sentRefs.has(r.el)) unlink(S, r.el, 'ref'); // never sent: the reference link goes too
         drawChips(S);

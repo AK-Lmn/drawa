@@ -3,7 +3,7 @@
 // content-visibility keep working). Click marked text to jump to its snippet. A mark is saved with its snippet as
 // host key + exact text + a little text before it, and found again by text search when the host is back.
 
-import { front, onCanvas } from '../../canvas/core/items';
+import { bringToFront, onCanvas } from '../../canvas/core/items';
 import { centerOn } from '../../canvas/core/placement';
 import { winTitle } from '../../canvas/core/refs';
 import { onChange } from '../../canvas/core/view';
@@ -40,6 +40,7 @@ if (hl) CSS.highlights.set('pinned', hl);
 /* ---------- hosts: something with a stable name, so the mark can come back after a reload ---------- */
 /** The path of the file open in the inspector ('' when none). */
 export const inspectorPath = () => tipText(document.querySelector('#ipath :is([title], [data-tip])'));
+/** Where a selection was made, with the name it can be found by after a reload (null when it can't be marked). */
 function hostOf(node: Node): { el: HTMLElement; key: string | null } | null {
   const el = node instanceof Element ? node : node.parentElement;
   const src = el?.closest<HTMLElement>('#viewer .src');
@@ -49,6 +50,7 @@ function hostOf(node: Node): { el: HTMLElement; key: string | null } | null {
   const any = el?.closest<HTMLElement>('.win-b, pre, #inspector'); // no stable name: marked until reload
   return any ? { el: any, key: null } : null;
 }
+/** The element a saved mark's text lives in, by its name. */
 function findHost(key: string): HTMLElement | null {
   if (key.startsWith('f:')) return inspectorPath() === key.slice(2) ? document.querySelector('#viewer .src') : null;
   return document.querySelector(`[data-ink="${CSS.escape(key)}"]`);
@@ -94,13 +96,14 @@ function rangeAt(el: HTMLElement, start: number, end: number, from?: Element): R
   }
   return null;
 }
-function resolve(m: Mark) {
+/** Find a mark's text in its host again (the host re-rendered, or showed up after a reload). */
+function refind(m: Mark) {
   if (m.range && !m.range.collapsed && m.range.toString() === m.text && m.host?.contains(m.range.startContainer))
     return;
   m.range = null;
   if (m.src && !m.host?.isConnected) m.host = findHost(m.src.h);
   if (!m.host?.isConnected) return;
-  watch(m.host);
+  watchHost(m.host);
   // after a miss, search again only when the host grew (a row added, or its last row streaming), and only from
   // its last row seen then: a streaming chat would otherwise re-read its whole text every 250ms
   // (the ink layer isn't a row: a file preview's is its last child, while its text is replaced before it)
@@ -133,7 +136,7 @@ let timer = 0,
 /** Rebuild the highlight: drop marks whose snippet is gone, find the ones whose text moved or re-rendered. */
 function refresh() {
   for (const m of [...marks]) if (!m.snip.isConnected) marks.splice(marks.indexOf(m), 1);
-  marks.forEach(resolve);
+  marks.forEach(refind);
   hl?.clear();
   for (const m of marks) if (m.range) hl?.add(m.range);
   for (const [host, obs] of watched)
@@ -147,7 +150,8 @@ function refresh() {
   if (marks.some(m => !m.range && m.src) && ++tries <= 30) timer = setTimeout(refresh, 1000);
 }
 let soon = 0;
-const later = () => {
+/** Look for marks again a moment after their hosts change. */
+const refreshSoon = () => {
   if (!soon)
     soon = window.setTimeout(() => {
       soon = 0;
@@ -155,14 +159,15 @@ const later = () => {
     }, 250);
 }; // streaming mutates often
 const watched = new Map<HTMLElement, MutationObserver>(); // disconnected once no mark lives in the host
-function watch(host: HTMLElement) {
+/** Watch a host for changes, so its marks are found again after it re-renders. */
+function watchHost(host: HTMLElement) {
   if (watched.has(host)) return;
-  const obs = new MutationObserver(later);
+  const obs = new MutationObserver(refreshSoon);
   obs.observe(host, { childList: true, subtree: true, characterData: true });
   watched.set(host, obs);
 }
 onChange(viewOnly => {
-  if (!viewOnly) later();
+  if (!viewOnly) refreshSoon();
 }); // a snippet removed, windows restored (a pan changes nothing here)
 
 /** Mark the text a snippet came from. */
@@ -175,6 +180,7 @@ export function addMark(
   tries = 0;
   refresh();
 }
+/** Where a snippet's text came from, if it's marked there. */
 export const markSrcOf = (snip: HTMLElement) => marks.find(m => m.snip === snip)?.src ?? undefined;
 
 /* ---------- pointing at marked text: a hint, and a click jumps to the snippet ---------- */
@@ -194,7 +200,8 @@ function markAt(x: number, y: number): Mark | undefined {
   });
 }
 let over: HTMLElement | null = null;
-const hover = perFrame((e: PointerEvent) => {
+/** Hint at marked text under the pointer: it's pinned to the canvas, and a click shows the snippet. */
+const hoverMark = perFrame((e: PointerEvent) => {
   const m = markAt(e.clientX, e.clientY),
     t = e.target instanceof HTMLElement ? e.target : null;
   over?.classList.remove('pinhover');
@@ -206,7 +213,7 @@ const hover = perFrame((e: PointerEvent) => {
 addEventListener(
   'pointermove',
   e => {
-    if (marks.length && !e.buttons) hover(e);
+    if (marks.length && !e.buttons) hoverMark(e);
   },
   { passive: true },
 );
@@ -217,7 +224,7 @@ addEventListener('click', e => {
   hideTip();
   const s = m.snip;
   if (onCanvas(s)) {
-    front(s);
+    bringToFront(s);
     centerOn(s);
   } else s.scrollIntoView({ block: 'nearest', behavior: reducedMotion() ? 'auto' : 'smooth' }); // pinned/floating/full view
   ping(s);

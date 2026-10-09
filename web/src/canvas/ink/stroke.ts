@@ -52,15 +52,18 @@ const placedFns: ((list: Stroke[]) => void)[] = [];
 export const onInkPlaced = (f: (list: Stroke[]) => void) => {
   placedFns.push(f);
 };
+/** Tell the listeners these strokes were just drawn, written or moved. */
 export const inkPlaced = (list: Stroke[]) => placedFns.forEach(f => f(list));
 export const FIT = 1000;
-export const fits = (host?: HTMLElement) => !!host && 'inkFit' in host.dataset;
+/** Does this host scale its ink with its width (data-ink-fit: a picture, a diagram)? */
+export const isFitHost = (host?: HTMLElement) => !!host && 'inkFit' in host.dataset;
 /** Stored units per host px: FIT across a fitted host (a picture, a diagram), otherwise its own pixels. */
-export const unitsPerHostPx = (host?: HTMLElement) => (fits(host) ? FIT / host!.offsetWidth : 1);
+export const unitsPerHostPx = (host?: HTMLElement) => (isFitHost(host) ? FIT / host!.offsetWidth : 1);
 
 /* ---------- rendering ---------- */
 const pathOf = (o: number[][]) =>
   o.length ? `M${o.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L')}Z` : '';
+/** A freehand stroke's outline as an SVG path (perfect-freehand, with pressure). */
 const outline = (s: Stroke) =>
   pathOf(getStroke(s.p, { size: s.s, thinning: 0.5, smoothing: 0.5, streamline: 0.4, simulatePressure: s.sim }));
 /** A shape's outline, drawn with the same pen (even weight, no pressure), so it sits with the freehand ink. */
@@ -84,7 +87,7 @@ function layer(host?: HTMLElement): SVGSVGElement {
     l.setAttribute('class', 'ink-local');
     l.setAttribute('aria-hidden', 'true');
     // viewBox FIT wide and 1 tall, "meet": scales by the host's width (its height is always over 1px)
-    if (fits(host)) {
+    if (isFitHost(host)) {
       l.classList.add('ink-fit');
       l.setAttribute('viewBox', `0 0 ${FIT} 1`);
       l.setAttribute('preserveAspectRatio', 'xMinYMin meet');
@@ -94,6 +97,7 @@ function layer(host?: HTMLElement): SVGSVGElement {
   }
   return l;
 }
+/** Draw a stroke (or redraw it after a change) as ink, a shape or text, in its window's layer or the canvas's. */
 export function paint(s: Stroke) {
   s.bb = undefined; // measured again when asked
   if (s.host && s.a != null) requestAnimationFrame(() => follow(s.host!));
@@ -106,9 +110,11 @@ export function paint(s: Stroke) {
   }
   if (s.sel) s.el?.classList.add('ink-sel'); // painting resets the class: keep the selection's mark
 }
+/** Draw a shape: its outline, over its fill when it has one. */
 function paintShape(s: Stroke) {
   const g = (s.el ??= layer(s.host).appendChild(document.createElementNS(NS, 'g'))) as SVGGElement;
   g.setAttribute('class', `ink-${s.c} ink-shape`);
+  /** One path of the shape, with its class. */
   const part = (cls: string, d: string) => {
     const e = document.createElementNS(NS, 'path');
     e.setAttribute('class', cls);
@@ -118,6 +124,7 @@ function paintShape(s: Stroke) {
   const area = s.f ? fillPath(s.sh!, s.p[0], s.p[1]) : '';
   g.replaceChildren(...(area ? [part('ink-fill', area)] : []), part('ink-line', shapeOutline(s)));
 }
+/** Draw text: one tspan per line, the first baseline one line below its corner. */
 function paintText(s: Stroke) {
   const el = (s.el ??= layer(s.host).appendChild(document.createElementNS(NS, 'text'))) as SVGTextElement;
   const [x, y] = s.p[0];
@@ -156,7 +163,9 @@ export function clearInk(host: HTMLElement) {
 
 /* ---------- persistence (saved with the canvas layout) ---------- */
 type Saved = Omit<Stroke, 'el' | 'host' | 'row' | 'bb'>;
-const ink = () => [
+/** The drawing as saved: strokes whose windows are still there, rounded, plus the ones still waiting for their
+ *  window. */
+const savedInk = () => [
   ...strokes
     .filter(s => !s.host || s.host.isConnected) // a closed window's ink goes with it
     .map(
@@ -181,14 +190,15 @@ let waiting: Saved[] = [],
   tried = 0;
 persist(
   'ink',
-  ink,
+  savedInk,
   (list: Saved[]) => {
     waiting = list;
-    attach();
+    attachWaiting();
   },
   2,
 ); // after the windows it can belong to
-function attach() {
+/** Attach saved strokes whose windows exist now; the rest keep waiting. */
+function attachWaiting() {
   tried = performance.now();
   waiting = waiting.filter(s => {
     const host = s.h
@@ -203,7 +213,7 @@ function attach() {
   });
 }
 onChange(viewOnly => {
-  if (!viewOnly && waiting.length && performance.now() - tried > 1000) attach();
+  if (!viewOnly && waiting.length && performance.now() - tried > 1000) attachWaiting();
 });
 
 /** A drawing area for content that scales with its window (see data-ink-fit): the content's own shape (w/h), as big

@@ -21,21 +21,23 @@ const sections: Section[] = [];
 export const menuSection = (title: string, items: Section['items']) => void sections.push({ title, items });
 
 let menu: HTMLElement | null = null;
-const close = () => {
+/** Close the right-click menu. */
+const closeMenu = () => {
   menu?.remove();
   menu = null;
 };
 addEventListener(
   'pointerdown',
   e => {
-    if (menu && !menu.contains(e.target as Node)) close();
+    if (menu && !menu.contains(e.target as Node)) closeMenu();
   },
   true,
 );
-addEventListener('wheel', close, { passive: true });
-addEventListener('blur', close);
+addEventListener('wheel', closeMenu, { passive: true });
+addEventListener('blur', closeMenu);
 
-function row(it: MenuItem) {
+/** One action's row in the right-click menu: its icon, label and keys. */
+function menuRow(it: MenuItem) {
   const b = make('button', 'xsel-item ctx-item');
   b.setAttribute('role', 'menuitem');
   b.tabIndex = -1;
@@ -47,7 +49,7 @@ function row(it: MenuItem) {
     for (const key of keysOf(it.keys)) k.append(make('kbd', '', key === 'Ctrl' ? MOD : key));
   }
   b.onclick = () => {
-    close();
+    closeMenu();
     it.run();
   };
   return b;
@@ -55,7 +57,7 @@ function row(it: MenuItem) {
 
 /** Open the menu at a screen point; `only` limits it to one section (the selection bar's Layer button). */
 export function openMenu(els: HTMLElement[], x: number, y: number, only?: string) {
-  close();
+  closeMenu();
   const m = make('div', 'xsel-menu ctx-menu');
   m.setAttribute('role', 'menu');
   for (const s of sections) {
@@ -67,7 +69,7 @@ export function openMenu(els: HTMLElement[], x: number, y: number, only?: string
     group.setAttribute('role', 'group');
     group.setAttribute('aria-labelledby', id);
     if (!only) group.append(Object.assign(make('div', 'ctx-head', s.title), { id }));
-    group.append(...list.map(row));
+    group.append(...list.map(menuRow));
   }
   if (!m.childElementCount) return;
   menu = document.body.appendChild(m);
@@ -77,6 +79,7 @@ export function openMenu(els: HTMLElement[], x: number, y: number, only?: string
   m.focus(); // the menu, not its first row: nothing looks picked until the arrows or the pointer pick it
 }
 
+/** The right-click menu's keys. */
 // arrows move through the rows (headers are skipped: they aren't buttons), Home/End jump, Esc closes
 function keys(e: KeyboardEvent) {
   const rows = [...menu!.querySelectorAll<HTMLElement>('button')],
@@ -93,7 +96,7 @@ function keys(e: KeyboardEvent) {
             : -1;
   if (e.key === 'Escape' || e.key === 'Tab') {
     e.preventDefault();
-    close();
+    closeMenu();
   } else if (to >= 0) {
     e.preventDefault();
     rows[to].focus();

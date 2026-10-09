@@ -61,7 +61,8 @@ interface Review {
   general?: string;
   comments: { i: string; excerpt: string; text: string }[];
 }
-const review = (p: Plan): Review | undefined =>
+/** The review in progress on a plan (comments, general feedback), saved so a reload keeps it. */
+const reviewOf = (p: Plan): Review | undefined =>
   p.done || (!p.comments.length && !p.general.value.trim())
     ? undefined
     : {
@@ -69,14 +70,15 @@ const review = (p: Plan): Review | undefined =>
         general: p.general.value || undefined,
         comments: p.comments.map(c => ({ i: c.el.dataset.for ?? '', excerpt: c.excerpt, text: c.text })),
       };
-const saved = (p: Plan) => ({
+/** A plan window as saved: where it is, its name, and the review in progress. */
+const savedPlan = (p: Plan) => ({
   ...savedRect(p.el),
   ...(p.el.dataset.name ? { name: p.el.dataset.name } : {}),
-  review: review(p),
+  review: reviewOf(p),
 });
 persist(
   'plans',
-  () => Object.fromEntries(all.map(p => [`p:${p.key}`, saved(p)])),
+  () => Object.fromEntries(all.map(p => [`p:${p.key}`, savedPlan(p)])),
   v => Object.assign(savedPos, v),
   0,
 );
@@ -168,6 +170,7 @@ function create(S: Session, key: string): Plan {
   return p;
 }
 
+/** Set a plan's state line and data-state, and its tab's title. */
 function setState(p: Plan, text: string, cls: string) {
   p.state.textContent = text;
   p.el.dataset.state = cls;
@@ -181,7 +184,7 @@ export function showPlan(S: Session, toolId: string, markdown: string): Plan | n
   let p = current.get(S);
   // the same call again: the CLI may ask for approval (with the text) before the streamed call, which has none, ends
   if (p && !p.done && p.ids.includes(toolId)) {
-    if (markdown.trim() && markdown !== p.md) render(p, markdown);
+    if (markdown.trim() && markdown !== p.md) renderPlan(p, markdown);
     return p;
   }
   if (!p || p.done) {
@@ -194,14 +197,15 @@ export function showPlan(S: Session, toolId: string, markdown: string): Plan | n
   p.ids.push(toolId);
   p.comments = []; // a new version: the notes were about the last one
   p.general.value = '';
-  render(p, markdown);
+  renderPlan(p, markdown);
   restoreReview(p);
   setState(p, 'Drafted', 'draft');
   changed();
   return p;
 }
 
-function render(p: Plan, markdown: string) {
+/** Draw the plan's Markdown, marking what changed since the previous version. */
+function renderPlan(p: Plan, markdown: string) {
   if (p.md && p.md !== markdown) clearInk(p.body); // marks were about the previous text
   p.md = markdown;
   const overlay = p.body.querySelector(':scope > svg.ink-local'); // keep the ink layer across re-renders
@@ -265,7 +269,7 @@ export function reviewPlan(S: Session, req: string, toolId: string, markdown?: s
   if (!p || p.done || (toolId && !p.ids.includes(toolId))) p = showPlan(S, toolId, markdown ?? '');
   if (!p) return null;
   // the streamed tool call may not carry the plan text (the CLI adds it when asking): use the request's copy
-  if (markdown && markdown !== p.md) render(p, markdown);
+  if (markdown && markdown !== p.md) renderPlan(p, markdown);
   p.req = req;
   setState(p, 'Waiting for your review', 'review');
   ping(p.el);
@@ -283,6 +287,7 @@ export function planResult(S: Session, approved: boolean) {
   } else setState(p, 'Revising…', 'revising');
 }
 
+/** Bring a session's current plan into view. */
 export const focusPlan = (S: Session) => {
   const p = current.get(S);
   if (p) centerOn(p.el);
@@ -294,7 +299,7 @@ function commentHover(p: Plan) {
     ICON.plus,
     'Comment on this part of the plan',
     () => {
-      if (target) editor(p, target);
+      if (target) commentEditor(p, target);
     },
     'padd',
   );
@@ -314,7 +319,8 @@ function commentHover(p: Plan) {
   p.el.addEventListener('mouseleave', () => (add.hidden = true));
 }
 
-function editor(p: Plan, blk: HTMLElement) {
+/** A comment box under a block of the plan. */
+function commentEditor(p: Plan, blk: HTMLElement) {
   const box = make('div', 'pedit'),
     ta = make('textarea'),
     row = make('div', 'row');
@@ -337,6 +343,7 @@ function editor(p: Plan, blk: HTMLElement) {
     addComment(p, blk.dataset.i ?? '', plain(blk).replace(/\s+/g, ' ').trim().slice(0, 140), text);
   };
 }
+/** Add a comment under block `i` of the plan. */
 function addComment(p: Plan, i: string, excerpt: string, text: string) {
   const note = make('div', 'pnote');
   const c: Comment = { excerpt, text, el: note };
@@ -367,6 +374,7 @@ function lastNoteAfter(blk: HTMLElement) {
   while (at.nextElementSibling?.matches(`.pnote[data-for="${blk.dataset.i}"], .pedit`)) at = at.nextElementSibling;
   return at;
 }
+/** Show the number of comments on the Send feedback button. */
 const countComments = (p: Plan) => {
   p.buttons[0].textContent = p.comments.length ? `Send feedback (${p.comments.length})` : 'Send feedback';
 };
@@ -420,6 +428,7 @@ function remove(p: Plan) {
   changed();
 }
 
+/** Approve the plan: answer Claude's request, and switch the card to the mode picked (or back to asking). */
 async function approve(p: Plan, mode?: string) {
   const req = p.req;
   p.req = undefined;
@@ -435,6 +444,7 @@ async function approve(p: Plan, mode?: string) {
   }
 }
 
+/** Send the comments and general feedback (with a picture of the plan as drawn on) and ask for a new version. */
 async function feedback(p: Plan) {
   const lines = p.comments.map((c, i) => `${i + 1}. On "${c.excerpt}": ${c.text}`);
   const general = p.general.value.trim();
@@ -510,7 +520,7 @@ export function planWithdrawn(S: Session, req: string) {
 /* ---------- canvas bookkeeping ---------- */
 export function dropPlans(S: Session) {
   for (const p of all.filter(p => p.S === S)) {
-    savedPos[`p:${p.key}`] = saved(p); // a rebuild puts it back where it is now
+    savedPos[`p:${p.key}`] = savedPlan(p); // a rebuild puts it back where it is now
     p.el.remove();
     all.splice(all.indexOf(p), 1);
   }

@@ -41,6 +41,7 @@ const ROWS = '.diff > div:not(.sep)';
 const hl = typeof Highlight === 'function' ? new Highlight() : null;
 if (hl) CSS.highlights.set('def-name', hl);
 let under: HTMLElement | null = null;
+/** Underline the name under the pointer in a diff when it has definitions to go to (once a frame). */
 const hover = perFrame((t: Element | null, x: number, y: number) => {
   const row = symbolsOn() ? t?.closest<HTMLElement>(ROWS) : null,
     at = row ? nameAt(x, y, row) : null;
@@ -93,31 +94,34 @@ export async function showDefs(name: string, x: number, y: number, field?: HTMLE
     defs = await definitions(name);
   if (n !== asked) return;
   if (!defs.length) {
-    close();
+    closeDefs();
     field?.setAttribute('aria-invalid', 'true');
     return;
   }
   from = field ?? null;
   x0 = x;
   y0 = y;
-  if (defs.length === 1) one(name, defs[0]);
-  else several(name, defs);
+  if (defs.length === 1) showDefinition(name, defs[0]);
+  else pickDefinition(name, defs);
 }
 
-function head(name: string, note: string, back?: () => void) {
+/** The definition box's header: the name, a note, a way back to the list, and close. */
+function defsHeader(name: string, note: string, back?: () => void) {
   const h = make('div', 'defs-h');
   if (back) h.append(button('‹ All', 'defs-back', back));
   h.append(
     make('b', '', name),
     make('span', '', note),
-    iconButton(ICON.x, 'Close (Esc)', () => close()),
+    iconButton(ICON.x, 'Close (Esc)', () => closeDefs()),
   );
   return h;
 }
 
-const where = (s: CodeSymbol) => `${s.path}:${s.line}`;
+/** Where a symbol is defined, as path:line. */
+const locationOf = (s: CodeSymbol) => `${s.path}:${s.line}`;
 
-function several(name: string, defs: CodeSymbol[]) {
+/** A name defined in several places: a list to pick from. */
+function pickDefinition(name: string, defs: CodeSymbol[]) {
   const list = make('div', 'defs-list');
   list.setAttribute('role', 'listbox');
   for (const s of defs) {
@@ -125,16 +129,17 @@ function several(name: string, defs: CodeSymbol[]) {
     row.setAttribute('role', 'option');
     row.dataset.kind = 'preview';
     const main = make('span', 'fr-main');
-    main.append(make('b', '', where(s)), ...(s.scope ? [make('small', '', s.scope)] : []));
+    main.append(make('b', '', locationOf(s)), ...(s.scope ? [make('small', '', s.scope)] : []));
     row.append(main, make('span', 'fr-k', s.kind));
-    row.onclick = () => one(name, s, () => several(name, defs));
+    row.onclick = () => showDefinition(name, s, () => pickDefinition(name, defs));
     list.append(row);
   }
-  show(head(name, `${defs.length} definitions`), list);
+  showBox(defsHeader(name, `${defs.length} definitions`), list);
   list.querySelector('button')?.focus();
 }
 
-async function one(name: string, s: CodeSymbol, back?: () => void) {
+/** One definition: the lines around it, and a button to open the file there. */
+async function showDefinition(name: string, s: CodeSymbol, back?: () => void) {
   const n = ++asked;
   const text = (await api<{ text: string | null }>(`file?path=${q(s.path)}`).catch(() => null))?.text;
   if (n !== asked) return;
@@ -154,23 +159,25 @@ async function one(name: string, s: CodeSymbol, back?: () => void) {
   const code = make('div', 'defs-code');
   code.append(snippet);
   const open = button('Open file', 'primary', () => {
-    close(false);
+    closeDefs(false);
     openFileAt(s.path, s.line);
   });
   const foot = make('div', 'defs-f');
-  foot.append(make('span', '', where(s)), open);
-  show(head(name, s.scope ? `${s.kind} in ${s.scope}` : s.kind, back), code, foot);
+  foot.append(make('span', '', locationOf(s)), open);
+  showBox(defsHeader(name, s.scope ? `${s.kind} in ${s.scope}` : s.kind, back), code, foot);
   revealIn(code);
   open.focus();
 }
 
-function show(...parts: HTMLElement[]) {
+/** Show the definition box with these contents, by the name that was clicked. */
+function showBox(...parts: HTMLElement[]) {
   box.replaceChildren(...parts);
   box.hidden = false;
   keepOnScreen(box, x0, y0);
 }
 
-function close(restore = true) {
+/** Close the definition box; `restore` hands focus back. */
+function closeDefs(restore = true) {
   asked++;
   if (box.hidden) return;
   box.hidden = true;
@@ -186,7 +193,7 @@ addEventListener(
     if (e.key === 'Escape' && !box.hidden) {
       e.preventDefault();
       e.stopPropagation();
-      close();
+      closeDefs();
     }
   },
   true,
@@ -203,7 +210,7 @@ box.addEventListener('keydown', e => {
 addEventListener(
   'pointerdown',
   e => {
-    if (!box.hidden && !box.contains(e.target as Node)) close(false);
+    if (!box.hidden && !box.contains(e.target as Node)) closeDefs(false);
   },
   true,
 );

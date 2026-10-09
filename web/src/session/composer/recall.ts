@@ -6,16 +6,19 @@
 function sent(log: ParentNode): string[] {
   const out: string[] = [];
   for (const b of log.querySelectorAll(':scope > .me, :scope > .shell')) {
-    const t = b.classList.contains('shell') ? typed(b) : said(b);
+    const t = b.classList.contains('shell') ? shellLine(b) : sentText(b);
     if (t && t !== out.at(-1)) out.push(t);
   }
   return out;
 }
-const typed = (b: Element) => {
+/** A shell block's command, as it was typed ("!ls"). */
+const shellLine = (b: Element) => {
   const c = b.querySelector('.sh-cmd')?.textContent?.trim();
   return c ? `!${c}` : '';
 };
-function said(b: Element) {
+/** What you typed in a sent bubble, without the references' contents added to it; '' for messages that weren't typed
+ *  here. */
+function sentText(b: Element) {
   let t = b.firstChild?.nodeType === Node.TEXT_NODE ? b.firstChild.textContent! : '';
   t = t.split('\n\nReferenced from my canvas:\n\n')[0].trim(); // a reloaded message carries its references' contents (refs.ts toContent)
   if (/^To the ".+?" agent: /.test(t)) return ''; // a message to a sub-agent (items/agent.ts): not for this box

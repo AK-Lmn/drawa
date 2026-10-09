@@ -2,6 +2,7 @@
 
 export const $ = <T extends Element = HTMLElement>(sel: string) => document.querySelector(sel) as T;
 
+/** A new element with an optional class and text. Buttons are type=button, so none submits a form by accident. */
 export function make<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string | null) {
   const e = document.createElement(tag);
   if (e instanceof HTMLButtonElement) e.type = 'button'; // never a form's submit button by accident
@@ -10,6 +11,7 @@ export function make<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string
   return e;
 }
 
+/** An inline 16×16 SVG icon from its path markup. */
 const svg = (d: string) => `<svg viewBox="0 0 16 16">${d}</svg>`;
 export const ICON = {
   x: svg('<path d="M4 4l8 8M12 4l-8 8"/>'),
@@ -66,7 +68,7 @@ export function uuid() {
 }
 
 /** At most `max` characters, saying so at the end. The result stays within `max`, so clipping it again changes nothing. */
-export const clip = (text: string, max: number, note = '\n… (truncated)') =>
+export const truncate = (text: string, max: number, note = '\n… (truncated)') =>
   text.length > max ? text.slice(0, max - note.length) + note : text;
 
 /** Elements you type into: keys there aren't shortcuts, and pasting there isn't the canvas's. */
@@ -98,6 +100,8 @@ export const pressed = (b: Element, on: boolean) => {
   b.setAttribute('aria-pressed', String(on));
 };
 
+/** A button showing only an icon, named by `label` (its tooltip and accessible name); its click doesn't reach the
+ *  window under it. */
 export function iconButton(icon: string, label: string, onClick: () => void, cls = '') {
   const b = make('button', `icon${cls ? ` ${cls}` : ''}`);
   b.innerHTML = icon;
@@ -150,7 +154,8 @@ export function button(label: string, cls: string, onClick: () => void) {
 
 /** The folder Claude works in, set once at boot from the server. */
 export const project = { root: '', name: '' };
-export const rel = (p: string) => (p?.startsWith(`${project.root}/`) ? p.slice(project.root.length + 1) : p);
+/** A path relative to the project folder (unchanged when it's outside it). */
+export const relPath = (p: string) => (p?.startsWith(`${project.root}/`) ? p.slice(project.root.length + 1) : p);
 
 /** "5m ago", "3d ago", or the date once it's two months old. `t`: unix seconds, or an ISO date ('' gives ''). */
 export const ago = (t: number | string) => {
@@ -198,6 +203,7 @@ export function revealIn(scroller: HTMLElement) {
 
 /** A brief outline flash drawing the eye to an element. Web Animations: no forced layout, safe to call often. */
 let quietUntil = 0;
+/** Flash an outline around an element to draw the eye to it (skipped while pings are quieted, e.g. during a replay). */
 export const ping = (el: HTMLElement) => {
   if (performance.now() < quietUntil || !el.isConnected) return;
   const c = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
@@ -246,6 +252,7 @@ export function notice(text: string, ...actions: HTMLElement[]) {
   return n;
 }
 let stack: HTMLElement | undefined;
+/** Add a message to the stack of toasts and notices in the corner. */
 function stacked(el: HTMLElement) {
   stack ??= document.body.appendChild(make('div', 'float notices'));
   el.setAttribute('role', 'status');

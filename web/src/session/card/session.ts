@@ -2,7 +2,7 @@
 // or its agents work, like the terminal); output streams in continuously (stream.ts). Every tool call also lands on
 // the graph. This module owns the card itself: creating, focusing, closing, and its header / status.
 // Its types are types.ts, drawing it render.ts, how the canvas saves and references it saved.ts.
-import { front, onCanvas, type Rect } from '../../canvas/core/items';
+import { bringToFront, onCanvas, type Rect } from '../../canvas/core/items';
 import { centerOn, nextColumn, spotBeside } from '../../canvas/core/placement';
 import { expand, makeWindow } from '../../canvas/core/window';
 import { dropSession, redraw } from '../../canvas/graph/graph';
@@ -151,6 +151,7 @@ export function newSession(opts: { rect?: Rect; cid?: string; backend?: string; 
   // scrollTop up, but leaves you at the bottom, so it re-follows on the next frame.
   let lastTop = 0,
     wentDown = false;
+  /** After a scroll: following again once back at the bottom, and the way-back button only while scrolled up. */
   const settle = perFrame(() => {
     const left = log.scrollHeight - log.scrollTop - log.clientHeight;
     if (left < 4 || (wentDown && left < 200)) S.atEnd = true;
@@ -266,12 +267,13 @@ export function cycleCards(step: 1 | -1) {
   ping(S.card);
 }
 
+/** Make a card the focused one (raised, marked, saved as the focus). */
 export function focus(S: Session) {
   if (cur === S) return;
   cur?.card.classList.remove('focus');
   cur = S;
   S.card.classList.add('focus');
-  front(S.card);
+  bringToFront(S.card);
   saveSoon();
 }
 
@@ -292,6 +294,8 @@ async function askClose(S: Session) {
   closeSession(S);
 }
 
+/** Close a card: stop its process, take its windows and ink with it, and refresh History (a new card if it was the
+ *  last). */
 export function closeSession(S: Session) {
   post('close', { cid: S.cid }).catch(() => {});
   S.images = [];

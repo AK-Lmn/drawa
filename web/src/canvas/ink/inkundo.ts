@@ -7,19 +7,20 @@ import { paint, remove, type Stroke, strokes } from './stroke';
 
 const MAX = 200; // ponytail: oldest actions fall off; no redo (add a second stack if anyone asks for Ctrl+Shift+Z)
 const ops: (() => void)[] = []; // each puts the drawing back the way it was before one action
-const push = (op: () => void) => {
+/** Add an undo step, dropping the oldest past MAX. */
+const pushUndo = (op: () => void) => {
   ops.push(op);
   if (ops.length > MAX) ops.shift();
 };
 
 /** New strokes: undoing takes them off again. */
-export const added = (...list: Stroke[]) => push(() => remove(...list));
+export const recordAdded = (...list: Stroke[]) => pushUndo(() => remove(...list));
 
 /** Take strokes off the drawing as one action undo can bring back (the eraser, Delete, Erase all). */
 export function erase(...gone: Stroke[]) {
   if (!gone.length) return;
   const links = gone.map(dropLinks); // their arrows go now and come back with them
-  push(() => {
+  pushUndo(() => {
     restore(gone);
     links.forEach(back => back());
   });
@@ -30,7 +31,7 @@ export function erase(...gone: Stroke[]) {
 export function changing(list: Stroke[]) {
   const was = list.map(s => ({ p: s.p.map(q => [...q]), t: s.t }));
   return () =>
-    push(() =>
+    pushUndo(() =>
       list.forEach((s, i) => {
         Object.assign(s, was[i]);
         paint(s);
@@ -38,11 +39,13 @@ export function changing(list: Stroke[]) {
     );
 }
 
+/** Undo the last drawing action (Ctrl+Z in Draw mode). */
 export function undo() {
   ops.pop()?.();
   changed();
 }
 
+/** Put strokes back on the drawing, unless their window has closed since. */
 function restore(list: Stroke[]) {
   for (const s of list) {
     if (s.host && !s.host.isConnected) continue; // its window was closed since: nowhere to put it back

@@ -3,7 +3,7 @@
 // The header is a tab on the top-left that carries the title and the window's buttons; the body sits under it.
 // Drag by the tab, double-click it (or its – button) to collapse the window down to the tab, resize from the corner.
 import { make, ICON, iconButton, button, notice, copyButton } from '../../lib/dom';
-import { addItem, place, front, park, drop, type Rect } from './items';
+import { addItem, place, bringToFront, park, drop, type Rect } from './items';
 import { draggable, resizable } from './drag';
 import { changed, onChange, view } from './view';
 import { redraw, forget } from '../graph/graph';
@@ -112,6 +112,7 @@ export function removeUndoably(el: HTMLElement, also?: (el: HTMLElement) => void
 }
 /** Whether `el` was deleted and Undo can still bring it back. */
 export const undoable = (el: HTMLElement) => !!undo?.items.some(it => it.el === el);
+/** End the delete Undo: put the windows back (`back`) or let them go for good. */
 function settle(back: boolean) {
   if (!undo) return;
   const { toast, timer, items } = undo;
@@ -137,6 +138,7 @@ interface Win {
 }
 let titles = 0;
 
+/** A window on the canvas: the folder tab with its title and buttons, a body, dragging, collapsing and resizing. */
 export function makeWindow(o: WindowOpts): Win {
   const el = make('div', `win ${o.cls}`),
     head = make('header', 'win-h'),
@@ -154,7 +156,7 @@ export function makeWindow(o: WindowOpts): Win {
   place(el, o.rect.x, o.rect.y);
   el.style.width = `${o.rect.w}px`;
   el.style.height = `${o.rect.h}px`;
-  front(el);
+  bringToFront(el);
   const onChange = o.onChange ?? redraw;
   draggable(el, head, onChange);
   minimizable(el, head, onChange, !!o.rect.min);
@@ -197,6 +199,7 @@ export function rename(el: HTMLElement) {
   t.classList.add('renaming');
   t.focus();
   getSelection()?.selectAllChildren(t);
+  /** Finish renaming: keep the new title (`keep`, when it isn't empty) or put the old one back. */
   const done = (keep: boolean) => {
     t.removeEventListener('keydown', key);
     t.contentEditable = 'false';
@@ -205,6 +208,7 @@ export function rename(el: HTMLElement) {
     t.textContent = before;
     if (keep && name) setTitle(el, name);
   };
+  /** Keys while renaming: Enter keeps the title, Esc puts the old one back. */
   const key = (k: KeyboardEvent) => {
     k.stopPropagation(); // typing isn't a canvas shortcut
     if (k.key === 'Enter') {
@@ -228,6 +232,7 @@ export function rename(el: HTMLElement) {
 /** Collapse a window to its tab. `start` restores a saved collapse. */
 function minimizable(el: HTMLElement, head: HTMLElement, onToggle: () => void, start: boolean) {
   const b = make('button', 'icon minbtn');
+  /** Make the collapse button say what it does now. */
   const sync = () => {
     const min = el.classList.contains('min');
     b.innerHTML = min ? ICON.open : ICON.collapse;
@@ -235,6 +240,7 @@ function minimizable(el: HTMLElement, head: HTMLElement, onToggle: () => void, s
     b.setAttribute('aria-label', b.title);
     b.setAttribute('aria-expanded', String(!min));
   };
+  /** Collapse the window to its tab, or expand it again (it remembers its full height). */
   const toggle = () => {
     if (!el.classList.contains('min')) el.dataset.fullH = String(el.offsetHeight);
     const min = el.classList.toggle('min');

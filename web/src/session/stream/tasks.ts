@@ -18,7 +18,8 @@ const states = new WeakMap<Session, State>();
 
 export const TASK_TOOLS = new Set(['TodoWrite', 'TaskCreate', 'TaskUpdate']);
 
-function state(S: Session): State {
+/** A card's task list, made once, above its message box. */
+function taskState(S: Session): State {
   let st = states.get(S);
   if (!st) {
     const el = make('details', 'tasks');
@@ -31,7 +32,7 @@ function state(S: Session): State {
 
 /** A task tool call finished streaming (live or replayed). Returns a one-line summary for its row in the log. */
 export function taskCall(S: Session, toolId: string, name: string, inp: Record<string, any>): string {
-  const st = state(S);
+  const st = taskState(S);
   if (name === 'TodoWrite') {
     st.tasks.clear();
     for (const [i, t] of (inp.todos ?? []).entries())
@@ -50,7 +51,7 @@ export function taskCall(S: Session, toolId: string, name: string, inp: Record<s
         inp.activeForm ? { active: inp.activeForm } : {},
       );
   }
-  draw(S, st);
+  drawTasks(S, st);
   const done = [...st.tasks.values()].filter(t => t.status === 'completed').length;
   return name === 'TaskUpdate' && inp.status
     ? `#${inp.taskId} ${String(inp.status).replace('_', ' ')}`
@@ -68,10 +69,11 @@ export function taskResult(S: Session, toolId: string, text: string) {
   if (!n || !t) return;
   st.tasks.delete(key);
   st.tasks.set(n, t);
-  draw(S, st);
+  drawTasks(S, st);
 }
 
-function draw(S: Session, st: State) {
+/** Draw the task checklist: done out of total in its summary, and each task. */
+function drawTasks(S: Session, st: State) {
   const all = [...st.tasks.values()],
     done = all.filter(t => t.status === 'completed').length;
   const now = all.find(t => t.status === 'in_progress');

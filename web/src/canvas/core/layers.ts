@@ -4,25 +4,27 @@
 import { shortcutOk } from '../../lib/dom';
 import { command } from '../../lib/keys';
 import { drawing } from '../ink/ink';
-import { hidden, hits, items, onCanvas, rect, restack } from './items';
+import { hidden, items, onCanvas, overlaps, rect, restack } from './items';
 import { menuSection, openMenu } from './menu';
 import { selected, selectionAction } from './select';
 import { active } from './winkeys';
 
 type Move = 'front' | 'forward' | 'backward' | 'back';
-const z = (el: HTMLElement) => +el.style.zIndex || 0;
+/** An item's place in the stack (its z-index; 0 when it has none). */
+const zIndexOf = (el: HTMLElement) => +el.style.zIndex || 0;
+/** Is this item in the layer stack (on the canvas, shown, its z-index not set by CSS)? */
 // items whose CSS pins their layer (a group's frame, always under its windows) aren't in the stack
 const stacked = (el: HTMLElement) => onCanvas(el) && !hidden(el) && getComputedStyle(el).zIndex === el.style.zIndex;
 
 /** Move one item in the stack. Forward and backward step past the next item it overlaps (one it doesn't overlap
  *  changes nothing you can see), so inside a group that's the group's windows around it. */
-function move1(all: HTMLElement[], el: HTMLElement, how: Move) {
+function moveOne(all: HTMLElement[], el: HTMLElement, how: Move) {
   const i = all.indexOf(el);
   all.splice(i, 1);
   if (how === 'front') return all.push(el);
   if (how === 'back') return all.unshift(el);
   const r = rect(el),
-    over = (o: HTMLElement) => o !== el && stacked(o) && hits(r, rect(o), 0);
+    over = (o: HTMLElement) => o !== el && stacked(o) && overlaps(r, rect(o), 0);
   if (how === 'forward') {
     const j = all.findIndex((o, k) => k >= i && over(o));
     all.splice(j < 0 ? i : j + 1, 0, el);
@@ -32,12 +34,15 @@ function move1(all: HTMLElement[], el: HTMLElement, how: Move) {
   }
 }
 
-export function layer(els: HTMLElement[], how: Move) {
-  const all = items().sort((a, b) => z(a) - z(b));
+/** Move items forward, backward, to the front or to the back of the stack. */
+export function moveLayer(els: HTMLElement[], how: Move) {
+  const all = items().sort((a, b) => zIndexOf(a) - zIndexOf(b));
   // a selection keeps its own order: the top one moves first going up, the bottom one going down
-  const mine = els.filter(stacked).sort((a, b) => (how === 'front' || how === 'forward' ? z(b) - z(a) : z(a) - z(b)));
+  const mine = els
+    .filter(stacked)
+    .sort((a, b) => (how === 'front' || how === 'forward' ? zIndexOf(b) - zIndexOf(a) : zIndexOf(a) - zIndexOf(b)));
   if (!mine.length) return;
-  for (const el of how === 'front' || how === 'back' ? mine.reverse() : mine) move1(all, el, how);
+  for (const el of how === 'front' || how === 'back' ? mine.reverse() : mine) moveOne(all, el, how);
   restack(all);
 }
 
@@ -47,6 +52,7 @@ const MOVES: [Move, string, string][] = [
   ['backward', 'Send backward', '['],
   ['back', 'Send to back', 'Shift+['],
 ];
+/** An icon for a layer action. */
 // to front / to back: two sheets, the moving one filled; forward / backward: an arrow past a line
 const sheet = (d: string) => `<svg viewBox="0 0 16 16">${d}</svg>`;
 const ICONS: Record<Move, string> = {
@@ -59,6 +65,7 @@ const ICONS: Record<Move, string> = {
     '<path d="M6.5 2.5h7v7h-7z" stroke-dasharray="1.5 1.5"/><path d="M2.5 5.5h7v7h-7z" fill="currentColor" fill-opacity=".25"/>',
   ),
 };
+/** What the layer actions act on: the selection, else the active window. */
 const targets = () => {
   const s = selected();
   if (s.length) return s;
@@ -66,7 +73,7 @@ const targets = () => {
   return a ? [a] : [];
 };
 for (const [how, label, key] of MOVES)
-  command({ label, group: 'Windows', keys: [key], run: () => layer(targets(), how) });
+  command({ label, group: 'Windows', keys: [key], run: () => moveLayer(targets(), how) });
 const barBtn = selectionAction(
   'Layer',
   'Bring forward or send back (] / [, with Shift: all the way)',
@@ -92,12 +99,12 @@ addEventListener('keydown', e => {
     return;
   e.preventDefault();
   const up = e.code === 'BracketRight';
-  layer(targets(), e.shiftKey ? (up ? 'front' : 'back') : up ? 'forward' : 'backward');
+  moveLayer(targets(), e.shiftKey ? (up ? 'front' : 'back') : up ? 'forward' : 'backward');
 });
 
 // the Layer section of the right-click menu (canvas/core/menu.ts)
 menuSection('Layer', els =>
   els.some(stacked)
-    ? MOVES.map(([how, label, key]) => ({ label, icon: ICONS[how], keys: key, run: () => layer(els, how) }))
+    ? MOVES.map(([how, label, key]) => ({ label, icon: ICONS[how], keys: key, run: () => moveLayer(els, how) }))
     : [],
 );

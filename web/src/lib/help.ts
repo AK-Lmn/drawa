@@ -16,6 +16,7 @@ function tipText(p: HTMLElement, text: string) {
   return p;
 }
 
+/** One shortcut's row in the ? sheet: its label and its key caps. */
 function row(c: Command) {
   const r = make('div', 'kh-r'),
     k = make('span', 'k');
@@ -26,6 +27,7 @@ function row(c: Command) {
 }
 
 let sheet: HTMLDialogElement | null = null;
+/** Open the ? sheet: every registered shortcut, grouped, with a filter box. */
 export function showHelp() {
   if (sheet?.open) return;
   const d = (sheet ??= document.body.appendChild(make('dialog', 'keys-help')));
@@ -81,6 +83,7 @@ interface Tips {
   next: number;
   off: boolean;
 }
+/** Which launch tip comes next and whether tips are off, from this browser. */
 const load = (): Tips => {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) ?? '{}');
@@ -89,6 +92,7 @@ const load = (): Tips => {
     return { next: 0, off: false };
   }
 };
+/** Remember the launch tip state. */
 const save = (t: Tips) => {
   try {
     localStorage.setItem(KEY, JSON.stringify(t));
@@ -105,6 +109,7 @@ export function showTip() {
   const el = make('div', 'launch-tip float');
   el.setAttribute('role', 'status');
   const p = make('p');
+  /** Show the next tip in the rotation. */
   const show = () => {
     p.replaceChildren();
     tipText(p, tips[st.next % tips.length].tip!);
@@ -113,11 +118,14 @@ export function showTip() {
   };
 
   let timer = 0;
+  /** Take the tip away. */
   const close = () => {
     clearTimeout(timer);
     el.remove();
   };
+  /** Is the pointer or focus on the tip? It stays while you're reading it. */
   const held = () => el.matches(':hover, :focus-within');
+  /** Start (or restart) the countdown that takes the tip away. */
   const arm = () => {
     clearTimeout(timer);
     if (!held()) timer = setTimeout(close, 10000);

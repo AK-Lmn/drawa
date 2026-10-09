@@ -37,6 +37,7 @@ export function scaleInto(rs: Rect[], from: Rect, to: Rect, min = { w: 160, h: 1
   }));
 }
 
+/** Do two rects overlap, or come within `gap` of each other? */
 const overlap = (a: Rect, b: Rect, gap: number) =>
   a.x < b.x + b.w + gap && b.x < a.x + a.w + gap && a.y < b.y + b.h + gap && b.y < a.y + a.h + gap;
 
@@ -44,6 +45,7 @@ const overlap = (a: Rect, b: Rect, gap: number) =>
  *  (`gap` from the others) nearest to it beside, above or below one of them, even past the edge of `area` (the
  *  frame grows to fit); below them all only if none is free. */
 export function placeIn(rs: Rect[], r: Rect, area: Rect, gap: number): Rect {
+  /** Is this spot clear of every other window, by `g`? */
   const free = (c: Rect, g: number) => !rs.some(o => overlap(c, o, g));
   if (free(r, 0)) return r;
   const spots = rs
@@ -58,6 +60,7 @@ export function placeIn(rs: Rect[], r: Rect, area: Rect, gap: number): Rect {
     .map(p => ({ ...r, ...p }))
     .filter(c => free(c, gap));
   spots.push({ ...r, x: area.x, y: Math.max(area.y, ...rs.map(o => o.y + o.h + gap)) });
+  /** How far a spot is from where the window was dropped. */
   const d = (c: Rect) => Math.hypot(c.x - r.x, c.y - r.y);
   return spots.reduce((best, c) => (d(c) < d(best) ? c : best));
 }
@@ -95,6 +98,7 @@ export function settle(
   gap = GAP,
 ): Map<string, { dx: number; dy: number }> {
   const at = new Map(frames.map(f => [f.id, { ...f.r }]));
+  /** How readily a group moves aside: locked never, just moved before the rest. */
   // who yields to whom: 0 locked, 1 just moved, 2 the rest (a pushed group pushes the rest too)
   const rank = (id: string) => (locked.includes(id) ? 0 : first.includes(id) ? 1 : 2);
   const queue = [...locked, ...first].filter(id => at.has(id));

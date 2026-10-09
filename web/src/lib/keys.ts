@@ -14,6 +14,7 @@ export interface Command {
 const cmds: Command[] = [];
 /** Register a shortcut or action. Call it at module top level, beside the handler. */
 export const command = (c: Command) => void cmds.push(c);
+/** Every registered shortcut and action, in registration order (the ? sheet and Ctrl+K list them). */
 export const commands = (): readonly Command[] => cmds;
 /** A combo's keys, for drawing key caps: "Shift+W" -> ["Shift", "W"]; "+" and "Ctrl++" keep their plus. */
 export const keysOf = (combo: string) =>

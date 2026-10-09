@@ -13,7 +13,8 @@ import type { Pasted } from './images';
 // ponytail: references to things that aren't canvas items (text files dropped in, a pull request) aren't kept
 type Draft = { text?: string; refs?: string[]; images?: number };
 const kept = new Map<string, string>(); // per card: the pictures in IndexedDB (their URLs), so unchanged ones aren't rewritten
-const key = (cid: string, i: number) => `draft:${cid}:${i}`;
+/** The IndexedDB key of a draft's image `i`. */
+const draftKey = (cid: string, i: number) => `draft:${cid}:${i}`;
 
 /** Whether the card has something unsent in its box (such a card is kept on reload even with no conversation yet). */
 export const hasDraft = (S: Session) => !!(S.ta.value.trim() || S.refs.length || S.images.length);
@@ -42,7 +43,7 @@ persist(
         .filter((r): r is Ref => !!r);
       const images: Pasted[] = [];
       for (let i = 0; i < (d.images ?? 0); i++) {
-        const b = await getBlob(key(cid, i)).catch(() => undefined);
+        const b = await getBlob(draftKey(cid, i)).catch(() => undefined);
         if (b) images.push({ type: b.type, data: await base64(b), url: URL.createObjectURL(b), blob: b });
       }
       putBack(S, d.text ?? '', refs, images, false);
@@ -58,8 +59,8 @@ export function keepImages(S: Session) {
   if (now === (before ?? '')) return;
   const had = before ? before.split(',').length : 0;
   S.images.forEach((img, i) => {
-    if (img.blob) putBlob(key(S.cid, i), img.blob).catch(() => {});
+    if (img.blob) putBlob(draftKey(S.cid, i), img.blob).catch(() => {});
   });
-  for (let i = S.images.length; i < had; i++) dropBlob(key(S.cid, i)).catch(() => {});
+  for (let i = S.images.length; i < had; i++) dropBlob(draftKey(S.cid, i)).catch(() => {});
   kept.set(S.cid, now);
 }

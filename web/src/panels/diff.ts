@@ -2,7 +2,7 @@
 // them lead to their definitions (defs.ts).
 import { diffLines } from 'diff';
 import { openFileAt } from '../canvas/core/find';
-import { files, paint } from '../canvas/graph/sessionwins';
+import { files, paintFile } from '../canvas/graph/sessionwins';
 import { api, q } from '../lib/api';
 import { ICON, iconButton, make } from '../lib/dom';
 import type { Session } from '../session/card/types';
@@ -26,6 +26,7 @@ interface Row {
   t: string;
   n?: number;
 }
+/** Add one diff row (added, removed or unchanged), with its sign and line number. */
 function addRow(box: ParentNode, r: Row) {
   const d = box.appendChild(make('div', r.k, r.t));
   d.dataset.s = r.k === 'add' ? '+' : r.k === 'del' ? '−' : '';
@@ -57,6 +58,7 @@ function folded(rows: Row[], label: string) {
   return s;
 }
 
+/** A diff block for an Edit, MultiEdit or Write, filed under its file's node (null when there's nothing to show). */
 export function change(S: Session, tool: string, file: string, inp: Record<string, any>): Change | undefined {
   const pairs: [string, string][] | null =
     tool === 'Write'
@@ -121,6 +123,7 @@ export function change(S: Session, tool: string, file: string, inp: Record<strin
   h.tabIndex = 0;
   h.setAttribute('role', 'button');
   h.setAttribute('aria-expanded', 'true');
+  /** Fold or unfold the diff. */
   const fold = () => {
     const f = c.classList.toggle('folded');
     h.setAttribute('aria-expanded', String(!f));
@@ -157,6 +160,7 @@ export async function inFile(c: Change) {
   let n = 1,
     add = 0,
     del = 0;
+  /** Rows of one kind, numbered by their line in the new file (removed lines have none). */
   const rows = (k: Kind, lines: string[]): Row[] => lines.map(t => ({ k, t, n: k === 'del' ? undefined : n++ }));
   const parts = diffLines(before, after).map(p => ({
     k: (p.added ? 'add' : p.removed ? 'del' : 'eq') as Kind,
@@ -182,7 +186,7 @@ export async function inFile(c: Change) {
   if (f?.changes.includes(c)) {
     f.add += add - c.add;
     f.del += del - c.del;
-    paint(f);
+    paintFile(f);
   }
   c.add = add;
   c.del = del;
@@ -214,6 +218,7 @@ function applied(tool: string, text: string, inp: Record<string, any>): string |
   return text;
 }
 
+/** A change was applied (or failed): its block stops showing it as pending. */
 export function settleChange(c: Change, ok: boolean) {
   c.classList.remove('pending');
   c.classList.toggle('failed', !ok);

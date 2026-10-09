@@ -23,7 +23,8 @@ const svg = layer.appendChild(document.createElementNS(NS, 'g'));
 svg.setAttribute('transform', `translate(${R},${R})`);
 /** An arrow's end: an item, or a canvas-level drawing (ink on a window ends at its window). */
 type End = HTMLElement | Stroke;
-const isEl = (e: End): e is HTMLElement => e instanceof HTMLElement;
+/** Is this arrow end an item (not a drawing)? */
+const isItem = (e: End): e is HTMLElement => e instanceof HTMLElement;
 interface Link {
   id: string;
   from: End;
@@ -39,8 +40,10 @@ let selected: Link | null = null;
 /** In the minimal interface, a window's rect below its tab, which is hidden unless hovered. Items without a tab
  *  (notes, file chips) and a collapsed window (only its tab) stay whole. */
 let tab = 0;
-function body(el: End): Rect {
-  if (!isEl(el)) {
+/** The rect an arrow attaches to: an item's (just its tab in the minimal interface, when the tab is hidden) or a
+ *  drawing's. */
+function endRect(el: End): Rect {
+  if (!isItem(el)) {
     const r = strokeRect(el);
     return { ...r, x: r.x + (el.dx ?? 0), y: r.y + (el.dy ?? 0) };
   } // world units, like a canvas window's rect
@@ -83,13 +86,15 @@ function shape(k: ReturnType<typeof curve>) {
 /** Measure first (layout reads), then `write` (DOM writes): so a batch of arrows lays out once, not per arrow. */
 function measure(l: Link) {
   const hide = [l.from, l.to].some(e =>
-    isEl(e) ? e.classList.contains('full') || hidden(e) : !!e.el?.dataset.hiddenIn,
+    isItem(e) ? e.classList.contains('full') || hidden(e) : !!e.el?.dataset.hiddenIn,
   );
-  const k = hide ? null : shape(curve(body(l.from), body(l.to)));
-  return () => write(l, k);
+  const k = hide ? null : shape(curve(endRect(l.from), endRect(l.to)));
+  return () => writeLink(l, k);
 }
-const draw = (l: Link) => measure(l)();
-function write(l: Link, k: ReturnType<typeof shape> | null) {
+/** Measure an arrow's ends, then draw it. */
+const drawLink = (l: Link) => measure(l)();
+/** Write an arrow's measured shape into its SVG paths and put its label at the middle; hidden when it has no shape. */
+function writeLink(l: Link, k: ReturnType<typeof shape> | null) {
   l.g.style.display = l.text.style.display = k ? '' : 'none';
   if (!k) return;
   const { line, head, mid } = k;
@@ -110,6 +115,7 @@ function group(cls: string) {
   return g;
 }
 
+/** Draw an arrow from one item or drawing to another, with an optional label (saved with the layout). */
 export function addLink(from: End, to: End, label = '', color = 'ink', id: string = uuid()): Link {
   const g = group(`ulink c-${color}`);
   const text = world.appendChild(make('div', 'ulabel'));
@@ -128,11 +134,12 @@ export function addLink(from: End, to: End, label = '', color = 'ink', id: strin
     select(l);
   });
   links.push(l);
-  draw(l);
+  drawLink(l);
   changed();
   return l;
 }
 
+/** Take an arrow off the canvas. */
 function removeLink(l: Link) {
   if (selected === l) select(null);
   l.g.remove();
@@ -144,11 +151,14 @@ function removeLink(l: Link) {
 /** An item is leaving (maybe for a moment: a delete that can be undone): its arrows go now. Returns what puts them
  *  back. */
 export function dropLinks(el: End) {
-  const mine = [...links.filter(l => l.from === el || l.to === el), ...((!isEl(el) && lost.get(el)?.splice(0)) || [])];
+  const mine = [
+    ...links.filter(l => l.from === el || l.to === el),
+    ...((!isItem(el) && lost.get(el)?.splice(0)) || []),
+  ];
   mine.forEach(l => links.includes(l) && removeLink(l));
   return () =>
     mine.forEach(l => {
-      if (alive(l.from) && alive(l.to)) addLink(l.from, l.to, l.label, l.color, l.id);
+      if (endExists(l.from) && endExists(l.to)) addLink(l.from, l.to, l.label, l.color, l.id);
     });
 }
 
@@ -162,6 +172,7 @@ const del = iconButton(
   'udel',
 );
 del.addEventListener('pointerdown', e => e.stopPropagation()); // else the canvas pan captures the pointer and the click never lands here
+/** Select an arrow (its label becomes editable, Delete removes it), or none. */
 function select(l: Link | null) {
   if (selected === l) return;
   if (selected) {
@@ -170,7 +181,7 @@ function select(l: Link | null) {
     selected.text.contentEditable = 'false';
     selected.label = (selected.text.textContent ?? '').trim();
     selected.text.textContent = selected.label;
-    draw(selected);
+    drawLink(selected);
     changed();
   }
   selected = l;
@@ -183,7 +194,7 @@ function select(l: Link | null) {
   l.text.after(del);
   del.style.left = l.text.style.left;
   del.style.top = l.text.style.top;
-  draw(l);
+  drawLink(l);
 }
 addEventListener(
   'pointerdown',
@@ -231,10 +242,12 @@ export function startLink(e: PointerEvent, color: string, over: HTMLElement) {
   if (!from) return;
   const g = group(`ulink c-${color} drafting`);
   const [, line, tip] = g.children as unknown as SVGPathElement[];
+  /** Follow the pointer with the arrow being drawn, snapping its end to the item under it. */
   const move = (ev: PointerEvent) => {
     const p = toWorld(ev.clientX, ev.clientY),
       to = itemAt(ev.clientX, ev.clientY);
-    const k = to && to !== from ? curve(body(from), body(to)) : curve(body(from), { x: p.x, y: p.y, w: 0, h: 0 });
+    const k =
+      to && to !== from ? curve(endRect(from), endRect(to)) : curve(endRect(from), { x: p.x, y: p.y, w: 0, h: 0 });
     const { line: d, head } = shape(k);
     line.setAttribute('d', d);
     tip.setAttribute('d', head);
@@ -260,15 +273,15 @@ export function startLink(e: PointerEvent, color: string, over: HTMLElement) {
 /* ---------- keeping up, saving, and what Claude sees ---------- */
 onUIMode(() => changed()); // tabs shown or hidden: arrows move to the windows' new edges
 onChange(viewOnly => {
-  if (!viewOnly && waiting.length && performance.now() - tried > 1000) adopt(); // at most once a second: it queries every item
+  if (!viewOnly && waiting.length && performance.now() - tried > 1000) attachWaiting(); // at most once a second: it queries every item
   const todo = [];
   for (const l of [...links]) {
-    if (!alive(l.from) || !alive(l.to)) {
-      keep(l);
+    if (!endExists(l.from) || !endExists(l.to)) {
+      waitForEnd(l);
       removeLink(l);
       continue;
     } // an end left the canvas
-    if (viewOnly && [l.from, l.to].every(e => !isEl(e) || onCanvas(e))) continue; // world coordinates: a pan or zoom doesn't move it
+    if (viewOnly && [l.from, l.to].every(e => !isItem(e) || onCanvas(e))) continue; // world coordinates: a pan or zoom doesn't move it
     todo.push(measure(l));
   }
   todo.forEach(w => w());
@@ -276,14 +289,18 @@ onChange(viewOnly => {
 // arrows whose drawing left before erase() could take them (the eraser removes strokes mid-swipe): dropLinks hands
 // them over, so undoing the erase brings them back
 const lost = new WeakMap<Stroke, Link[]>();
-function keep(l: Link) {
-  for (const e of [l.from, l.to]) if (!isEl(e) && !alive(e)) lost.set(e, [...(lost.get(e) ?? []), l]);
+/** An arrow to a drawing that's gone (erased, maybe undone later) waits for it to come back. */
+function waitForEnd(l: Link) {
+  for (const e of [l.from, l.to]) if (!isItem(e) && !endExists(e)) lost.set(e, [...(lost.get(e) ?? []), l]);
 }
-const alive = (e: End) => (isEl(e) ? e.isConnected : strokes.includes(e));
-const idOf = (e: End) => (isEl(e) ? (e.dataset.id ?? '') : (e.id ??= uuid())); // a drawing gets an id the first time it's named
+/** Is this arrow end still there? */
+const endExists = (e: End) => (isItem(e) ? e.isConnected : strokes.includes(e));
+/** An arrow end's id; a drawing gets one the first time it's named. */
+const idOf = (e: End) => (isItem(e) ? (e.dataset.id ?? '') : (e.id ??= uuid())); // a drawing gets an id the first time it's named
 /** An arrow end by its saved id: an item, else a canvas-level drawing. */
 export const endById = (id: string, ids = byIds()): End | undefined =>
   ids.get(id) ?? strokes.find(s => !s.host && s.id === id);
+/** Your arrows as Claude reads them (canvas_list): the ids of their ends and their labels. */
 export const userLinks = () =>
   links.map(l => ({ from: shortId(idOf(l.from)), to: shortId(idOf(l.to)), ...(l.label ? { label: l.label } : {}) }));
 type Saved = { id: string; from: string; to: string; label: string; color: string };
@@ -292,7 +309,8 @@ type Saved = { id: string; from: string; to: string; label: string; color: strin
 // ponytail: an arrow whose end was deleted in another tab waits forever (a few bytes); prune by age if that grows
 let waiting: Saved[] = [],
   tried = 0;
-function adopt() {
+/** Draw the saved arrows whose ends both exist now; the rest wait for their ends to show up. */
+function attachWaiting() {
   tried = performance.now();
   const ids = byIds();
   waiting = waiting.filter(s => {
@@ -310,7 +328,7 @@ persist(
   ],
   (list: Saved[]) => {
     waiting = list;
-    adopt();
+    attachWaiting();
   },
   2,
 );

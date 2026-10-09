@@ -4,7 +4,7 @@
 import { who } from '../../lib/agents';
 import { api, q } from '../../lib/api';
 import { button, confirmBox, iconButton, make } from '../../lib/dom';
-import { dot, type GhState, ghPost, REVIEW, sendLabel, sendToClaude, stateOf, tally } from '../github/gh';
+import { checksDot, type GhState, ghPost, REVIEW, sendLabel, sendToClaude, stateOf, tallyChecks } from '../github/gh';
 import { GH_ICON, openGitHub } from '../github/github';
 import { writeWith } from './gitrepo';
 
@@ -29,9 +29,13 @@ export function ghStrip(dir: string, pushed: () => void): Strip {
     ask = 0,
     ticks = 0,
     asked = false;
+  /** Does the branch's pull request have checks still running? */
   const pending = () => !!st?.pr?.checks.some(c => c.state === 'pending');
+  /** Open the GitHub window at this repo (and at a pull request or tab, when given). */
   const open = (at: Parameters<typeof openGitHub>[0] = {}) => openGitHub({ ...at, repo: dir });
 
+  /** Ask GitHub about the branch's pull request and draw the strip; a slower, older answer doesn't overwrite a newer
+   *  one. */
   async function refresh() {
     asked = true;
     if (!strip.childElementCount) strip.replaceChildren(make('p', 'ghnote', 'Checking GitHub…'));
@@ -47,6 +51,7 @@ export function ghStrip(dir: string, pushed: () => void): Strip {
     draw(got);
   }
 
+  /** Draw the strip: the branch's pull request with its review and checks state, or a way to open one. */
   function draw(st: GhState) {
     strip.dataset.state = st.ok ? (st.pr ? stateOf(st.pr) : 'none') : 'off';
     if (!st.ok)
@@ -73,7 +78,7 @@ export function ghStrip(dir: string, pushed: () => void): Strip {
       return strip.replaceChildren(line, form);
     }
     form.hidden = true;
-    const t = tally(pr.checks),
+    const t = tallyChecks(pr.checks),
       line = make('div', 'ghline'),
       title = make('button', 'ghti');
     title.append(make('span', 'ghn', `#${pr.number}`), ' ', pr.title);
@@ -88,7 +93,7 @@ export function ghStrip(dir: string, pushed: () => void): Strip {
       const sum = make('button', 'ghsum'); // the list, with logs, is the GitHub window's Checks tab
       sum.title = 'Show the checks';
       sum.append(
-        dot(t.state),
+        checksDot(t.state),
         [t.pass && `${t.pass} passed`, t.fail && `${t.fail} failed`, t.pending && `${t.pending} running`]
           .filter(Boolean)
           .join(', '),

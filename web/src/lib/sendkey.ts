@@ -6,6 +6,7 @@ import { segmented } from './select';
 
 type Send = 'enter' | 'mod';
 const KEY = 'drawa:send';
+/** The send key saved in this browser: 'enter' (default) or 'mod' (Ctrl/Cmd+Enter). */
 const load = (): Send => {
   try {
     return localStorage.getItem(KEY) === 'mod' ? 'mod' : 'enter';
@@ -18,6 +19,7 @@ let key = load();
 const listeners: (() => void)[] = [];
 /** Called after the setting changes, to re-label hints and buttons. */
 export const onSendKey = (f: () => void) => void listeners.push(f);
+/** Which key sends a message: 'enter' or 'mod'. */
 export const sendKey = () => key;
 /** The combo that sends, for labels: "Enter" or "Ctrl+Enter" (⌘ on a Mac). */
 export const sendCombo = () => (key === 'enter' ? 'Enter' : `${MOD}+Enter`);

@@ -6,7 +6,7 @@ import type { Mover } from '../core/drag';
 import { changed, view } from '../core/view';
 import { changing } from './inkundo';
 import { SHAPE_NAME } from './shapegeom';
-import { FIT, fits, inkPlaced, paint, type Stroke, strokes, unitsPerHostPx } from './stroke';
+import { FIT, inkPlaced, isFitHost, paint, type Stroke, strokes, unitsPerHostPx } from './stroke';
 
 export type Box = { x: number; y: number; w: number; h: number };
 /** A stroke's bounding box (x0, y0, x1, y1), measured once after it changes. */
@@ -48,7 +48,7 @@ export function strokesIn(r: Box) {
     });
 }
 /** Is anything drawn on or over this window (canvas_list's drawnOn)? Cheaper than strokesIn: stops at the first. */
-export const inkOn = (el: HTMLElement, r: Box) => strokes.some(s => (s.host ? el.contains(s.host) : over(s, r)));
+export const hasInkOver = (el: HTMLElement, r: Box) => strokes.some(s => (s.host ? el.contains(s.host) : over(s, r)));
 
 /** The shapes drawn on a window or over its area, for Claude to read as text: kind, and where. */
 export function shapesOn(el: HTMLElement, r: Box) {
@@ -61,8 +61,8 @@ export function shapesOn(el: HTMLElement, r: Box) {
       if (s.k) return `${name} over the message "${s.k}"`;
       if (s.host) {
         // host units: FIT across for pictures and diagrams, pixels otherwise
-        const w = fits(s.host) ? FIT : s.host.offsetWidth,
-          h = fits(s.host) ? (FIT * s.host.offsetHeight) / s.host.offsetWidth : s.host.offsetHeight;
+        const w = isFitHost(s.host) ? FIT : s.host.offsetWidth,
+          h = isFitHost(s.host) ? (FIT * s.host.offsetHeight) / s.host.offsetWidth : s.host.offsetHeight;
         return `${name} at ${pct(x0, 0, w)}–${pct(x1, 0, w)}% across, ${pct(y0, 0, h)}–${pct(y1, 0, h)}% down`;
       }
       return `${name} at ${pct(x0, r.x, r.w)}–${pct(x1, r.x, r.w)}% across, ${pct(y0, r.y, r.h)}–${pct(y1, r.y, r.h)}% down this window`;
@@ -95,6 +95,7 @@ export const strokeRect = (s: Stroke): Box => {
   const [x0, y0, x1, y1] = bbox(s);
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 };
+/** Mark a stroke as selected or not. */
 export const markStroke = (s: Stroke, on: boolean) => {
   s.sel = on;
   s.el?.classList.toggle('ink-sel', on);
@@ -108,6 +109,7 @@ export function strokeMover(list: Stroke[], record = true): Mover {
     base = list.map(s => s.el?.getAttribute('transform') ?? '');
   let dx = 0,
     dy = 0;
+  /** Shift the strokes by an offset from where they started, by transform only (end() writes their points). */
   const move = (x: number, y: number) => {
     dx = x;
     dy = y;
@@ -146,6 +148,7 @@ export function groupStrokes(list: Stroke[]) {
   for (const s of list) s.g = id;
   changed();
 }
+/** Take strokes out of their frameless group. */
 export function ungroupStrokes(list: Stroke[]) {
   for (const s of list) delete s.g;
   changed();
@@ -157,6 +160,7 @@ export const oneGroup = (list: Stroke[]) =>
 /** Drawings that move along with an item. Each function answers for one item: canvas/core/select.ts (the selection's
  *  drawings, for a selected item), items/group/group.ts (a group's drawings). */
 const inkFns: ((el: HTMLElement) => Stroke[])[] = [];
+/** Register which drawings move along when an item is dragged: `f(el)` returns them. */
 export const inkWith = (f: (el: HTMLElement) => Stroke[]) => {
   inkFns.push(f);
 };

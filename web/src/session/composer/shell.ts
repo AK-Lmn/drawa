@@ -3,8 +3,8 @@
 // <bash-input> / <bash-stdout> format, unless you take them out (×).
 
 import { who } from '../../lib/agents';
-import { clip, ICON, iconButton, make } from '../../lib/dom';
-import { follow, put } from '../card/render';
+import { ICON, iconButton, make, truncate } from '../../lib/dom';
+import { appendToLog, follow } from '../card/render';
 import type { Session } from '../card/types';
 
 interface Run {
@@ -28,9 +28,11 @@ function block(S: Session, cmd: string) {
   head.append(make('code', 'sh-cmd', cmd), note);
   box.append(head, out);
   if (S.replaying) S.log.append(box);
-  return { box: S.replaying ? box : put(S, box), head, out, note };
+  return { box: S.replaying ? box : appendToLog(S, box), head, out, note };
 }
 
+/** Run a "!" command in the project folder, streaming its output into a shell block; Claude gets the output with the
+ *  next message. */
 export async function runShell(S: Session, cmd: string) {
   S.log.querySelector('.empty')?.remove();
   const { box, head, out, note } = block(S, cmd);
@@ -101,7 +103,7 @@ export function takeShell(S: Session): string {
   }
   return runs
     .map(r => {
-      const o = clip(r.out, SHARE);
+      const o = truncate(r.out, SHARE);
       return `<bash-input>${r.cmd}</bash-input>\n<bash-stdout>${o}</bash-stdout><bash-stderr></bash-stderr>\n\n`;
     })
     .join('');

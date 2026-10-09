@@ -46,6 +46,7 @@ function place() {
   handles.forEach((h, i) => {
     const cx = i === 1 || i === 2 ? 1 : 0,
       cy = i >= 2 ? 1 : 0;
+    /** Is point `q` on this corner's side of `o` on both axes? */
     // a line has a point at this corner only if one end is extreme on both axes here
     const at = (q: number[], o: number[]) => (cx ? q[0] >= o[0] : q[0] <= o[0]) && (cy ? q[1] >= o[1] : q[1] <= o[1]);
     h.hidden = !picked!.sh || (picked!.sh === 'line' && !at(a, b) && !at(b, a));

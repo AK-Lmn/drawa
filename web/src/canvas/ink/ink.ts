@@ -9,7 +9,7 @@ import { command } from '../../lib/keys';
 import { rowAt } from './inkrows';
 import { startLink } from '../graph/links';
 import { SHAPES, constrain, type Shape } from './shapegeom';
-import { added, erase, undo } from './inkundo';
+import { recordAdded, erase, undo } from './inkundo';
 import { strokes, paint, remove, inkPlaced, type Stroke } from './stroke';
 import { placeAt, toCanvas, type Place } from './inkplace';
 import { writeAt, finishText } from './inktext';
@@ -37,16 +37,20 @@ export function setDrawing(on: boolean) {
 /** Draw mode's tool: the pen, the Arrow tool (connect two items), the eraser, Text (click to write), or a shape. */
 export type Tool = 'pen' | 'arrow' | 'eraser' | 'text' | Shape;
 let tool: Tool = 'pen';
-const btnOf = (t: Tool) => (t === 'eraser' ? 'erase' : t === 'pen' ? '' : t);
+/** The toolbar button's data-ink name for a tool ('' for the pen, which has none). */
+const buttonOf = (t: Tool) => (t === 'eraser' ? 'erase' : t === 'pen' ? '' : t);
+/** Is this tool a shape? */
 const isShape = (t: Tool): t is Shape => (SHAPES as string[]).includes(t);
+/** Switch the drawing tool, and show which one is on. */
 function setTool(t: Tool) {
   tool = t;
   document.body.classList.toggle('erasing', t === 'eraser');
   document.body.classList.toggle('texting', t === 'text');
   for (const b of bar.querySelectorAll(['arrow', 'erase', 'text', ...SHAPES].map(k => `[data-ink=${k}]`).join()))
-    pressed(b, b.getAttribute('data-ink') === btnOf(t));
+    pressed(b, b.getAttribute('data-ink') === buttonOf(t));
 }
-const pick = (t: Tool) => setTool(tool === t ? 'pen' : t); // picking the tool that's on goes back to the pen
+/** Pick a tool; picking the one that's on goes back to the pen. */
+const pickTool = (t: Tool) => setTool(tool === t ? 'pen' : t); // picking the tool that's on goes back to the pen
 /** Excalidraw's keys for the tools: R/2 rectangle, 3 diamond (D toggles Draw here), O/4 ellipse, A/5 arrow, L/6 line,
  *  P/7 pen, T/8 text, E/0 eraser. */
 const KEYS: Record<string, Tool> = {
@@ -66,6 +70,7 @@ const KEYS: Record<string, Tool> = {
   e: 'eraser',
   Digit0: 'eraser',
 };
+/** The drawing tool a key picks (Excalidraw's keys), or null. */
 export const toolKey = (e: KeyboardEvent): Tool | null => KEYS[e.key.toLowerCase()] ?? KEYS[e.code] ?? null;
 for (const [label, keys] of [
   ['Pen', 'P 7'],
@@ -115,6 +120,7 @@ capture.addEventListener('pointerdown', e => {
   };
   strokes.push(s);
   paint(s);
+  /** Repaint the stroke once a frame while it's drawn. */
   const repaint = perFrame(() => paint(s));
   let pt = at.pt;
   listen(
@@ -127,7 +133,7 @@ capture.addEventListener('pointerdown', e => {
     () => {
       thin(s);
       paint(s);
-      added(s);
+      recordAdded(s);
       inkPlaced([s]);
       changed();
     },
@@ -162,6 +168,7 @@ function drawShape(e: PointerEvent, sh: Shape, at: Place) {
     ...rowAt(host, e),
   };
   strokes.push(s);
+  /** Repaint the shape once a frame while it's dragged out. */
   const redraw = perFrame(() => paint(s));
   listen(
     e,
@@ -179,7 +186,7 @@ function drawShape(e: PointerEvent, sh: Shape, at: Place) {
       const [[x0, y0], [x1, y1]] = s.p;
       if (Math.hypot(x1 - x0, y1 - y0) / scale < 4) return remove(s); // a click, not a drag
       paint(s);
-      added(s);
+      recordAdded(s);
       inkPlaced([s]);
       changed();
     },
@@ -220,7 +227,7 @@ addEventListener('keydown', e => {
     setDrawing(false);
   } else if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
   const t = toolKey(e);
-  if (t) pick(t);
+  if (t) pickTool(t);
 });
 /** Draw mode with one tool picked. */
 export function useTool(t: Tool) {
@@ -237,10 +244,10 @@ for (const b of bar.querySelectorAll<HTMLButtonElement>('[data-ink]')) {
     } else if (kind === 'size') {
       size = Number(val);
       if (tool === 'eraser') setTool('pen');
-    } else if (kind === 'erase') return pick('eraser');
-    else if (kind === 'arrow') return pick('arrow');
-    else if (kind === 'text') return pick('text');
-    else if (isShape(kind as Tool)) return pick(kind as Shape);
+    } else if (kind === 'erase') return pickTool('eraser');
+    else if (kind === 'arrow') return pickTool('arrow');
+    else if (kind === 'text') return pickTool('text');
+    else if (isShape(kind as Tool)) return pickTool(kind as Shape);
     else if (kind === 'fill') {
       fill = !fill;
       b.classList.toggle('on', fill);

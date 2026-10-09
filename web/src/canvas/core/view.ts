@@ -22,6 +22,7 @@ const listeners: ((viewOnly: boolean) => void)[] = [];
 export const onChange = (f: (viewOnly: boolean) => void) => listeners.push(f);
 let queued = false,
   moved = false;
+/** Something on the canvas moved or the view changed: the listeners run once, on the next frame. */
 export function changed(viewOnly = false) {
   if (!viewOnly) moved = true;
   if (queued) return;
@@ -42,6 +43,7 @@ export function changed(viewOnly = false) {
 const grid = stage.insertBefore(make('div', 'grid'), world);
 const zLabel = $('#z-label');
 let gridG = 0;
+/** Apply the view (pan and zoom) to the canvas layers and the dot grid; `glide` animates it. */
 export function apply(glide = false) {
   for (const el of [world, inkworld, stage]) el.classList.toggle('glide', glide);
   if (glide)
@@ -63,18 +65,22 @@ export function apply(glide = false) {
 /** For input that fires many times a frame (pointer pans, wheels, trackpads): the view updates now, the DOM once a frame. */
 export const applySoon = perFrame(() => apply());
 
+/** Zoom to `k` around screen point (cx, cy), keeping that point still. Doesn't apply it: call apply(). */
 export function zoomView(k: number, cx: number, cy: number) {
   k = Math.min(MAX, Math.max(Math.min(MIN, view.k), k)); // under MIN (a fit): no further out
   view.x = cx - (cx - view.x) * (k / view.k);
   view.y = cy - (cy - view.y) * (k / view.k);
   view.k = k;
 }
+/** Zoom to `k` around a screen point (the middle of the screen by default) and apply it. */
 export function zoomAt(k: number, cx = innerWidth / 2, cy = innerHeight / 2, glide = false) {
   zoomView(k, cx, cy);
   apply(glide);
 }
 
+/** A screen point in canvas units. */
 export const toWorld = (cx: number, cy: number) => ({ x: (cx - view.x) / view.k, y: (cy - view.y) / view.k });
+/** The middle of the screen in canvas units. */
 export const viewCenter = () => ({ x: (innerWidth / 2 - view.x) / view.k, y: (innerHeight / 2 - view.y) / view.k });
 
 addEventListener('resize', () => changed());

@@ -29,6 +29,7 @@ export async function readImages(files: File[]): Promise<Pasted[]> {
   return out;
 }
 
+/** Read one pasted or dropped image, scaled down to what Claude uses (sent as is when it's already small enough). */
 async function readOne(f: File): Promise<Pasted> {
   const bmp = await createImageBitmap(f);
   const k = Math.min(1, MAX_EDGE / Math.max(bmp.width, bmp.height));
@@ -48,10 +49,11 @@ async function readOne(f: File): Promise<Pasted> {
   return { type, data: await base64(blob), url: URL.createObjectURL(blob), blob, w: c.width, h: c.height };
 }
 
+/** An image as a message content block. */
 export const imageBlock = (img: Pasted) => block(img.type, img.data);
 
 /** A thumbnail; click to zoom and pan it. With `remove`, an × to take it off the message. */
-export function thumb(img: Pasted, remove?: () => void) {
+export function thumbnail(img: Pasted, remove?: () => void) {
   const t = make('span', 'thumb'),
     pic = make('img');
   pic.src = img.url;

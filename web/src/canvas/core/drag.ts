@@ -1,13 +1,14 @@
 // Dragging: moving items (and what moves with them), resize grips, edge grips on side panels, dragging something
 // out of a window onto the canvas, and `track()`, the one pointer-press follower they all use.
 import { EDITABLE, make, perFrame } from '../../lib/dom';
-import { front, onCanvas, place, rect } from './items';
+import { bringToFront, onCanvas, place, rect } from './items';
 import { changed, toWorld, view } from './view';
 
 /** Asked while an item is dragged (final=false, to highlight a target) and when it's released (final=true).
  *  Return true if the pointer is over something that takes the item: on release it then snaps back to where it was. */
 type DropHandler = (el: HTMLElement, x: number, y: number, final: boolean) => boolean;
 let dropHandler: DropHandler | undefined;
+/** Register the one drop handler (a session card's message box takes items dropped on it). */
 export const onDrop = (f: DropHandler) => {
   dropHandler = f;
 };
@@ -15,6 +16,7 @@ export const onDrop = (f: DropHandler) => {
 /** What else moves when an item is dragged. Each registered function answers for one item: canvas/core/select.ts (the
  *  selection it's in), items/group/group.ts (a group's windows). */
 const withs: ((el: HTMLElement) => HTMLElement[])[] = [];
+/** Register what else moves when an item is dragged: `f(el)` returns the items that come along with `el`. */
 export const moveWith = (f: (el: HTMLElement) => HTMLElement[]) => {
   withs.push(f);
 };
@@ -29,6 +31,7 @@ export function movesWith(el: HTMLElement): HTMLElement[] {
 export type Mover = ((dx: number, dy: number) => void) & { end: () => void };
 /** Anything else that moves with `el`'s group (selected drawings): called when a drag starts, returns a mover or null. */
 let moveAlong: (el: HTMLElement) => Mover | null = () => null;
+/** Register what moves along with an item's group that isn't an item (the selected drawings). */
 export const setMoveAlong = (f: typeof moveAlong) => {
   moveAlong = f;
 };
@@ -42,6 +45,8 @@ export function draggable(
   onClick?: () => void,
   when?: (e: PointerEvent) => boolean,
 ) {
+  /** Is the press on a control of the window's own (a button, a link, the chat log, a text field)? Those don't drag
+   *  it. */
   const own = (e: Event) => (e.target as Element).closest(`button, a, .log, .compose, ${EDITABLE}`);
   // pressing the handle leaves focus in a box marked data-keep-focus (a file or scratchpad being edited): typing carries on after a
   // drag. A message box still loses it, so a click on its card's tab makes the next key a shortcut again.
@@ -52,7 +57,7 @@ export function draggable(
   handle.addEventListener('pointerdown', e => {
     if (e.button !== 0 || !onCanvas(el) || own(e) || (when && !when(e))) return;
     e.stopPropagation();
-    front(el);
+    bringToFront(el);
     const sx = e.clientX,
       sy = e.clientY,
       o = rect(el);
@@ -63,6 +68,7 @@ export function draggable(
     const alone = !group.length && !along; // a group isn't dropped onto a card
     let moved = false,
       done = false;
+    /** One pointer move during a drag: places the dragged items and asks the drop handler about the spot. */
     // the pointer is captured only once it really drags: capturing on press would re-target a double-click to the
     // handle, and the tab's title couldn't be double-clicked to rename it. Until then the window follows the pointer.
     const step = (ev: PointerEvent) => {
@@ -83,7 +89,10 @@ export function draggable(
       onMove();
       if (!alone) changed(); // other items' arrows follow too
     };
+    /** Place the dragged items once a frame. */
     const move = perFrame(step); // high-rate mice send several moves a frame: place and hit-test once
+    /** The drag ends: settle the items, hand a lone item to the drop handler, or count a press that didn't move as a
+     *  click. */
     const up = (ev: PointerEvent) => {
       if (ev.type === 'pointerup') step(ev); // where the pointer really ended (a pointercancel's coordinates are 0,0)
       done = true;
@@ -154,6 +163,7 @@ export function track(
   let done = false,
     held = !o.late;
   if (held) handle.setPointerCapture(id);
+  /** One pointer move: ignored until it has really moved (late capture), then passed on as an offset from the press. */
   const step = (ev: PointerEvent) => {
     if (done || ev.pointerId !== id) return;
     if (!held && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 4) return;
@@ -165,6 +175,7 @@ export function track(
   };
   // once a frame (high-rate mice send several moves per frame); nothing after the end, which applies the last one
   const mv = (o.every ? step : perFrame(step)) as (ev: Event) => void;
+  /** The press ends (released or cancelled): apply the last move and stop listening. */
   const up = (ev: Event) => {
     const p = ev as PointerEvent;
     if (done || p.pointerId !== id) return;
@@ -213,6 +224,7 @@ export function dragOut(
 
 /** Eat the next `type` event page-wide (the one a gesture ends with), unless none comes within `ms`. */
 export function swallowNext(type: string, ms: number) {
+  /** Swallow the event: nothing else on the page sees it. */
   const eat = (ev: Event) => {
     ev.stopImmediatePropagation();
     ev.preventDefault();
@@ -242,7 +254,7 @@ export function resizable(
     grip.addEventListener('pointerdown', e => {
       if (e.button !== 0) return;
       e.stopPropagation();
-      front(el);
+      bringToFront(el);
       const w = el.offsetWidth,
         h = el.offsetHeight,
         k = onCanvas(el) ? view.k : 1; // floating: not scaled

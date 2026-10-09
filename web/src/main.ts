@@ -27,7 +27,7 @@ import { setMode } from './canvas/core/mode';
 import { selected } from './canvas/core/select'; // also Ctrl/Cmd+A, Delete, arrow-key nudges
 import { addImage } from './items/image/image';
 import { noteHere } from './items/notes';
-import { doc } from './items/doc';
+import { docWindow } from './items/doc';
 import './items/sketch'; // whiteboards you already have still load (new ones: the Scratchpad replaced it)
 import './items/diagram';
 import './items/plan/plan';
@@ -42,7 +42,7 @@ import './canvas/core/winkeys'; // W steps through windows, M collapses, Shift+F
 import './canvas/core/layers'; // bring forward / send back: the tab's right-click menu, the selection bar, ] / [
 import { openGit } from './items/git/git';
 import { openGitHub } from './items/github/github';
-import { tree, closeInspector, showTab } from './panels/files';
+import { loadTree, closeInspector, showTab } from './panels/files';
 import { cards, cur, newSession, meta, cycleCards } from './session/card/session';
 import { attach } from './session/card/live';
 import { refreshModels, seedInfo } from './session/card/gen';
@@ -52,6 +52,7 @@ import { agentsReady, installed, lastAgent, setLastAgent, title, blurb, chooser 
 const drawer = $('#drawer'),
   inspector = $('#inspector'),
   drawerBtn = $('#btn-drawer');
+/** Open or close the drawer (files and History). */
 const toggleDrawer = (open = drawer.hidden) => {
   drawer.hidden = !open;
   drawerBtn.setAttribute('aria-expanded', String(open));
@@ -69,6 +70,7 @@ more.innerHTML = ICON.more;
 more.title = 'More';
 more.setAttribute('aria-label', 'More');
 more.setAttribute('aria-controls', 'bar-more');
+/** Open or close the toolbar's overflow menu. */
 const showMore = (open: boolean) => {
   tail.classList.toggle('open', open);
   more.setAttribute('aria-expanded', String(open));
@@ -88,6 +90,7 @@ function newSessionMenu() {
   const list = installed(),
     btn = $('#btn-new');
   if (list.length < 2) return;
+  /** Name the agent a new session starts with on the New button. */
   const label = () => {
     btn.title = `New ${title(lastAgent())} session (N)`;
     btn.setAttribute('aria-label', btn.title);
@@ -107,13 +110,13 @@ function newSessionMenu() {
   btn.after(menu);
   label();
 }
-$('#btn-scratch').onclick = () => doc({ edit: true });
+$('#btn-scratch').onclick = () => docWindow({ edit: true });
 $('#btn-git').onclick = () => openGit();
 drawerBtn.onclick = () => toggleDrawer();
 $('#dclose').onclick = () => toggleDrawer(false);
 $('#iclose').onclick = closeInspector;
 $('#refresh').onclick = () => {
-  tree();
+  loadTree();
   loadSessions();
 };
 for (const b of document.querySelectorAll('.seg [data-l], .seg [data-r]')) pressed(b, b.classList.contains('on'));
@@ -147,6 +150,7 @@ const PAN: Record<string, [number, number]> = {
 };
 const ZOOM: Record<string, number> = { '+': 1.25, '=': 1.25, '-': 1 / 1.25 };
 let lastDown: EventTarget | null = null;
+/** Fit the view to the selection, or to everything when nothing is selected. */
 // what the handler below answers to, for the ? sheet, Ctrl+K and the launch tips (lib/keys.ts)
 const fitSelection = () => {
   const s = selected();
@@ -184,7 +188,7 @@ for (const c of [
   {
     label: 'Scratchpad',
     keys: ['S'],
-    run: () => doc({ edit: true }),
+    run: () => docWindow({ edit: true }),
     tip: '`S` opens a scratchpad for Markdown, code and diagrams',
   },
   { label: 'Insert picture', keys: ['9'], run: () => pickImage.click() },
@@ -198,6 +202,7 @@ for (const c of [
   },
 ])
   command({ ...c, group: 'Items' });
+/** A toolbar button's icon, for the right-click menu's New and Open sections. */
 // the right-click menu's New and Open sections (canvas/core/menu.ts), with the toolbar's own icons
 const iconOf = (sel: string) => $(sel).querySelector('svg')?.outerHTML;
 const NOTE = '<svg viewBox="0 0 16 16"><path d="M2.5 2.5h11v7l-4 4h-7zM13.5 9.5h-4v4"/></svg>';
@@ -206,7 +211,7 @@ const PR =
 menuSection('New', () => [
   { label: 'Session', icon: ICON.plus, keys: 'N', run: () => newSession() },
   { label: 'Sticky note', icon: NOTE, keys: 'T', run: noteHere },
-  { label: 'Scratchpad', icon: iconOf('#btn-scratch'), keys: 'S', run: () => doc({ edit: true }) },
+  { label: 'Scratchpad', icon: iconOf('#btn-scratch'), keys: 'S', run: () => docWindow({ edit: true }) },
 ]);
 menuSection('Open', () => [
   { label: 'Git', icon: iconOf('#btn-git'), keys: 'G', run: () => openGit() },
@@ -232,6 +237,7 @@ addEventListener(
   },
   true,
 );
+/** Is this a key from a hardware keyboard (not an on-screen keyboard or an IME)? */
 // a key pressed outside a field means a hardware keyboard (an iPad's, say): show the tools' key hints even on touch.
 // On-screen keyboards and IMEs send 'Unidentified'/'Process' or composing events, which aren't one
 const keyboard = (e: KeyboardEvent) => {
@@ -320,7 +326,7 @@ addEventListener('keydown', e => {
   else if (c === 'Digit9') pickImage.click();
   else if (k === 's') {
     e.preventDefault();
-    doc({ edit: true });
+    docWindow({ edit: true });
   } // a scratchpad (T: a sticky note)
   else if (k === 'f') fit();
   else if (k === 'g') openGit();
@@ -334,6 +340,7 @@ pickImage.onchange = () => {
 
 // The hint teaches pan/zoom once, then gets out of the way.
 const hint = $('#hint');
+/** Hide the empty-canvas hint once you start using the canvas. */
 const dismiss = () => hint.classList.add('gone');
 stage.addEventListener('wheel', dismiss, { once: true });
 stage.addEventListener(
@@ -371,10 +378,10 @@ onChange(saveSoon);
 // server back after an outage (or a restart): pick the live streams and lists up again
 onReconnect(() => {
   for (const S of cards) attach(S);
-  tree();
+  loadTree();
   loadSessions();
 });
-tree();
+loadTree();
 loadSessions();
 cur?.ta.focus({ preventScroll: true });
 showTip();

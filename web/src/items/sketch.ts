@@ -21,8 +21,10 @@ interface Scene {
 }
 
 /* ---------- storage: one localStorage entry per sketch, this browser only ---------- */
+/** The localStorage key of a whiteboard's scene. */
 // ponytail: localStorage (~5 MB per origin); pasted images can fill it. Move to server-side files if that bites.
 const KEY = (id: string) => `drawa:sketch:${project.root}:${id}`;
+/** A whiteboard's saved Excalidraw scene, or an empty one. */
 const loadScene = (id: string): Scene => {
   try {
     return JSON.parse(localStorage.getItem(KEY(id)) ?? 'null') ?? { elements: [], files: {} };
@@ -30,6 +32,7 @@ const loadScene = (id: string): Scene => {
     return { elements: [], files: {} };
   }
 };
+/** Save a whiteboard's scene; false when storage is full. */
 function saveScene(id: string, s: Scene) {
   try {
     localStorage.setItem(KEY(id), JSON.stringify(s));
@@ -40,6 +43,7 @@ function saveScene(id: string, s: Scene) {
 }
 
 let lib: Promise<Excalidraw> | undefined; // React + Excalidraw: loaded on first sketch only
+/** Excalidraw and its styles, loaded on first use (its fonts are served from this server). */
 const excalidraw = () =>
   (lib ??= (async () => {
     (window as any).EXCALIDRAW_ASSET_PATH = `${location.origin}/excalidraw/`; // fonts are self-hosted (see postinstall)
@@ -52,6 +56,7 @@ const dark = isDark;
 /** "Whiteboard 4" after the highest number in use (a reload must not start again at 1). */
 const nextName = () =>
   `Whiteboard ${Math.max(0, ...items('sketch').map(n => Number(/^Whiteboard (\d+)$/.exec(n.querySelector('.t')?.textContent ?? '')?.[1] ?? 0))) + 1}`;
+/** A whiteboard on the canvas: a preview of its drawing; double-click (or Edit) opens Excalidraw on it. */
 export function sketch(opts: { id?: string; title?: string; rect?: Rect; edit?: boolean } = {}) {
   const id = opts.id ?? uuid();
   const c = viewCenter();
@@ -63,7 +68,7 @@ export function sketch(opts: { id?: string; title?: string; rect?: Rect; edit?: 
     minH: 160,
     rect: opts.rect ?? freeSpot({ x: c.x - 210, y: c.y - 150, w: 420, h: 300 }),
     actions: [
-      iconButton(ICON.pencil, 'Edit whiteboard', () => edit(node)),
+      iconButton(ICON.pencil, 'Edit whiteboard', () => editSketch(node)),
       removeButton('Delete whiteboard', n => forgetScene(n.dataset.id!)), // the drawing stays stored while Undo is offered
     ],
   });
@@ -71,17 +76,18 @@ export function sketch(opts: { id?: string; title?: string; rect?: Rect; edit?: 
   node.dataset.ink = `s:${id}`;
   body.classList.add('snode-b');
   body.append(inkBox(`sf:${id}`)); // drawing on the picture stays on the same spot at any size
-  body.ondblclick = () => edit(node);
-  preview(node);
+  body.ondblclick = () => editSketch(node);
+  drawPreview(node);
   if (opts.edit) {
     centerOn(node);
-    edit(node, !opts.id);
+    editSketch(node, !opts.id);
   }
   changed();
   return node;
 }
 
-async function preview(node: HTMLElement) {
+/** Draw a whiteboard's preview (an SVG export of its scene), in the current theme. */
+async function drawPreview(node: HTMLElement) {
   const body = node.querySelector<HTMLElement>('.snode-b')!;
   const scene = loadScene(node.dataset.id!);
   body.querySelector(':scope > .none')?.remove();
@@ -114,7 +120,7 @@ async function sketchPng(id: string): Promise<string | null> {
   return base64(blob);
 }
 
-onTheme(() => items('sketch').forEach(preview)); // previews are drawn in the theme's colors
+onTheme(() => items('sketch').forEach(drawPreview)); // previews are drawn in the theme's colors
 persist(
   'sketches',
   () =>
@@ -140,7 +146,8 @@ let open: { node: HTMLElement; scene: Scene; original: string; isNew: boolean; u
 let timer = 0,
   loading = false;
 
-async function edit(node: HTMLElement, isNew = false) {
+/** Open Excalidraw on a whiteboard, in a dialog over the canvas. */
+async function editSketch(node: HTMLElement, isNew = false) {
   if (open || loading) return; // a second Edit while Excalidraw loads would mount a second editor into the dialog
   loading = true;
   const id = node.dataset.id!;
@@ -175,6 +182,7 @@ async function edit(node: HTMLElement, isNew = false) {
   nameInput.blur(); // showModal focuses the name field; tool keys (R, O, A...) should go to the drawing
 }
 
+/** Delete a whiteboard's saved scene. */
 const forgetScene = (id: string) => {
   try {
     localStorage.removeItem(KEY(id));
@@ -188,7 +196,8 @@ function discard(node: HTMLElement) {
   changed();
 }
 
-function close(keep: boolean) {
+/** Close the Excalidraw dialog, keeping the drawing (`keep`) or going back to how it was. */
+function closeEditor(keep: boolean) {
   if (!open) return;
   clearTimeout(timer);
   const { node, scene, original, isNew, unmount } = open;
@@ -204,12 +213,12 @@ function close(keep: boolean) {
   dialog.close();
   if (isNew && (!keep || empty)) return discard(node); // nothing to keep: no leftover empty sketch
   if (!keep) saveScene(node.dataset.id!, JSON.parse(original)); // Cancel: back to how it was before this edit
-  if (!keep) return preview(node);
+  if (!keep) return drawPreview(node);
   node.querySelector('.t')!.textContent = nameInput.value.trim() || 'Whiteboard';
-  preview(node);
+  drawPreview(node);
   changed();
 }
 
-dialog.querySelector<HTMLButtonElement>('.done')!.onclick = () => close(true);
-dialog.querySelector<HTMLButtonElement>('.cancel')!.onclick = () => close(false);
+dialog.querySelector<HTMLButtonElement>('.done')!.onclick = () => closeEditor(true);
+dialog.querySelector<HTMLButtonElement>('.cancel')!.onclick = () => closeEditor(false);
 dialog.addEventListener('cancel', e => e.preventDefault()); // Esc belongs to Excalidraw (deselect, exit tool); close with Done

@@ -4,6 +4,7 @@
 import { iconButton, keepOnScreen, make } from './dom';
 
 let seq = 0;
+/** A small inline SVG icon (the chevron, the check mark). */
 const svg = (d: string) => `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="${d}"/></svg>`;
 const CHEVRON = svg('M4.5 6.5 8 10l3.5-3.5'),
   CHECK = svg('M3.5 8.5l3 3 6-7');
@@ -27,6 +28,7 @@ export interface Rich {
 
 const SEARCH_FROM = 5;
 
+/** Replace a native select's look with the app's own dropdown. The select stays in the DOM and keeps the value. */
 export function enhance(select: HTMLSelectElement, rich?: Rich): void {
   const trigger = make('button', 'btn xsel');
   trigger.setAttribute('aria-haspopup', 'listbox');
@@ -43,6 +45,7 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
     box: HTMLInputElement | null = null,
     active = -1;
 
+  /** Mirror the select onto its button: the current option, its title and label, and its mode. */
   // Mirror everything the trigger shows from the select. Cheap, so it just runs on any change.
   const sync = () => {
     label.textContent = select.selectedOptions[0]?.textContent ?? '';
@@ -85,6 +88,7 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
   select.addEventListener('change', sync);
   sync();
 
+  /** Draw the menu's rows from the select's options. */
   function render() {
     list!.replaceChildren(
       ...[...select.options].map((o, i) => {
@@ -148,6 +152,7 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
   const visible = () =>
     [...list!.querySelectorAll<HTMLElement>('.xsel-item')].flatMap((el, i) => (el.hidden ? [] : [i]));
 
+  /** Highlight row `i` and scroll it into view. */
   function setActive(i: number) {
     active = i;
     const items = list!.querySelectorAll('.xsel-item'),
@@ -160,6 +165,7 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
     } else home.removeAttribute('aria-activedescendant');
   }
 
+  /** Position the open menu under (or above) its button, kept on screen. */
   // Below the trigger; flip above when it doesn't fit and there is more room up there.
   function place() {
     const r = trigger.getBoundingClientRect(),
@@ -171,6 +177,7 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
     keepOnScreen(m, r.left, up ? r.top - 6 - m.offsetHeight : r.bottom + 6);
   }
 
+  /** Open the menu under its button. */
   function open() {
     if (menu || select.disabled) return;
     menu = document.createElement('div');
@@ -211,6 +218,7 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
     addEventListener('resize', onResize);
   }
 
+  /** Close the menu; `refocus` hands focus back to its button. */
   function close(refocus = false) {
     if (!menu) return;
     const m = menu;
@@ -223,14 +231,18 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
     removeEventListener('resize', onResize);
     if (refocus) trigger.focus();
   }
+  /** A press outside the menu and its button closes it. */
   const onOutside = (e: Event) => {
     if (!menu!.contains(e.target as Node) && !trigger.contains(e.target as Node)) close();
   };
+  /** Scrolling the page under the menu closes it, so it never floats away from its button. */
   const onScroll = (e: Event) => {
     if (!menu!.contains(e.target as Node)) close();
   }; // the menu's own scroll is fine
+  /** Resizing the window closes the menu. */
   const onResize = () => close();
 
+  /** Pick option `i` as if natively: the select changes and fires its input and change events. */
   function choose(i: number) {
     close(true);
     if (i < 0 || (i === select.selectedIndex && !('repick' in select.dataset))) return; // data-repick: a menu of actions, where the same pick acts again
@@ -240,6 +252,7 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
     select.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
+  /** The menu's keys: arrows, Home/End, Enter or Space to pick, Esc to close, letters to jump. */
   function onKey(e: KeyboardEvent) {
     const n = select.options.length,
       typing = !!box && e.target === box;
@@ -328,12 +341,14 @@ export function segmented(select: HTMLSelectElement): void {
   if (name) row.setAttribute('aria-label', name);
   select.after(row);
   select.hidden = true;
+  /** Mark the segment that matches the select's value. */
   const sync = () =>
     [...row.children].forEach((b, i) => {
       const on = select.options[i]?.selected ?? false;
       b.classList.toggle('on', on);
       b.setAttribute('aria-checked', String(on));
     });
+  /** Draw one segment per option. */
   const render = () => {
     row.replaceChildren(
       ...[...select.options].map(o => {

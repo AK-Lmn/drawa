@@ -5,9 +5,9 @@ import { refIcon } from '../../canvas/core/refs';
 import { agentTitle } from '../../items/agent';
 import { make } from '../../lib/dom';
 import { enhance, md } from '../../lib/markdown';
-import { put } from '../card/render';
+import { appendToLog } from '../card/render';
 import type { Session } from '../card/types';
-import { fold } from './stream';
+import { toolRow } from './stream';
 
 /** Render `text` as Markdown into the row the first time it's opened (a skill or a report can be pages long). */
 function onOpen(d: HTMLDetailsElement, text: string) {
@@ -20,11 +20,11 @@ function onOpen(d: HTMLDetailsElement, text: string) {
 }
 
 /** Text Claude Code added itself, like a skill's instructions. */
-export function meta(S: Session, text: string) {
+export function cliNotice(S: Session, text: string) {
   const skill = /^Base directory for this skill: (\S+)/.exec(text);
-  const d = put(
+  const d = appendToLog(
     S,
-    fold('meta', skill ? `Skill · ${skill[1].split('/').filter(Boolean).pop()}` : 'Added by Claude Code'),
+    toolRow('meta', skill ? `Skill · ${skill[1].split('/').filter(Boolean).pop()}` : 'Added by Claude Code'),
   );
   onOpen(d, skill ? text.slice(skill[0].length).trim() : text);
 }
@@ -46,9 +46,9 @@ export function handoff(S: Session, text: string, live: boolean, meta = true) {
     title = agentTitle(from),
     body = report(inner);
   if (!meta && !title) return false;
-  const d = put(
+  const d = appendToLog(
     S,
-    fold('handoff', title ? `Report from the "${title}" agent` : `Message from agent ${from.slice(0, 8)}`),
+    toolRow('handoff', title ? `Report from the "${title}" agent` : `Message from agent ${from.slice(0, 8)}`),
   );
   d.dataset.kind = 'agent'; // colored like the agent's window, chip and Ctrl+K row
   d.querySelector('summary b')!.setAttribute('data-glyph', refIcon('agent'));

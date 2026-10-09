@@ -46,17 +46,22 @@ referable('group', {
   },
 });
 
+/** Every group on the canvas. */
 export const groups = () => items('group');
+/** Is this item a group? */
 export const isGroup = (el: HTMLElement) => el.dataset.kind === 'group';
 /** Windows only: bare items (notes, file nodes) have no tab to carry the Remove from group button. */
 export const groupable = (el: HTMLElement) => el.classList.contains('win') && !isGroup(el);
+/** A group's member ids. */
 // member ids, kept even for windows that haven't shown up yet (a card rebuilt from its process after a reload)
-const ids = (g: HTMLElement): string[] => JSON.parse(g.dataset.members || '[]');
+const memberIds = (g: HTMLElement): string[] => JSON.parse(g.dataset.members || '[]');
 let index: Map<string, HTMLElement> | null = null; // window id → its group, rebuilt after any change (setIds)
+/** The group a window is in, if any. */
 export const groupOf = (el: HTMLElement) =>
-  (index ??= new Map(groups().flatMap(g => ids(g).map(id => [id, g] as const)))).get(el.dataset.id!);
+  (index ??= new Map(groups().flatMap(g => memberIds(g).map(id => [id, g] as const)))).get(el.dataset.id!);
+/** Set a group's member ids, and give and take what membership brings (the leave button, hiding while collapsed). */
 function setIds(g: HTMLElement, list: string[]) {
-  const before = ids(g),
+  const before = memberIds(g),
     found = byIds();
   g.dataset.members = JSON.stringify(list);
   index = null;
@@ -85,10 +90,10 @@ function adopt(g: HTMLElement, found: Map<string, HTMLElement>) {
   hideInk(g, min);
 }
 /** Nothing left in it: no windows, no drawings. */
-export const empty = (g: HTMLElement) => !ids(g).length && !inkIds(g).length;
+export const empty = (g: HTMLElement) => !memberIds(g).length && !inkIds(g).length;
 /** A group's windows that exist now (`found`: one byIds() pass for many groups). */
 export const members = (g: HTMLElement, found = byIds()) =>
-  ids(g)
+  memberIds(g)
     .map(id => found.get(id))
     .filter((el): el is HTMLElement => !!el);
 /** Where an item is from its styles alone (no layout read): safe between writes. */
@@ -104,6 +109,7 @@ const sizeOf = (el: HTMLElement): Rect => {
   return { ...r, w: r.w || el.offsetWidth, h: r.h || el.offsetHeight };
 };
 let tab = 0;
+/** The height of a window's tab (from the --tab-h token), read once. */
 const tabH = () => (tab ||= parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tab-h')) || 34);
 
 /** Make a group. `members`: ids of the windows it holds; `rect` a saved frame (else an empty one at the view center);
@@ -213,6 +219,7 @@ function scaleMembers(g: HTMLElement) {
 // Which windows are in a group: a dotted outline with corner squares round the frame and a thin one round each of
 // its windows, while its tab is hovered, while it's selected or dragged, and for a moment after it changes.
 const flashing = new Set<HTMLElement>();
+/** Show for a moment which windows are in a group. */
 export function flash(g: HTMLElement) {
   flashing.add(g);
   outlinesSoon();
@@ -221,6 +228,7 @@ export function flash(g: HTMLElement) {
     outlinesSoon();
   }, 1500);
 }
+/** Outline the groups that are hovered, selected, dragged or flashing, and their windows, once a frame. */
 const outlinesSoon = perFrame(() => {
   const found = byIds(),
     on = new Set<HTMLElement>();
@@ -247,7 +255,7 @@ onSelect(outlinesSoon);
 export function join(el: HTMLElement, g: HTMLElement) {
   if (groupOf(el) === g) return;
   leave(el);
-  setIds(g, [...ids(g), el.dataset.id!]);
+  setIds(g, [...memberIds(g), el.dataset.id!]);
 }
 /** Take a window out of its group; the last one out takes the frame with it (no empty frame is kept), with Undo
  *  bringing the frame back with the window in it. Returns whether the frame went. ponytail: a window that joins another
@@ -261,7 +269,7 @@ function leave(el: HTMLElement) {
   } // (still listed: Undo puts it back in)
   setIds(
     g,
-    ids(g).filter(id => id !== el.dataset.id),
+    memberIds(g).filter(id => id !== el.dataset.id),
   );
   return false;
 }
@@ -298,6 +306,7 @@ document.addEventListener('collapse', ev => {
   if (g.dataset?.kind === 'group') hide(g, (ev as CustomEvent<boolean>).detail);
 });
 
+/** Delete a group with its windows and drawings, after asking when it holds any (Undo brings them all back). */
 async function deleteGroup(g: HTMLElement) {
   const ms = members(g),
     ink = groupInk(g),
@@ -404,6 +413,7 @@ onChange(viewOnly => {
 
 removable('group', g => removeUndoably(g), "A group's windows stay unless they are selected too.");
 
+/** Is point (x, y) inside rect `r`? */
 export const inside = (r: Rect, x: number, y: number) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
 // after a drag: a group pushes others aside; a window that's in no group joins the one its center landed in
@@ -421,7 +431,7 @@ document.addEventListener('moved', ev => {
   const from = groupOf(el);
   // a member dropped with its center outside the frame (still its pre-drag shape: it doesn't refit mid-drag) steps
   // out at once; its Undo puts it back and lets the frame grow round it
-  if (from && !inside(styleRect(from), ...center(el))) {
+  if (from && !inside(styleRect(from), ...centerOf(el))) {
     const went = leave(el); // the frame's own Undo puts the window back in: one Undo, not two
     redraw();
     changed();
@@ -474,17 +484,19 @@ function dropTarget(el: HTMLElement) {
   return groups().find(
     g =>
       onCanvas(g) &&
-      (g.classList.contains('min') ? inside(liveRect(g), pointer.x, pointer.y) : inside(styleRect(g), ...center(el))),
+      (g.classList.contains('min') ? inside(liveRect(g), pointer.x, pointer.y) : inside(styleRect(g), ...centerOf(el))),
   );
 }
 let pointer = { x: 0, y: 0 }; // in canvas units, while something is dragged
-const center = (el: HTMLElement): [number, number] => {
+/** An item's center, in canvas units. */
+const centerOf = (el: HTMLElement): [number, number] => {
   const r = rect(el);
   return [r.x + r.w / 2, r.y + r.h / 2];
 };
 // while a window is dragged over a group it could join, the frame lights up ("Drop to add to group")
 let over: HTMLElement | null = null;
-const light = (g: HTMLElement | null) => {
+/** Light up the group a dragged window would join if dropped now (none: no group lit). */
+const lightDrop = (g: HTMLElement | null) => {
   if (g === over) return;
   if (over) delete over.dataset.state;
   if (g) g.dataset.state = 'drop';
@@ -495,11 +507,11 @@ addEventListener(
   perFrame((e: PointerEvent) => {
     const el = document.querySelector<HTMLElement>('#world > .item.dragging');
     if (el) pointer = toWorld(e.clientX, e.clientY);
-    light((el && dropTarget(el)) ?? null);
+    lightDrop((el && dropTarget(el)) ?? null);
   }),
 );
-addEventListener('pointerup', () => light(null));
-addEventListener('pointercancel', () => light(null));
+addEventListener('pointerup', () => lightDrop(null));
+addEventListener('pointercancel', () => lightDrop(null));
 
 /** The window's "Remove from group": it steps out to the right of the frame, and the windows left close the gap. */
 function takeOut(m: HTMLElement) {
@@ -535,7 +547,7 @@ persist(
       (g): Saved => ({
         id: g.dataset.id!,
         title: winTitle(g),
-        members: ids(g),
+        members: memberIds(g),
         ...(inkIds(g).length ? { ink: inkIds(g) } : {}),
         rect: savedRect(g),
         ...(g.dataset.locked ? { locked: true } : {}),
@@ -593,7 +605,8 @@ spawnIn((from, w, h) => {
   setTimeout(() => spawning.splice(spawning.indexOf(at) >>> 0, 1), 10000); // made elsewhere after all (a saved spot won)
   return r;
 });
-function arrived(el: HTMLElement) {
+/** A window made at a spot handed out for a group joins that group. */
+function joinIfSpawned(el: HTMLElement) {
   const i = spawning.findIndex(s => s.x === parseFloat(el.style.left) && s.y === parseFloat(el.style.top));
   if (i < 0 || !groupable(el) || groupOf(el) || !spawning[i].g.isConnected) return;
   join(el, spawning.splice(i, 1)[0].g);
@@ -611,7 +624,8 @@ function release(g: HTMLElement) {
   hideInk(g, false);
 }
 
-function gone(el: HTMLElement) {
+/** A window removed from the canvas leaves its group; the last one out takes the frame with it. */
+function onRemoved(el: HTMLElement) {
   const g = groupOf(el);
   if (!g || g === el) return;
   if (lastOne(g, el))
@@ -619,7 +633,7 @@ function gone(el: HTMLElement) {
   else
     setIds(
       g,
-      ids(g).filter(id => id !== el.dataset.id),
+      memberIds(g).filter(id => id !== el.dataset.id),
     );
 }
 /** A last window deleted with its × (Undo still showing): the frame goes in the same Undo, keeping it listed. A window
@@ -628,14 +642,15 @@ function deleting(el: HTMLElement) {
   const g = groupOf(el);
   if (g && g !== el && undoable(el) && lastOne(g, el)) removeUndoably(g);
 }
-const isEl = (n: Node): n is HTMLElement => n instanceof HTMLElement && !!n.dataset.id;
+/** Is this node a canvas item (it has an id)? */
+const isItemNode = (n: Node): n is HTMLElement => n instanceof HTMLElement && !!n.dataset.id;
 new MutationObserver(recs => {
-  const out = recs.flatMap(r => [...r.removedNodes]).filter(isEl),
-    added = recs.flatMap(r => [...r.addedNodes]).filter(isEl);
+  const out = recs.flatMap(r => [...r.removedNodes]).filter(isItemNode),
+    added = recs.flatMap(r => [...r.addedNodes]).filter(isItemNode);
   if ([...out, ...added].some(isGroup)) index = null; // a frame parked or back: who's in which group changed
   out.filter(n => !n.isConnected && parked(n) && isGroup(n)).forEach(release);
-  out.filter(n => !n.isConnected && !parked(n)).forEach(gone);
+  out.filter(n => !n.isConnected && !parked(n)).forEach(onRemoved);
   out.filter(n => !n.isConnected && parked(n) && !isGroup(n)).forEach(deleting);
-  added.filter(n => n.isConnected).forEach(arrived);
+  added.filter(n => n.isConnected).forEach(joinIfSpawned);
 }).observe(world, { childList: true });
-onGone(gone);
+onGone(onRemoved);

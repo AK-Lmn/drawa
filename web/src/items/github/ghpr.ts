@@ -11,7 +11,7 @@ import {
   getChecks,
   getPr,
   ghPost,
-  here as ghRepo,
+  shownRepo as ghRepo,
   type Inline,
   type Pr,
   publish,
@@ -19,26 +19,40 @@ import {
   sendLabel,
   sendToClaude,
   stateOf,
-  tally,
+  tallyChecks,
   type What,
   whoami,
 } from './gh';
 import { checkList, whilePending } from './ghruns';
-import { commentOn, conversation, ghLink, header, load, note, show, still, win, writeBox } from './github';
+import {
+  commentBox,
+  commentOn,
+  conversation,
+  ghLink,
+  header,
+  loadItem,
+  showView,
+  stillShown,
+  win,
+  writeBox,
+} from './github';
 
+/** One pull request in the GitHub window: its conversation, files and checks tabs, and the actions you can take on
+ *  it. */
 export async function prDetail(n: number) {
-  const p = await load(`pull request #${n}`, () => getPr(n));
+  const p = await loadItem(`pull request #${n}`, () => getPr(n));
   if (!p) return;
   const w = win!,
     v = w.view;
   const tabs = make('div', 'ghtabs'),
     pane = make('div', 'ghpane');
+  /** A tab's label, with its count. */
   const label = (k: string) =>
     k === 'conv'
       ? `Conversation${p.comments.length + p.reviews.length ? ` (${p.comments.length + p.reviews.length})` : ''}`
       : k === 'files'
         ? `Files (${p.files})`
-        : `Checks${p.checks.length ? ` (${tally(p.checks).pass}/${p.checks.length})` : ''}`;
+        : `Checks${p.checks.length ? ` (${tallyChecks(p.checks).pass}/${p.checks.length})` : ''}`;
   for (const k of ['conv', 'files', 'checks'] as const) {
     const b = button(label(k), (v.sub ?? 'conv') === k ? 'on' : '', () => {
       v.sub = k;
@@ -50,6 +64,7 @@ export async function prDetail(n: number) {
     b.dataset.sub = k;
     tabs.append(b);
   }
+  /** Draw the open tab's pane. */
   // on the page first: diagrams and code tools need it (conversation() builds them off it, enhanceMarked finishes them)
   const fill = () => {
     pane.replaceChildren(
@@ -80,7 +95,7 @@ export async function prDetail(n: number) {
     () => p.checks.some(c => c.state === 'pending'),
     async () => {
       const checks = await getChecks(n);
-      if (!still(w, v) || JSON.stringify(checks) === JSON.stringify(p.checks)) return;
+      if (!stillShown(w, v) || JSON.stringify(checks) === JSON.stringify(p.checks)) return;
       p.checks = checks;
       tabs.querySelector<HTMLElement>('[data-sub=checks]')!.textContent = label('checks');
       if (v.sub === 'checks') fill();
@@ -88,9 +103,11 @@ export async function prDetail(n: number) {
   );
 }
 
+/** The bar of Send to Claude buttons: the pull request, its failing checks, its review comments. */
 function sendBar(p: Pr, redraw: () => void) {
   const acts = make('div', 'ghacts'),
-    t = tally(p.checks);
+    t = tallyChecks(p.checks);
+  /** Send this part of the pull request to Claude as a reference. */
   const send = (what: What) => () => sendToClaude(what, p.number, p.title);
   const sendChecks = button(`Failing checks${t.fail ? ` (${t.fail})` : ''}`, '', send('checks'));
   sendChecks.disabled = !t.fail;
@@ -120,8 +137,9 @@ function manage(p: Pr) {
   const bar = make('div', 'ghacts ghmanage'),
     n = p.number,
     what = `pull request #${n} "${p.title}"`;
+  /** A button's action: publish after a confirm, then redraw. */
   const act = (title: string, text: string, action: string, body: object, done: string) => async () => {
-    if (await publish(title, text, action, { n, ...body }, done)) show();
+    if (await publish(title, text, action, { n, ...body }, done)) showView();
   };
   if (p.state === 'OPEN' && !p.draft) {
     const sel = make('select');
@@ -192,6 +210,7 @@ function manage(p: Pr) {
 /** The comment box under the conversation: a comment, or a review (approve, request changes, comment). */
 function reviewBar(p: Pr) {
   const n = p.number;
+  /** Submit a review (approve, request changes, comment) with the text typed; only an approval may be empty. */
   const review = (event: string, word: string) => async (text: string) => {
     if (event !== 'approve' && !text) {
       toast('Write what the review says first.');
@@ -204,7 +223,7 @@ function reviewBar(p: Pr) {
       { op: 'review', n, event, body: text },
       'Review submitted.',
     );
-    if (r) show();
+    if (r) showView();
     return !!r;
   };
   const box = writeBox('Comment, or write a review', [
@@ -268,10 +287,10 @@ function files(p: Pr) {
       });
     for (const c of here.filter(c => !c.outdated)) {
       const r = rows.find(r => r.dataset.line === String(c.line) && r.dataset.side === c.side);
-      if (r) under(r, inl(c));
-      else diff.prepend(inl(c, true));
+      if (r) under(r, inlineComment(c));
+      else diff.prepend(inlineComment(c, true));
     }
-    for (const c of here.filter(c => c.outdated)) diff.prepend(inl(c, true));
+    for (const c of here.filter(c => c.outdated)) diff.prepend(inlineComment(c, true));
     if (open) {
       diff.classList.add('ghcommentable');
       diff.onclick = e => {
@@ -291,10 +310,11 @@ function under(r: HTMLElement, el: HTMLElement) {
   at.after(el);
 }
 
-function inl(c: Inline, apart = false) {
+/** An inline review comment, with the line it's on when shown apart from the diff. */
+function inlineComment(c: Inline, apart = false) {
   const box = make('div', 'ghinl');
   if (apart) box.append(make('p', 'ghwhere', `${c.outdated ? 'Outdated · ' : ''}line ${c.line ?? '?'}`));
-  box.append(note(c));
+  box.append(commentBox(c));
   return box;
 }
 
@@ -328,7 +348,7 @@ function lineForm(n: number, path: string, r: HTMLElement) {
         if (!ok) return false;
         const me = await whoami();
         f.replaceWith(
-          inl({
+          inlineComment({
             author: me?.login ?? 'you',
             body: text,
             when: new Date().toISOString(),

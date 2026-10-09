@@ -14,13 +14,15 @@ const buttons = { select: $('#mode-select'), hand: $('#mode-hand') };
 /** Does a drag on empty canvas pan right now? */
 export const handDrag = () => mode === 'hand' || space;
 
-function sync() {
+/** Bring the stage's cursor and the mode buttons in line with the mode. */
+function syncMode() {
   stage.classList.toggle('hand', handDrag());
   for (const [m, b] of Object.entries(buttons)) pressed(b, m === mode);
 }
+/** Switch between Select and Hand mode (saved with the layout). */
 export function setMode(m: Mode) {
   mode = m;
-  sync();
+  syncMode();
   saveSoon();
 }
 persist(
@@ -40,19 +42,19 @@ addEventListener('keydown', e => {
   e.preventDefault(); // no page scroll
   if (!space) {
     space = true;
-    sync();
+    syncMode();
   }
 });
 addEventListener('keyup', e => {
   if (e.key === ' ' && space) {
     space = false;
-    sync();
+    syncMode();
   }
 });
 addEventListener('blur', () => {
   if (space) {
     space = false;
-    sync();
+    syncMode();
   }
 }); // released in another window
-sync();
+syncMode();

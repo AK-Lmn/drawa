@@ -23,6 +23,7 @@ layer.addEventListener('pointerdown', e => {
 
 let open: { el: HTMLElement; spot: Comment; min: boolean } | undefined;
 
+/** Is this window in full view? */
 export const isFull = (el: HTMLElement) => open?.el === el;
 /** Is any window in full view? */
 export const anyFull = () => !!open;
@@ -31,6 +32,7 @@ onChange(() => {
   if (open && !open.el.isConnected) exitFull();
 });
 
+/** Lift a window out to fill the screen, or put it back if it's already there (one at a time). */
 export function toggleFull(el: HTMLElement) {
   if (open?.el === el) return exitFull();
   exitFull(); // one at a time
@@ -57,6 +59,7 @@ export function toggleFull(el: HTMLElement) {
 // Draw mode places new ones from its on-screen rect (ink.ts placeAt): they land on the same spot at any zoom.
 // ponytail: a pen's width is screen px at the moment of drawing, so strokes drawn zoomed in look thinner zoomed out.
 let pz: PanzoomObject | undefined, pzBox: HTMLElement | undefined;
+/** Let a picture or diagram in full view be zoomed and panned (Panzoom, loaded on first use). */
 function zoomable(el: HTMLElement) {
   const box = el.querySelector<HTMLElement>('[data-ink-fit]');
   if (!box) return;
@@ -67,6 +70,7 @@ function zoomable(el: HTMLElement) {
     pz = Panzoom(box, { maxScale: 12, minScale: 1, step: 0.35, cursor: 'grab', animate: false });
   }, console.error);
 }
+/** Stop zooming in full view and clear the styles Panzoom left behind. */
 function unzoom() {
   pz?.destroy();
   // destroy() only unbinds: clear the styles Panzoom set, or the body keeps touch-action:none and overflow:hidden
@@ -96,6 +100,7 @@ stage.addEventListener(
 
 addEventListener('keydown', e => {
   if (!pz || !shortcutOk(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+  /** The zoom key's action, if the key is one: +, -, or 0 to reset. */
   const f = ({ '+': pz.zoomIn, '=': pz.zoomIn, '-': pz.zoomOut, '0': pz.reset } as Record<string, () => unknown>)[
     e.key
   ];
@@ -131,6 +136,7 @@ export function exitFull(keys = false) {
   el.classList.remove('refocus');
 }
 
+/** Make a window's full view button say what it does now. */
 export const syncFull = (el: HTMLElement) =>
   setToggle(el, 'fullbtn', isFull(el), 'Back to its place (Esc)', 'Full view (Shift+F)');
 const sync = syncFull;

@@ -11,12 +11,13 @@ import { creatable } from '../canvas/core/tools';
 import { changed, viewCenter } from '../canvas/core/view';
 import { makeWindow, removeButton, winTitle } from '../canvas/core/window';
 import type { Editor } from '../lib/codeedit';
-import { clip, ICON, iconButton, make, pressed, toast, uuid } from '../lib/dom';
+import { ICON, iconButton, make, pressed, toast, truncate, uuid } from '../lib/dom';
 import { enhance, md } from '../lib/markdown';
 import { onPrefs, prefs } from '../lib/prefs';
 import { each, persist } from '../lib/store';
 import { onTheme } from '../lib/theme';
 
+/** A Markdown text's first heading, cut short: the name an untitled scratchpad takes. */
 const headingOf = (t: string) => /^#{1,3}\s+(.+)$/m.exec(t)?.[1].trim().slice(0, 60);
 interface Saved {
   id: string;
@@ -53,8 +54,9 @@ function render(el: HTMLElement) {
   shown.set(el, src);
 }
 
+/** Change a scratchpad's text: named after its first heading while untitled, redrawn only when it changed. */
 function setSrc(el: HTMLElement, text: string) {
-  el.dataset.src = clip(text, MAX);
+  el.dataset.src = truncate(text, MAX);
   const t = el.querySelector('.win-h .t'),
     h = headingOf(text);
   if (t && h && t.textContent === 'Scratchpad') t.textContent = h; // untitled: named after its first heading (a rename wins)
@@ -71,7 +73,8 @@ function checked(a: Record<string, any>) {
   return text;
 }
 
-export function doc(o: { id?: string; title?: string; text?: string; rect?: Rect; edit?: boolean } = {}) {
+/** A scratchpad: a Markdown window, rendered like a reply and edited in place. */
+export function docWindow(o: { id?: string; title?: string; text?: string; rect?: Rect; edit?: boolean } = {}) {
   const id = o.id ?? uuid(),
     c = viewCenter();
   const view = make('div', 'mdoc-b'),
@@ -123,7 +126,7 @@ export function doc(o: { id?: string; title?: string; text?: string; rect?: Rect
         },
         quit: () => void toggle(false),
         change: text => {
-          el.dataset.src = clip(text, MAX);
+          el.dataset.src = truncate(text, MAX);
           changed();
         }, // the draft is saved as you type (drawn when you leave)
       });
@@ -162,7 +165,7 @@ onTheme(() => items('doc').forEach(render));
 
 creatable('doc', {
   size: () => ({ w: 420, h: 360 }),
-  create: (a, r) => doc({ text: checked(a), title: a.title == null ? undefined : String(a.title), rect: r }), // untitled: setSrc names it from its heading
+  create: (a, r) => docWindow({ text: checked(a), title: a.title == null ? undefined : String(a.title), rect: r }), // untitled: setSrc names it from its heading
   update: (el, a) => {
     const text = checked(a);
     editors.get(el)?.setText(text); // being edited: Claude's text replaces the draft in the editor too, so leaving edit keeps it
@@ -177,5 +180,5 @@ persist(
     items('doc').map(
       (el): Saved => ({ id: el.dataset.id!, title: winTitle(el), text: el.dataset.src ?? '', rect: savedRect(el) }),
     ),
-  (list: Saved[]) => each(list, d => doc(d)),
+  (list: Saved[]) => each(list, d => docWindow(d)),
 );

@@ -50,6 +50,7 @@ onReconnect(() => {
   retry.clear();
 });
 
+/** A picture's window: the image in a drawing box, with crop, download and copy. */
 function imageWindow(o: Saved) {
   const img = make('img', 'inode-img');
   img.alt = o.title;
@@ -86,6 +87,7 @@ function imageWindow(o: Saved) {
   img.onclick = () => {
     if (!isFull(el)) toggleFull(el);
   }; // click: full view, where it zooms and pans (Esc to come back)
+  /** Say the picture is gone (its data was kept in another browser, or cleared). */
   const gone = () =>
     body.replaceChildren(
       make('p', 'none', "This picture isn't stored anymore (it was kept in another browser, or its data was cleared)."),

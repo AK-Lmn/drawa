@@ -2,12 +2,12 @@
 // Rendering Claude's stream-json output into a card: text, thinking, tool calls and their results, sub-agent
 // activity, background-agent notifications. Saved transcripts replay through the same path, so the graph rebuilds too.
 import type { ContentBlock, SavedMessage } from '../../lib/api';
-import { make, rel, clip, button } from '../../lib/dom';
+import { make, relPath, truncate, button } from '../../lib/dom';
 import { save } from '../../lib/store';
 import { md, enhance } from '../../lib/markdown';
-import { touch, run, settle, quiet, type Act } from '../../canvas/graph/graph';
+import { touchedFile, ranCommand, settle, requestEnded, type Act } from '../../canvas/graph/graph';
 import { change, settleChange, inFile, type Change } from '../../panels/diff';
-import { tree, openInspector, inspecting } from '../../panels/files';
+import { loadTree, openInspector, inspecting } from '../../panels/files';
 import { liveDiagrams } from '../../items/diagram';
 import { showPlan, planResult, focusPlan } from '../../items/plan/plan';
 import {
@@ -21,17 +21,17 @@ import {
   agentMessaged,
   relayed,
 } from '../../items/agent';
-import { put, follow, renderCard } from '../card/render';
+import { appendToLog, follow, renderCard } from '../card/render';
 import { clearSession } from '../card/session';
 import type { Session, ToolRow, Block } from '../card/types';
 import { approval, withdrawAsk } from './asks';
-import { thumb } from '../composer/images';
+import { thumbnail } from '../composer/images';
 import { notify } from '../card/notify';
 import { replayShell } from '../composer/shell';
 import { setMode, modeRefused } from '../card/mode';
 import { TASK_TOOLS, taskCall, taskResult } from './tasks';
 import { loadSessions } from '../card/history';
-import { meta, handoff, report } from './notices';
+import { cliNotice, handoff, report } from './notices';
 import { who, modesOf } from '../../lib/agents';
 import { showItem } from '../../canvas/core/tools';
 // what a refused tool call means in each mode, and what to do about it (shown under the turn)
@@ -48,16 +48,19 @@ const DENIED_HOW: Record<string, string> = {
 // Claude's stream-json lines; loosely typed on purpose, the CLI owns the schema.
 export type Msg = Record<string, any>;
 
-export function fold(cls: string, title: string) {
+/** A collapsible row in the log (a tool call, thinking): a title, an argument and a state in its summary. */
+export function toolRow(cls: string, title: string) {
   const d = make('details', cls) as ToolRow,
     s = make('summary');
   s.append(make('b', '', title), make('span', 'arg'), make('span', 'st'));
   d.append(s);
   return d;
 }
-export const describe = (i: Record<string, unknown>) =>
+/** A tool call's main argument, for its row: the command, file, pattern, URL or prompt. */
+export const toolArg = (i: Record<string, unknown>) =>
   String(i.command ?? i.file_path ?? i.pattern ?? i.url ?? i.query ?? i.description ?? i.prompt ?? '');
-export const plain = (c: ContentBlock['content']) =>
+/** A tool result's content as plain text. */
+export const contentText = (c: ContentBlock['content']) =>
   typeof c === 'string' ? c : (c ?? []).map(x => x.text ?? '').join('\n');
 const ACTS: Record<string, Act> = {
   Read: 'read',
@@ -85,35 +88,38 @@ function sentBubble(text: string, uuid?: string) {
   b.append(d);
   return b;
 }
-const tag = (xml: string, name: string) => xml.match(new RegExp(`<${name}>([\\s\\S]*?)</${name}>`))?.[1]?.trim();
-const tags = (xml: string, name: string) =>
+/** The text inside the first <name> tag of an XML-ish string. */
+const xmlTag = (xml: string, name: string) => xml.match(new RegExp(`<${name}>([\\s\\S]*?)</${name}>`))?.[1]?.trim();
+/** The texts inside every <name> tag of an XML-ish string. */
+const xmlTags = (xml: string, name: string) =>
   [...xml.matchAll(new RegExp(`<${name}>([\\s\\S]*?)</${name}>`, 'g'))].map(m => m[1].trim());
 
 /** A tool call's effect on the graph (file nodes, terminal). Returns the diff block for edits. */
 function wire(S: Session, id: string, name: string, inp: Record<string, any>): Change | undefined {
   const act = ACTS[name];
-  if (act === 'run' && inp.command) run(S, id, inp.command);
+  if (act === 'run' && inp.command) ranCommand(S, id, inp.command);
   else if (act && inp.file_path) {
-    const file = rel(inp.file_path);
+    const file = relPath(inp.file_path);
     const c = act !== 'read' ? change(S, name, file, inp) : undefined;
     if (c && !S.replaying) inFile(c); // now, while the file still holds the old text (a Write's is gone once it runs)
-    touch(S, id, act, file, c);
+    touchedFile(S, id, act, file, c);
     return c;
   }
 }
 
-function start(S: Session, i: number, b: ContentBlock) {
-  if (b.type === 'text') S.blocks[i] = { type: 'text', buf: '', el: put(S, make('div', 'md')) };
+/** A content block starts streaming: text, thinking or a tool call gets its element in the log. */
+function startBlock(S: Session, i: number, b: ContentBlock) {
+  if (b.type === 'text') S.blocks[i] = { type: 'text', buf: '', el: appendToLog(S, make('div', 'md')) };
   else if (b.type === 'thinking') {
-    const d = put(S, fold('think run', 'Thinking'));
+    const d = appendToLog(S, toolRow('think run', 'Thinking'));
     d.open = true;
     S.blocks[i] = { type: 'thinking', buf: '', el: d.appendChild(make('div')), d };
   } else if (b.type === 'tool_use') {
     const act = ACTS[b.name ?? ''];
     const label = (b.name ?? 'Tool').replace(/^mcp__canvas__canvas_/, 'Canvas · '); // our own canvas tools read as such
-    const d = put(
+    const d = appendToLog(
       S,
-      fold(
+      toolRow(
         `tool run${act ? ` act-${act}` : ''}${b.name === 'Agent' || b.name === 'Task' || b.name === 'Workflow' ? ' agent' : ''}${b.name?.startsWith('mcp__canvas__') ? ' canvas' : ''}`,
         label,
       ),
@@ -123,7 +129,8 @@ function start(S: Session, i: number, b: ContentBlock) {
   }
 }
 
-function delta(S: Session, i: number, dl: { text?: string; thinking?: string; partial_json?: string }) {
+/** More of a streaming block arrived: buffered, and redrawn at most once a frame. */
+function addDelta(S: Session, i: number, dl: { text?: string; thinking?: string; partial_json?: string }) {
   const k = S.blocks[i];
   if (!k) return;
   k.buf += dl.text ?? dl.thinking ?? dl.partial_json ?? '';
@@ -174,7 +181,8 @@ function streamText(k: Block) {
   liveDiagrams(k.el!, k.buf);
 }
 
-function stop(S: Session, i: number) {
+/** A content block finished: text rendered for good, a tool call's input parsed and its row filled in. */
+function endBlock(S: Session, i: number) {
   const k = S.blocks[i];
   if (!k) return;
   delete S.blocks[i];
@@ -196,7 +204,7 @@ function stop(S: Session, i: number) {
     } catch {}
     if (k.name === 'Workflow') inp = workflowTask(inp); // shown like an agent: its name, description and phases
     const d = k.d!;
-    d.querySelector('.arg')!.textContent = rel(describe(inp));
+    d.querySelector('.arg')!.textContent = relPath(toolArg(inp));
     const c = wire(S, k.id!, k.name ?? '', inp);
     if (TASK_TOOLS.has(k.name ?? '')) {
       d.classList.add('taskrow');
@@ -236,9 +244,10 @@ function stop(S: Session, i: number) {
   }
 }
 
-function result(S: Session, r: ContentBlock) {
+/** A tool call's result: its row gets the output and its state, and the graph hears about it. */
+function toolResult(S: Session, r: ContentBlock) {
   const d = S.tools[r.tool_use_id!];
-  const t = plain(r.content);
+  const t = contentText(r.content);
   const aid = d?.classList.contains('agent') ? /(?:agentId|Task ID): ([\w-]+)/.exec(t)?.[1] : undefined;
   if (aid) agentId(r.tool_use_id!, aid); // what SendMessage addresses (live, task_started already said)
   if (d?.classList.contains('agent') && /^(Async agent launched|Workflow launched in background)/.test(t)) {
@@ -262,7 +271,7 @@ function result(S: Session, r: ContentBlock) {
   const out = d.classList.contains('agent') ? report(t) : t;
   if (d.classList.contains('agent')) agentDone(r.tool_use_id!, out, !!r.is_error); // its window shows it too, then leaves
   const io = d.querySelector('.io') ?? d.appendChild(make('div', 'io'));
-  const pre = io.appendChild(make('pre', '', clip(out, 20_000) || '(no output)'));
+  const pre = io.appendChild(make('pre', '', truncate(out, 20_000) || '(no output)'));
   pre.dataset.l = r.is_error ? 'Error' : d.classList.contains('agent') ? 'Result' : 'Output';
   const made =
     !r.is_error && /^Canvas · (create|update)$/.test(d.querySelector('summary b')?.textContent ?? '') && idIn(t);
@@ -301,16 +310,16 @@ export function rowStopped(S: Session, call: string, why: string) {
 
 /** A background agent finished: a <task-notification> message (transcripts), or a task_notification line (live). */
 function notification(S: Session, xml: string) {
-  const summary = tag(xml, 'summary') ?? 'Background task finished';
-  const status = tag(xml, 'status') ?? '',
-    text = tag(xml, 'result') ?? summary;
+  const summary = xmlTag(xml, 'summary') ?? 'Background task finished';
+  const status = xmlTag(xml, 'status') ?? '',
+    text = xmlTag(xml, 'result') ?? summary;
   // match by the agents' ids too: a resumed agent reports under the SendMessage call that woke it, and the one sent
   // when a session ended lists every agent it stopped with no call id at all
-  const calls = new Set([tag(xml, 'tool-use-id'), ...tags(xml, 'task-id').map(agentCall)]);
+  const calls = new Set([xmlTag(xml, 'tool-use-id'), ...xmlTags(xml, 'task-id').map(agentCall)]);
   let ours = false;
   for (const call of calls) if (call && finished(S, call, status, text, summary)) ours = true;
   if (!ours) {
-    put(S, make('p', 'note', summary));
+    appendToLog(S, make('p', 'note', summary));
     renderCard(S);
   }
 }
@@ -324,7 +333,7 @@ function finished(S: Session, call: string, status: string, text: string, summar
   const pre = (d.querySelector('.io') ?? d.appendChild(make('div', 'io'))).appendChild(make('pre', '', text));
   pre.dataset.l = 'Result';
   S.bg = Math.max(0, S.bg - 1);
-  put(S, make('p', 'note', summary.split('\n')[0]));
+  appendToLog(S, make('p', 'note', summary.split('\n')[0]));
   renderCard(S);
   return true;
 }
@@ -336,7 +345,7 @@ function subagent(S: Session, parent: string, m: Msg) {
   for (const c of agentMsg(parent, m)) wire(S, c.id, c.name, c.input);
   const content = m.message?.content;
   if (m.type === 'user' && Array.isArray(content))
-    for (const b of content) if (b.type === 'tool_result') settle(b.tool_use_id, !b.is_error, plain(b.content));
+    for (const b of content) if (b.type === 'tool_result') settle(b.tool_use_id, !b.is_error, contentText(b.content));
 }
 
 /** Context in use = everything sent to the model for this reply (fresh input + cache reads + cache writes). */
@@ -348,7 +357,8 @@ function usage(S: Session, u: Msg | undefined) {
   renderCard(S);
 }
 
-export function on(S: Session, m: Msg) {
+/** Handle one stream-json line from a card's agent: messages, streamed blocks, results, asks and system notices. */
+export function handleMessage(S: Session, m: Msg) {
   if (m.session_id && m.session_id !== S.sid && !m.parent_tool_use_id) {
     S.sid = m.session_id;
     save();
@@ -372,7 +382,7 @@ export function on(S: Session, m: Msg) {
       );
   }
   if (m.type === 'control_response' && m.response?.subtype === 'error') {
-    put(S, make('div', 'err', `${who(S.backend)} refused: ${m.response.error}`));
+    appendToLog(S, make('div', 'err', `${who(S.backend)} refused: ${m.response.error}`));
     if (/permission mode/i.test(m.response.error ?? '')) modeRefused(S);
   }
   if (m.type === 'system' && m.subtype === 'init') {
@@ -395,9 +405,9 @@ export function on(S: Session, m: Msg) {
     if (e.type === 'message_start') {
       S.blocks = {};
       usage(S, e.message?.usage);
-    } else if (e.type === 'content_block_start') start(S, e.index, e.content_block);
-    else if (e.type === 'content_block_delta') delta(S, e.index, e.delta);
-    else if (e.type === 'content_block_stop') stop(S, e.index);
+    } else if (e.type === 'content_block_start') startBlock(S, e.index, e.content_block);
+    else if (e.type === 'content_block_delta') addDelta(S, e.index, e.delta);
+    else if (e.type === 'content_block_stop') endBlock(S, e.index);
   } else if (m.type === 'user') {
     const c = m.message?.content;
     const text =
@@ -417,7 +427,7 @@ export function on(S: Session, m: Msg) {
     // text the CLI adds itself (an agent's report, a skill's instructions): not something you typed. The live stream
     // flags it isSynthetic in newer CLIs (the transcript still says isMeta)
     else if ((m.isMeta || m.isSynthetic) && text) {
-      if (!handoff(S, text, true)) meta(S, text);
+      if (!handoff(S, text, true)) cliNotice(S, text);
     } else if (text && handoff(S, text, true, false)) {
       /* an agent's report echoed from the queue, without isMeta */
     } else if (text) {
@@ -428,11 +438,11 @@ export function on(S: Session, m: Msg) {
       // transcript writes it when queued but the stream echoes it only once Claude starts)
       else if (!shown(S, relayed(text) ?? text, m.uuid)) {
         S.log.querySelector('.empty')?.remove();
-        put(S, make('div', 'me', relayed(text) ?? text)).dataset.uuid = m.uuid ?? '';
+        appendToLog(S, make('div', 'me', relayed(text) ?? text)).dataset.uuid = m.uuid ?? '';
       }
       S.picked = true;
     }
-    if (Array.isArray(c)) for (const b of c) if (b.type === 'tool_result') result(S, b);
+    if (Array.isArray(c)) for (const b of c) if (b.type === 'tool_result') toolResult(S, b);
   } else if (m.type === 'assistant' && m.message?.model === '<synthetic>') {
     // replies that don't come from the model (local slash commands like /model): whole, not streamed
     const text = (m.message.content ?? [])
@@ -440,12 +450,12 @@ export function on(S: Session, m: Msg) {
       .map((b: ContentBlock) => b.text)
       .join('\n');
     if (text) {
-      const el = put(S, make('div', 'md'));
+      const el = appendToLog(S, make('div', 'md'));
       el.innerHTML = md(text);
       enhance(el);
     }
   } else if (m.type === 'error') {
-    const e = put(S, make('div', 'err', m.text));
+    const e = appendToLog(S, make('div', 'err', m.text));
     // its saved conversation is gone (deleted, or never written): every resume would fail the same way
     if (S.sid && /No conversation found/i.test(m.text))
       e.append(
@@ -453,8 +463,8 @@ export function on(S: Session, m: Msg) {
         button('Start a new conversation', '', () => clearSession(S)),
       );
   } else if (m.type === 'result') {
-    if (m.is_error && m.subtype !== 'error_during_execution') put(S, make('div', 'err', m.result || m.subtype));
-    if (m.subtype === 'error_during_execution') put(S, make('p', 'note', 'Stopped.'));
+    if (m.is_error && m.subtype !== 'error_during_execution') appendToLog(S, make('div', 'err', m.result || m.subtype));
+    if (m.subtype === 'error_during_execution') appendToLog(S, make('p', 'note', 'Stopped.'));
     const denied = [
       ...new Set<string>(
         (m.permission_denials ?? []).map((p: Msg) => {
@@ -470,7 +480,7 @@ export function on(S: Session, m: Msg) {
     const how = noAsk
       ? `${who(S.backend)} can't ask for approval in Drawa, so it turned this down. ${modes.includes('bypassPermissions') ? 'Start a new session in Allow everything to let it run.' : 'Run it yourself, or use another agent.'}`
       : (DENIED_HOW[S.mode] ?? DENIED_HOW.default);
-    if (denied.length) put(S, make('div', 'err', `Not allowed: ${denied.join(', ')}. ${how}`));
+    if (denied.length) appendToLog(S, make('div', 'err', `Not allowed: ${denied.join(', ')}. ${how}`));
     // the model's real context window, when the CLI reports it
     const windows = Object.values(m.modelUsage ?? {})
       .map((u: any) => u?.contextWindow)
@@ -482,7 +492,7 @@ export function on(S: Session, m: Msg) {
     const turns = m.num_turns ?? 0;
     S.cost += m.total_cost_usd ?? 0;
     S.done = !m.is_error;
-    const foot = put(
+    const foot = appendToLog(
       S,
       make('p', 'foot', `${((m.duration_ms ?? 0) / 1000).toFixed(1)}s · ${turns} turn${turns === 1 ? '' : 's'}`),
     );
@@ -498,12 +508,12 @@ export function on(S: Session, m: Msg) {
     if (!S.pending) notify(S, 'done');
     if (!S.pending) {
       S.log.querySelectorAll('details.run:not(.bg)').forEach(d => d.classList.remove('run'));
-      if (!S.bg) quiet(S);
+      if (!S.bg) requestEnded(S);
     }
     renderCard(S);
     save();
     loadSessions();
-    tree();
+    loadTree();
   }
 }
 
@@ -520,23 +530,23 @@ export function replay(
   if (m.role === 'user') {
     let bubble: HTMLElement | undefined;
     for (const b of blocks) {
-      if (b.type === 'tool_result') result(S, b);
+      if (b.type === 'tool_result') toolResult(S, b);
       else if (b.type === 'text' && b.text!.startsWith('<task-notification>')) notification(S, b.text!);
       else if (b.type === 'text' && m.isMeta) {
-        if (!handoff(S, b.text!, false)) meta(S, b.text!);
+        if (!handoff(S, b.text!, false)) cliNotice(S, b.text!);
       } // as live: an agent's report or a skill's instructions, not something you typed
       else if (b.type === 'text' && b.text!.startsWith('<bash-input>')) {
         const rest = replayShell(S, b.text!);
-        if (rest) bubble = put(S, make('div', 'me', rest));
+        if (rest) bubble = appendToLog(S, make('div', 'me', rest));
       } else if (b.type === 'text' && !b.text!.startsWith('<'))
-        bubble = put(S, sentBubble(relayed(b.text!) ?? b.text!, m.uuid));
+        bubble = appendToLog(S, sentBubble(relayed(b.text!) ?? b.text!, m.uuid));
       else if (b.type === 'image' && ((b as any).source?.data || (b as any).source?.url)) {
         // images you sent: thumbnails
-        bubble ??= put(S, make('div', 'me'));
+        bubble ??= appendToLog(S, make('div', 'me'));
         const row = bubble.querySelector('.refs.sent') ?? bubble.appendChild(make('div', 'refs sent'));
         const src = (b as any).source; // the server sends a stored image's address instead of its base64
         row.append(
-          thumb({
+          thumbnail({
             type: src.media_type,
             data: src.data ?? '',
             url: src.url ?? `data:${src.media_type};base64,${src.data}`,
@@ -546,9 +556,9 @@ export function replay(
     }
   } else {
     for (const b of blocks) {
-      start(S, 0, b);
-      delta(S, 0, b.type === 'tool_use' ? { partial_json: JSON.stringify(b.input) } : b);
-      stop(S, 0);
+      startBlock(S, 0, b);
+      addDelta(S, 0, b.type === 'tool_use' ? { partial_json: JSON.stringify(b.input) } : b);
+      endBlock(S, 0);
     }
   }
 }

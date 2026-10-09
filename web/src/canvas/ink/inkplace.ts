@@ -2,7 +2,7 @@
 // otherwise the canvas's, in world coordinates. And moving a stroke drawn past its window's edge onto the canvas.
 import { closestAt } from '../../lib/dom';
 import { toWorld, view } from '../core/view';
-import { fits, paint, type Stroke, unitsPerHostPx } from './stroke';
+import { isFitHost, paint, type Stroke, unitsPerHostPx } from './stroke';
 
 export type Pt = { clientX: number; clientY: number; pressure?: number };
 /** Where a press lands: over a window, the ink is the window's, in its content coordinates (with its scroll
@@ -12,24 +12,28 @@ export function placeAt(e: Pt) {
   const hit = closestAt(e.clientX, e.clientY, '[data-ink]') ?? undefined;
   // anywhere on a picture's window (its margin, a resize grip, a diagram's editor) draws on the picture: the window's
   // own ink is in its pixels, so it would drift off the picture when that scales (full view, a resize)
-  const pic = hit && !fits(hit) ? hit.querySelector<HTMLElement>('[data-ink-fit]') : null;
+  const pic = hit && !isFitHost(hit) ? hit.querySelector<HTMLElement>('[data-ink-fit]') : null;
   const host = pic?.offsetWidth ? pic : hit; // not while it's hidden (collapsed, nothing to show yet)
-  const fit = fits(host),
+  const fit = isFitHost(host),
     b = host?.getBoundingClientRect(),
     edge = hit?.getBoundingClientRect();
   const k = host && b ? b.width / host.offsetWidth : view.k; // screen px per host px (or world px)
   const u = unitsPerHostPx(host);
+  /** A screen point as a stored point: in the window's units (with its scroll) or the canvas's, plus the pen
+   *  pressure. */
   const pt = (ev: Pt) => {
     if (!host || !b) return worldPt(ev);
     if (fit) return [((ev.clientX - b.left) / k) * u, ((ev.clientY - b.top) / k) * u, ev.pressure || 0.5];
     return [(ev.clientX - b.left) / k + host.scrollLeft, (ev.clientY - b.top) / k + host.scrollTop, ev.pressure || 0.5];
   };
+  /** Has the pointer left the window the stroke started on? */
   // only a window on the canvas hands its strokes over: past a pinned or full-view one's edge the canvas isn't where
   // the ink shows (ponytail: those still clip)
   const off = (ev: Pt) =>
     !!edge &&
     !!hit!.closest('#world') &&
     (ev.clientX < edge.left || ev.clientX > edge.right || ev.clientY < edge.top || ev.clientY > edge.bottom);
+  /** A stored point back on screen. */
   const back = ([x, y]: number[]) =>
     fit
       ? [b!.left + (x / u) * k, b!.top + (y / u) * k]
@@ -37,6 +41,7 @@ export function placeAt(e: Pt) {
   return { host, pt, scale: u / k, off, back };
 }
 export type Place = ReturnType<typeof placeAt>;
+/** A screen point in canvas units, with the pen pressure. */
 const worldPt = (ev: Pt) => {
   const w = toWorld(ev.clientX, ev.clientY);
   return [w.x, w.y, ev.pressure || 0.5];

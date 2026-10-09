@@ -57,7 +57,7 @@ export function renderCard(S: Session) {
 
 /* ---------- appending to the log ---------- */
 /** Append to the log, staying pinned to the bottom if you were reading there. */
-export function put<T extends HTMLElement>(S: Session, e: T): T {
+export function appendToLog<T extends HTMLElement>(S: Session, e: T): T {
   S.log.append(e);
   if (!S.replaying && S.atEnd) S.log.scrollTop = S.log.scrollHeight;
   return e;
@@ -66,12 +66,15 @@ export function put<T extends HTMLElement>(S: Session, e: T): T {
  *  they're on screen (content-visibility), and diagrams and pictures finish later, so one scroll to the bottom
  *  lands short. Stops early the moment you scroll or click in the log yourself. */
 const SETTLE_MS = 4000;
+/** Open at the latest message and stay there while the log settles (rows render late); your own scroll or click stops
+ *  it. */
 export function pinToBottom(S: Session) {
   const log = S.log,
     end = performance.now() + SETTLE_MS,
     yours = new AbortController();
   for (const t of ['wheel', 'pointerdown', 'touchstart', 'keydown'])
     log.addEventListener(t, () => yours.abort(), { passive: true, signal: yours.signal });
+  /** Scroll to the bottom again each frame until the time is up or you take over. */
   const tick = () => {
     if (yours.signal.aborted || S.log !== log || performance.now() > end) return yours.abort();
     log.scrollTop = log.scrollHeight;
@@ -79,6 +82,7 @@ export function pinToBottom(S: Session) {
   };
   tick();
 }
+/** Keep the log at its bottom when you're reading there (not while replaying). */
 export const follow = (S: Session) => {
   if (!S.replaying && S.atEnd) S.log.scrollTop = S.log.scrollHeight;
 };

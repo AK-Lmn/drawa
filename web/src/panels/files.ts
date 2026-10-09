@@ -2,7 +2,7 @@
 
 import { openFileAt } from '../canvas/core/find';
 import { centerOn } from '../canvas/core/placement';
-import { files, pin, refreshSelection, setInspector } from '../canvas/graph/sessionwins';
+import { files, pinFile, refreshSelection, setInspector } from '../canvas/graph/sessionwins';
 import { api, q, type TreeItem } from '../lib/api';
 import { $, make, pathEl, pressed, revealIn, toast } from '../lib/dom';
 import { enhance, enhanceMarked, highlighter, md } from '../lib/markdown';
@@ -19,7 +19,7 @@ addEventListener('focusin', e => {
 
 /* ---------- tree ---------- */
 /** A folder's entries; a huge folder ends with `{ name: '', more: N }`: the server's cut (N entries not listed). */
-export async function tree(path = '', ul: HTMLElement = $('#tree')) {
+export async function loadTree(path = '', ul: HTMLElement = $('#tree')) {
   let items: TreeItem[];
   try {
     items = await api<TreeItem[]>(`tree?path=${q(path)}`);
@@ -41,10 +41,12 @@ export async function tree(path = '', ul: HTMLElement = $('#tree')) {
       li.append(b);
       if (it.dir) {
         const sub = li.appendChild(make('ul'));
+        /** Open the folder and list its entries. */
         const load = () => {
           li.classList.add('open');
-          tree(p, sub);
+          loadTree(p, sub);
         };
+        /** Make the folder's button say whether it's open. */
         const sync = () => b.setAttribute('aria-expanded', String(expanded.has(p)));
         if (expanded.has(p)) load();
         sync();
@@ -60,7 +62,7 @@ export async function tree(path = '', ul: HTMLElement = $('#tree')) {
         };
       } else {
         b.onclick = () => {
-          centerOn(pin(p));
+          centerOn(pinFile(p));
           openInspector(p, 'viewer');
         };
         b.classList.toggle('cur', p === inspecting);
@@ -92,7 +94,7 @@ export function openInspector(path: string, tab?: 'changes' | 'viewer', focus?: 
   changes.forEach(c => inFile(c)); // numbered, in the file: once each, when first shown (not for every replayed edit)
   const which = tab ?? (fresh ? (changes.length ? 'changes' : 'viewer') : $('#viewer').hidden ? 'changes' : 'viewer');
   showTab(which);
-  if (which === 'viewer' || fresh) view(path, line);
+  if (which === 'viewer' || fresh) viewFile(path, line);
   if (focus) {
     focus.scrollIntoView({ block: 'start' });
     focus.classList.add('flash');
@@ -102,6 +104,7 @@ export function openInspector(path: string, tab?: 'changes' | 'viewer', focus?: 
   refreshSelection();
 }
 
+/** Close the file inspector. */
 export function closeInspector() {
   inspector.hidden = true;
   inspecting = null;
@@ -110,6 +113,7 @@ export function closeInspector() {
 
 // Collapse all / Expand all for the diffs in the Changes tab
 const foldAll = $<HTMLButtonElement>('#foldall');
+/** Show Collapse all or Expand all for the Changes tab's diffs, by what they are now. */
 const syncFoldAll = () => {
   const list = [...document.querySelectorAll('#changes .chg')];
   foldAll.hidden = !list.length || $('#changes').hidden;
@@ -125,6 +129,7 @@ foldAll.onclick = () => {
 };
 $('#changes').addEventListener('click', syncFoldAll); // single folds change the label too
 
+/** Switch the inspector between its Changes and File tabs. */
 export function showTab(which: 'changes' | 'viewer') {
   for (const b of document.querySelectorAll<HTMLElement>('.seg [data-r]')) pressed(b, b.dataset.r === which);
   $('#changes').hidden = which !== 'changes';
@@ -132,6 +137,7 @@ export function showTab(which: 'changes' | 'viewer') {
   syncFoldAll();
 }
 
+/** Is this a Markdown file? */
 export const isMarkdown = (p: string) => /\.(md|markdown|mdx)$/i.test(p);
 
 /** A file's text as code with line numbers, highlighted by its extension. Also the preview window's body.
@@ -202,11 +208,12 @@ export function mdView(p: string, text: string) {
 }
 
 /** A file was just saved (items/preview/fileedit.ts): the File tab showing it reads it again. */
-export const saved = (p: string) => {
-  if (inspecting === p && !inspector.hidden && !$('#viewer').hidden) view(p);
+export const fileSaved = (p: string) => {
+  if (inspecting === p && !inspector.hidden && !$('#viewer').hidden) viewFile(p);
 };
 
-export async function view(p: string, at?: number) {
+/** Show a file in the inspector's File tab (Markdown rendered, with its source a click away), at line `at`. */
+export async function viewFile(p: string, at?: number) {
   const viewer = $('#viewer');
   // another file's text under this path would read as this file's while it loads
   if (viewer.dataset.path !== p) {
@@ -237,6 +244,7 @@ export async function view(p: string, at?: number) {
     // at a line: the source, where lines are
     const preview = mdView(p, text),
       toggle = make('button', 'btn');
+    /** Show the rendered Markdown or its source, and name the other on the toggle. */
     const sync = () => {
       preview.hidden = mdSource;
       src.hidden = !mdSource;

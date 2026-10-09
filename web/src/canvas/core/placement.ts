@@ -1,12 +1,12 @@
 // Where things go and where to look: a free spot for a new window (one that overlaps nothing), windows made
 // beside an item or at a spot, and bringing an item (or everything) into view.
-import { claim, hits, occupied, placed, type Rect, rect } from './items';
+import { claim, occupied, overlaps, placed, type Rect, rect } from './items';
 import { apply, clampZoom, FIT_MIN, view, viewCenter } from './view';
 
 /** Move `r` down (then right) until it overlaps nothing on the canvas. */
 export function freeSpot(r: Rect, step = 56): Rect {
   const others = occupied();
-  for (let i = 0; i < 400 && others.some(o => hits(r, o)); i++)
+  for (let i = 0; i < 400 && others.some(o => overlaps(r, o)); i++)
     r = i % 12 === 11 ? { ...r, x: r.x + r.w + 40, y: r.y - step * 11 } : { ...r, y: r.y + step };
   return claim(r);
 }
@@ -14,8 +14,8 @@ export function freeSpot(r: Rect, step = 56): Rect {
  *  by where they came from. Searches rings outward and stops at the first ring with a free spot. */
 export function nearestFree(r: Rect, step = 24, reach = 60): Rect {
   const near = { x: r.x - reach * step, y: r.y - reach * step, w: r.w + 2 * reach * step, h: r.h + 2 * reach * step };
-  const others = occupied().filter(o => hits(near, o)); // only what the search can bump into
-  if (!others.some(o => hits(r, o))) return claim(r);
+  const others = occupied().filter(o => overlaps(near, o)); // only what the search can bump into
+  if (!others.some(o => overlaps(r, o))) return claim(r);
   for (let ring = 1; ring <= reach; ring++) {
     let best: Rect | null = null,
       bd = Infinity;
@@ -25,7 +25,7 @@ export function nearestFree(r: Rect, step = 24, reach = 60): Rect {
         const d = Math.hypot(i, j * 1.3); // a little cheaper sideways than up or down: reading order
         if (d >= bd) continue;
         const c = { ...r, x: r.x + i * step, y: r.y + j * step };
-        if (!others.some(o => hits(c, o))) {
+        if (!others.some(o => overlaps(c, o))) {
           best = c;
           bd = d;
         }
@@ -44,6 +44,7 @@ export function nextColumn(w: number, h: number): Rect {
 /** Where a window made beside `from` (an item) or at `from` (a spot: a drop, a paste) goes instead of a free spot,
  *  or null (items/group/group.ts: inside the group `from` is in). */
 let spawnHook: (from: HTMLElement | Rect, w: number, h: number) => Rect | null = () => null;
+/** Register where windows made beside an item or at a spot go instead (a group's frame takes them in). */
 export const spawnIn = (f: typeof spawnHook) => {
   spawnHook = f;
 };

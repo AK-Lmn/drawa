@@ -22,6 +22,7 @@ export function persist<T>(
   parts.set(key, { save, load, phase });
 }
 
+/** The localStorage key of this project's layout. */
 const KEY = () => `drawa:canvas:${project.root}`;
 
 let ready = false,
@@ -56,6 +57,7 @@ export function save(slices?: string[] | Event) {
 }
 const full = notice('');
 full.hidden = true;
+/** A slice's JSON to save: its owner's state, or what was saved before while its loader failed and nothing changed. */
 function slice(k: string, p: Part) {
   const j = JSON.stringify(p.save()),
     b = broken.get(k);
@@ -74,6 +76,7 @@ export const saveSoon = (viewOnly = false) => {
   clearTimeout(timer);
   timer = setTimeout(flush, 400);
 };
+/** The debounced save: everything when anything moved, only the view after a pan or zoom. */
 function flush() {
   timer = 0;
   const f = all;
@@ -102,14 +105,17 @@ onOwner(on => {
 // that later fails to load can go back to one that worked. IndexedDB, not localStorage: its room is far bigger, and
 // a copy here would eat into the ~5MB every project shares.
 const SLOTS = 3;
+/** The IndexedDB key of backup slot `i` for this project. */
 const slot = (i: number) => `drawa:layout:${project.root}:${i}`;
+/** The backup slots, newest first. */
 async function backups() {
   const all = await Promise.all([...Array(SLOTS).keys()].map(i => getBlob(slot(i)).catch(() => undefined)));
   return all
     .map((f, i) => ({ i, f: f as File | undefined }))
     .sort((a, b) => (b.f?.lastModified ?? 0) - (a.f?.lastModified ?? 0));
 }
-async function keep(raw: string) {
+/** Keep `raw` as a backup in the oldest slot, unless it's empty or the same as the newest. */
+async function backUp(raw: string) {
   const list = await backups();
   if (raw === '{}' || (await list[0].f?.text()) === raw) return;
   await putBlob(slot(list[list.length - 1].i), new File([raw], 'layout', { lastModified: Date.now() }));
@@ -211,7 +217,7 @@ export async function restore() {
     restoring = false;
     ready = true;
   }
-  if (!problem) keep(raw).catch(() => {});
+  if (!problem) backUp(raw).catch(() => {});
   save();
   return all;
 }

@@ -14,7 +14,7 @@ import { persist } from '../../lib/store';
 import { GH_ICON, openGitHub } from '../github/github';
 import {
   drafts,
-  fill,
+  fillRepo,
   folds,
   type GitState,
   type Host,
@@ -86,10 +86,12 @@ export function openGit(r?: Rect) {
   const list = make('div', 'glist'),
     note = make('p', 'gout gnote');
   body.append(note, list);
+  /** Can you see the window now (worth polling)? */
   // refresh while it's visible and expanded: git status is cheap; GitHub is slow and rate-limited, so its own much
   // slower loop (and after pushes and commits)
   // poll only while you can see it: page visible, window open, and on screen (each poll runs git status on the server)
   const showing = () => watched(el);
+  /** Poll the repo's state while the window is in view, then wait and poll again. */
   const tick = async () => {
     if (win?.el !== el) return;
     if (showing()) await refresh();
@@ -97,6 +99,7 @@ export function openGit(r?: Rect) {
     clearTimeout(win.poll); // a wake() during the await: one loop, not two
     win.poll = setTimeout(tick, win.delay);
   };
+  /** Back to fast polling, at once. */
   // back to fast polling (at once) when you might have changed something: focus, a click in the window, a turn ending
   const wake = () => {
     if (win?.el !== el) return;
@@ -121,10 +124,11 @@ export function openGit(r?: Rect) {
   const host: Host = {
     refresh,
     redraw: () => {
-      if (win?.st) draw(win.st);
+      if (win?.st) drawGit(win.st);
     },
     open: new Set(),
   };
+  /** Refresh each open repo's pull request strip, while you can see it. */
   // each repo's pull request, while you can see it: the window on screen, and its group open (or no groups)
   const ghTick = () => {
     if (showing()) for (const v of win!.views.values()) if (win!.single || isOpen(v)) v.gh.tick();
@@ -158,6 +162,7 @@ function note(text: string, bad = false) {
 }
 
 const UNREAD = 'Could not read git status: ';
+/** Read the repo's state from the server and draw it. */
 export async function refresh() {
   if (!win) return;
   let st: GitState;
@@ -174,17 +179,18 @@ export async function refresh() {
   } // nothing changed: keep the DOM (and any open diffs)
   win.last = sig;
   win.delay = FAST;
-  draw(st);
+  drawGit(st);
 }
 
-function draw(st: GitState) {
+/** Draw the Git window: one group per repository (the project's own, then nested ones), or why there are none. */
+function drawGit(st: GitState) {
   const w = win!;
   w.st = st;
-  if (st.missing) return empty('not installed', make('p', '', st.error!));
+  if (st.missing) return showEmpty('not installed', make('p', '', st.error!));
   const repos: [string, GitState][] = (st.nested ?? []).map(n => [n.dir!, n]);
   if (st.repo) repos.unshift(['', { ...st, nested: undefined }]);
   if (!repos.length) {
-    return empty(
+    return showEmpty(
       'not a repository',
       make('p', '', `${project.name} isn't a git repository yet.`),
       button('Initialize repository', 'primary', async () => {
@@ -224,7 +230,7 @@ function draw(st: GitState) {
     const sig = JSON.stringify([s, v.checkouts.length && own]); // the picker lists the repo's checkouts
     if (sig !== v.sig) {
       v.sig = sig;
-      fill(v, s, w.host);
+      fillRepo(v, s, w.host);
     } // only the repos that changed: the others keep their open diffs
     return v;
   });
@@ -272,7 +278,8 @@ function place(views: RepoView[], single: boolean) {
     w.list.replaceChildren(...want);
 }
 
-function empty(meta: string, ...content: (string | Node)[]) {
+/** Show the window's empty state (git not installed, no repository), with `meta` on its tab. */
+function showEmpty(meta: string, ...content: (string | Node)[]) {
   const w = win!;
   w.meta.textContent = meta;
   w.meta.title = '';
@@ -327,11 +334,12 @@ referable('git', {
     const st = await api<GitState>('git');
     const repos = [...(st.repo ? [st] : []), ...(st.nested ?? []).filter(n => n.repo)];
     if (!repos.length) return { text: 'Git: this project is not a git repository.' };
-    return { text: repos.map(describe).join('\n\n') };
+    return { text: repos.map(statusText).join('\n\n') };
   },
 });
 
-function describe(st: GitState) {
+/** The repo's status as text, for Claude: branch, sync state and the changed files. */
+function statusText(st: GitState) {
   const files = (st.files ?? []).map(
     f =>
       `- ${f.x === '?' ? 'untracked' : [f.x !== ' ' && 'staged', f.y !== ' ' && 'unstaged'].filter(Boolean).join(' + ')}: ${f.path}`,

@@ -15,8 +15,8 @@ import { makeWindow } from '../../canvas/core/window';
 import { forget } from '../../canvas/graph/graph';
 import { referable } from '../../canvas/core/refs';
 import {
-  tally,
-  dot,
+  tallyChecks,
+  checksDot,
   reviewWord,
   stateOf,
   REVIEW,
@@ -63,6 +63,7 @@ export let win:
     }
   | undefined;
 
+/** A repo's name in the picker: its folder, or the project's name for its own. */
 const repoLabel = (dir: string) => dir || project.name;
 
 /** Open (or bring into view) the GitHub window, optionally at a repo, a pull request or issue (and one of its tabs). */
@@ -115,15 +116,16 @@ export function openGitHub(
   if (at?.repo !== undefined && at.repo !== (win.view.repo ?? ''))
     win.view = { tab: win.view.tab, state: 'open', repo: at.repo };
   if (at?.tab) win.view = { ...win.view, tab: at.tab, n: at.n, sub: at.sub ?? 'conv' };
-  show();
+  showView();
   changed();
 }
 
-export async function show() {
+/** Draw the window's current view: the repo picker and tabs, then the list or the pull request or issue. */
+export async function showView() {
   const w = win!,
     v = w.view;
   w.list = await w.repos;
-  if (win !== w || w.view !== v) return; // moved on meanwhile: that show() draws
+  if (win !== w || w.view !== v) return; // moved on meanwhile: that showView() draws
   // a repo that's gone (or none chosen while the project's own folder isn't one): the first there is
   if (w.list.length && !w.list.includes(v.repo ?? '')) w.view = { tab: v.tab, state: 'open', repo: w.list[0] };
   const many = w.list.length > 1 || !!w.view.repo;
@@ -137,22 +139,23 @@ export async function show() {
   w.failed = false;
   if (w.view.n) return w.view.tab === 'pr' ? prDetail(w.view.n) : issueDetail(w.view.n);
   if (w.view.tab === 'runs') return runList();
-  list();
+  listView();
 }
 /** Move the window to another view. A new view object: loads still running for the old one see it and stop. */
-export const go = (v: Partial<View>) => {
+export const goTo = (v: Partial<View>) => {
   win!.view = { ...win!.view, ...v };
   win!.more = 0;
-  show();
+  showView();
   changed();
 };
-export const fail = (box: HTMLElement, e: unknown) =>
+/** Show an error in place of what was loading. */
+export const showError = (box: HTMLElement, e: unknown) =>
   box.replaceChildren(make('p', 'ghnote bad', (e as Error).message));
 /** Is this still what the window shows? (A slow load mustn't draw over where you went meanwhile.) */
-export const still = (w: typeof win, v: View) => win === w && w!.view === v;
+export const stillShown = (w: typeof win, v: View) => win === w && w!.view === v;
 
 /** Load one pull request or issue into the window: undefined when it failed (the error is shown) or you moved on. */
-export async function load<T extends Pr | Issue>(what: string, get: () => Promise<T>) {
+export async function loadItem<T extends Pr | Issue>(what: string, get: () => Promise<T>) {
   const w = win!,
     v = w.view;
   w.body.replaceChildren(make('p', 'ghnote', `Loading ${what}…`));
@@ -160,18 +163,18 @@ export async function load<T extends Pr | Issue>(what: string, get: () => Promis
   try {
     x = await get();
   } catch (e) {
-    if (!still(w, v)) return;
+    if (!stillShown(w, v)) return;
     // not a dead end: back to the list, or try again (a rate limit, a gh login); a reload opens the list, not this
     w.failed = true;
     const top = make('div', 'ghhead');
-    top.append(button(`← All ${v.tab === 'pr' ? 'pull requests' : 'issues'}`, 'ghback', () => go({ n: undefined })));
+    top.append(button(`← All ${v.tab === 'pr' ? 'pull requests' : 'issues'}`, 'ghback', () => goTo({ n: undefined })));
     const again = make('div', 'ghacts');
-    again.append(button('Retry', '', show));
+    again.append(button('Retry', '', showView));
     w.body.replaceChildren(top, make('p', 'ghnote bad', `Couldn't load ${what}: ${(e as Error).message}`), again);
     changed();
     return;
   }
-  if (!still(w, v)) return;
+  if (!stillShown(w, v)) return;
   w.seen = x;
   return x;
 }
@@ -207,7 +210,7 @@ export function topBar(...extra: HTMLElement[]) {
     ['issue', 'Issues'],
     ['runs', 'Actions'],
   ] as const) {
-    const b = button(label, '', () => go({ tab, state: 'open', n: undefined, filter: undefined, q: undefined }));
+    const b = button(label, '', () => goTo({ tab, state: 'open', n: undefined, filter: undefined, q: undefined }));
     pressed(b, v.tab === tab);
     tabs.append(b);
   }
@@ -218,7 +221,7 @@ export function topBar(...extra: HTMLElement[]) {
 /** Refresh asks again which repos there are too (one cloned meanwhile). */
 function refreshAll() {
   win!.repos = api<string[]>('git/repos').catch(() => win?.list ?? []);
-  show();
+  showView();
 }
 
 /** Which repo: a line of its own over the tabs, while there's more than one. */
@@ -229,14 +232,14 @@ function repoPicker() {
     sel = make('select');
   sel.setAttribute('aria-label', 'Repository');
   for (const dir of w.list) sel.append(new Option(repoLabel(dir), dir, false, dir === (w.view.repo ?? '')));
-  sel.onchange = () => go({ state: 'open', n: undefined, q: undefined, filter: undefined, repo: sel.value });
+  sel.onchange = () => goTo({ state: 'open', n: undefined, q: undefined, filter: undefined, repo: sel.value });
   line.append(make('span', '', 'Repository'), sel);
   enhanceSelect(sel);
   return [line];
 }
 
 /** Rows of a list, and Load more under them while there are more (up to CAP). */
-export async function pages<T>(
+export async function pagedRows<T>(
   rows: HTMLElement,
   get: (limit: number) => Promise<T[]>,
   draw: (r: T) => HTMLElement,
@@ -248,7 +251,7 @@ export async function pages<T>(
   if (!rows.childElementCount) rows.replaceChildren(make('p', 'ghnote', 'Loading…')); // a reload keeps its rows (and the scroll) until the new ones are in
   try {
     const data = await get(limit);
-    if (!still(w, v)) return;
+    if (!stillShown(w, v)) return;
     const shown = data.slice(0, limit);
     w.seen = shown as typeof w.seen;
     const more = data.length > limit;
@@ -256,7 +259,7 @@ export async function pages<T>(
       next.disabled = true;
       next.textContent = 'Loading…';
       w.more += SHOWN;
-      pages(rows, get, draw, none);
+      pagedRows(rows, get, draw, none);
     });
     rows.replaceChildren(
       ...shown.map(draw),
@@ -267,28 +270,29 @@ export async function pages<T>(
         : []),
     );
   } catch (e) {
-    if (still(w, v)) fail(rows, e);
+    if (stillShown(w, v)) showError(rows, e);
   }
 }
 
-function list() {
+/** The list view: pull requests or issues, filtered by state and searchable. */
+function listView() {
   const w = win!,
     v = w.view,
     rows = make('div', 'ghlist');
   const sel = make('select');
   sel.setAttribute('aria-label', 'Show');
   for (const s of STATES[v.tab]) sel.append(new Option(s[0].toUpperCase() + s.slice(1), s, false, s === v.state));
-  sel.onchange = () => go({ state: sel.value });
+  sel.onchange = () => goTo({ state: sel.value });
   w.body.replaceChildren(topBar(sel), finder(v), rows);
   enhanceSelect(sel);
   const kind = v.tab === 'pr' ? 'pull requests' : 'issues';
-  pages(
+  pagedRows(
     rows,
     limit =>
       ghGet<(PrRow | IssueRow)[]>(
         `gh/${v.tab === 'pr' ? 'prs' : 'issues'}?state=${v.state}&q=${q(v.q ?? '')}&filter=${v.filter ?? ''}&limit=${limit}`,
       ),
-    row,
+    listRow,
     `No ${v.state === 'all' ? '' : `${v.state} `}${kind}${v.q || v.filter ? ' match' : ''}.`,
   );
 }
@@ -303,10 +307,10 @@ function finder(v: View) {
   input.addEventListener('keydown', e => e.stopPropagation());
   box.onsubmit = e => {
     e.preventDefault();
-    go({ q: input.value.trim() || undefined });
+    goTo({ q: input.value.trim() || undefined });
   };
   for (const [f, label] of FILTERS[v.tab]) {
-    const b = button(label, '', () => go({ filter: v.filter === f ? undefined : f }));
+    const b = button(label, '', () => goTo({ filter: v.filter === f ? undefined : f }));
     b.type = 'button';
     pressed(b, v.filter === f);
     chips.append(b);
@@ -317,16 +321,17 @@ function finder(v: View) {
   return box;
 }
 
-function row(r: PrRow | IssueRow) {
+/** One pull request or issue in the list: number, title, state, checks and when it changed. */
+function listRow(r: PrRow | IssueRow) {
   const b = make('button', 'ghrow'),
     top = make('span', 'ghrow-t'),
     sub = make('span', 'ghrow-m');
   b.dataset.state = stateOf(r as PrRow);
-  const checks = 'checks' in r ? tally(r.checks) : null;
+  const checks = 'checks' in r ? tallyChecks(r.checks) : null;
   top.append(make('span', 'ghn', `#${r.number}`), make('span', 'ghti', r.title));
   if (checks?.state)
     top.append(
-      Object.assign(dot(checks.state), {
+      Object.assign(checksDot(checks.state), {
         title: `Checks: ${checks.pass} passed, ${checks.fail} failed, ${checks.pending} running`,
       }),
     );
@@ -334,19 +339,21 @@ function row(r: PrRow | IssueRow) {
   if ('review' in r && REVIEW[r.review]) sub.append(` · ${REVIEW[r.review]}`);
   for (const l of r.labels.slice(0, 4)) sub.append(make('span', 'ghlabel', l));
   b.append(top, sub);
-  b.onclick = () => go({ n: r.number, sub: 'conv' });
+  b.onclick = () => goTo({ n: r.number, sub: 'conv' });
   return b;
 }
 
+/** Is this an https URL? */
 // URLs in GitHub's data open only if they're https: (a commit status's targetUrl is whatever its sender set)
-export const https = (u: string) => /^https:\/\//i.test(u ?? '');
-export const ghLink = (url: string) => (https(url) ? [extLink('btn', 'Open on GitHub', url)] : []);
+export const isHttps = (u: string) => /^https:\/\//i.test(u ?? '');
+/** An Open on GitHub button, when the URL is https. */
+export const ghLink = (url: string) => (isHttps(url) ? [extLink('btn', 'Open on GitHub', url)] : []);
 
 /* ---------- shared by the pull request and issue views ---------- */
 export function header(title: string, n: number, back: string, state: string, facts: string[]) {
   const top = make('div', 'ghhead'),
     h = make('h3');
-  top.append(button(`← ${back}`, 'ghback', () => go({ n: undefined })));
+  top.append(button(`← ${back}`, 'ghback', () => goTo({ n: undefined })));
   h.append(title, ' ', make('span', 'ghn', `#${n}`));
   const meta = make('p', 'ghfacts'),
     badge = make('span', 'ghstate', state);
@@ -356,14 +363,16 @@ export function header(title: string, n: number, back: string, state: string, fa
   return top;
 }
 
+/** A conversation: the description first, then the comments and reviews, oldest first. */
 export function conversation(body: string, notes: Note[]) {
   const first = make('div', 'ghc md');
   first.innerHTML = md(body.trim() || '*No description.*');
   enhance(first);
-  return [first, ...notes.sort((a, b) => a.when.localeCompare(b.when)).map(note)];
+  return [first, ...notes.sort((a, b) => a.when.localeCompare(b.when)).map(commentBox)];
 }
 
-export function note(c: Note) {
+/** One comment or review: who, when, what they decided, and the Markdown body. */
+export function commentBox(c: Note) {
   const box = make('div', 'ghc'),
     who = make('p', 'ghwho'),
     text = make('div', 'md');
@@ -407,7 +416,7 @@ export const commentOn = (kind: 'pr' | 'issue', n: number) => async (text: strin
     { op: 'comment', kind, n, body: text },
     'Comment posted.',
   );
-  if (r) show();
+  if (r) showView();
   return !!r;
 };
 

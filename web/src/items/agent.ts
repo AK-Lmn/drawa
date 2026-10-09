@@ -4,11 +4,11 @@
 // sub-agent's messages with the Agent call's id (parent_tool_use_id); on reload the server replays them from the
 // sub-agent's own transcript with the same tag, so both paths end up in agentMsg(). A finished agent's window leaves
 // the canvas by itself (unless you're using it); its row brings it back.
-import { make, rel, ping, ICON, iconButton, clip } from '../lib/dom';
+import { make, relPath, ping, ICON, iconButton, truncate } from '../lib/dom';
 import { api, type SavedMessage } from '../lib/api';
 import { persist } from '../lib/store';
 import { md, enhance } from '../lib/markdown';
-import { items, savedRect, front, park, drop, onCanvas, type Rect } from '../canvas/core/items';
+import { items, savedRect, bringToFront, park, drop, onCanvas, type Rect } from '../canvas/core/items';
 import { spotBeside, centerOn } from '../canvas/core/placement';
 import { changed, world } from '../canvas/core/view';
 import { makeWindow, expand, winTitle } from '../canvas/core/window';
@@ -17,7 +17,7 @@ import { referable } from '../canvas/core/refs';
 import { renderCard } from '../session/card/render';
 import type { Session } from '../session/card/types';
 import { send } from '../session/card/live';
-import { describe, plain, replay, rowStopped } from '../session/stream/stream';
+import { toolArg, contentText, replay, rowStopped } from '../session/stream/stream';
 import { who } from '../lib/agents';
 import { isSend } from '../lib/sendkey';
 
@@ -46,6 +46,7 @@ const lazy = new Set<string>(); // finished agents whose log the server didn't s
 let filling = false; // that log arriving: old messages, not the agent working again
 const CLIP = 20_000;
 
+/** Set a sub-agent window's state (running, background, done, failed): its tab's word, and its card's running count. */
 function setState(a: Agent, s: 'running' | 'background' | 'done' | 'failed') {
   a.el.dataset.state = s;
   const set = running.get(a.S) ?? running.set(a.S, new Set()).get(a.S)!;
@@ -95,7 +96,9 @@ export function agentWindow(S: Session, call: string, inp: Record<string, any>, 
     minW: 300,
     minH: 180,
     rect: { min: !live, ...(saved ?? spotBeside(S.card, 440, 440, 520, 0)) },
-    actions: [iconButton(ICON.x, "Close window (the session's Agent row reopens it)", () => hide(call), 'closebtn')],
+    actions: [
+      iconButton(ICON.x, "Close window (the session's Agent row reopens it)", () => hideAgent(call), 'closebtn'),
+    ],
   });
   el.dataset.id = `a:${call}`;
   head.querySelector('.t')!.after(state);
@@ -141,6 +144,7 @@ export function agentWindow(S: Session, call: string, inp: Record<string, any>, 
 export function workflowTask(inp: Record<string, any>) {
   const meta =
     /export\s+const\s+meta\s*=\s*\{(?:[^\n]*\}\s*;?\s*$|[\s\S]*?\n\})/m.exec(String(inp.script ?? ''))?.[0] ?? '';
+  /** A string field (`key: '…'`) read from a workflow script's source, for its name and description. */
   const str = (key: string, src: string) =>
     new RegExp(`\\b${key}\\s*:\\s*(['"\`])((?:\\\\.|(?!\\1)[^\\\\])*)\\1`).exec(src)?.[2];
   const name =
@@ -161,7 +165,8 @@ export function workflowTask(inp: Record<string, any>) {
   return { subagent_type: 'workflow', description: String(name), prompt: prompt || String(inp.scriptPath ?? '') };
 }
 
-function hide(call: string) {
+/** Take a finished sub-agent's window off the canvas for now; its row in the card brings it back. */
+function hideAgent(call: string) {
   const a = agents.get(call);
   if (!a?.el.isConnected) return;
   forget(a.el);
@@ -208,6 +213,7 @@ export function agentsStopped(S: Session) {
 
 /** The relay: what the card shows, and what its Claude is asked to do (SendMessage to the agent). */
 const relayLabel = (title: string, text: string) => `To the "${title}" agent: ${text}`;
+/** The message a card sends to relay what you typed in a sub-agent's box: Claude passes it on with SendMessage. */
 const relayPrompt = (id: string, title: string, text: string) =>
   `Use SendMessage (to: '${id}') to pass this message to the "${title}" agent, word for word, then reply only "Relayed.":\n\n${text}`;
 /** A relay instruction read back (transcripts, other tabs): the short line the card showed, or null. */
@@ -245,7 +251,7 @@ export function showAgent(call: string) {
     link(a.S, a.el, 'agent');
   }
   expand(a.el);
-  front(a.el);
+  bringToFront(a.el);
   centerOn(a.el);
   ping(a.el);
   changed();
@@ -256,6 +262,7 @@ export function showAgent(call: string) {
 export function agentCall(id: string) {
   for (const [call, aid] of ids) if (aid === id) return call;
 }
+/** Learn a sub-agent's id (what SendMessage addresses); `later`: known only once it has finished. */
 export function agentId(call: string, id: string, later = false) {
   ids.set(call, id);
   if (later) lazy.add(call);
@@ -292,7 +299,7 @@ export function agentMsg(parent: string, m: Record<string, any>) {
       const d = add(a, make('details', 'tool run')) as HTMLDetailsElement;
       d.appendChild(make('summary')).append(
         make('b', '', b.name),
-        make('span', 'arg', rel(describe(b.input ?? {}))),
+        make('span', 'arg', relPath(toolArg(b.input ?? {}))),
         make('span', 'st'),
       );
       a.rows.set(b.id, d);
@@ -300,13 +307,13 @@ export function agentMsg(parent: string, m: Record<string, any>) {
     } else if (b.type === 'tool_result') {
       const d = a.rows.get(b.tool_use_id);
       if (!d) continue;
-      const t = plain(b.content);
+      const t = contentText(b.content);
       d.classList.remove('run');
       if (b.is_error) {
         d.classList.add('bad');
         d.querySelector('.st')!.textContent = 'failed';
       }
-      d.appendChild(make('div', 'io')).appendChild(make('pre', '', clip(t, CLIP) || '(no output)')).dataset.l =
+      d.appendChild(make('div', 'io')).appendChild(make('pre', '', truncate(t, CLIP) || '(no output)')).dataset.l =
         b.is_error ? 'Error' : 'Output';
     }
   }
@@ -329,12 +336,12 @@ export function agentDone(call: string, text: string, failed: boolean, backgroun
   // its last words are the result; show it on its own only when they aren't there (yet, on replay) or it failed
   if (failed || !a.log.querySelector(':scope > .md')) {
     a.res = a.log.appendChild(make('div', `md ares${failed ? ' bad' : ''}`));
-    a.res.innerHTML = md(clip(text, CLIP, '\n\n… (truncated)'));
+    a.res.innerHTML = md(truncate(text, CLIP, '\n\n… (truncated)'));
     enhance(a.res);
   }
   setState(a, failed ? 'failed' : 'done');
   syncBox(a, call);
-  if (a.S.replaying || !inUse(a)) hide(call);
+  if (a.S.replaying || !inUse(a)) hideAgent(call);
 }
 
 // the saved layout keeps where each agent window on the canvas is; its content comes back from the transcript replay
@@ -355,6 +362,6 @@ referable('agent', {
     const a = [...agents.values()].find(x => x.el === el);
     if (!a) return { text: `Sub-agent "${winTitle(el)}"` };
     const text = `Sub-agent (${a.type}) "${winTitle(el)}" from my canvas.\n\nTask:\n${a.prompt}\n\nResult:\n${a.result || '(still running)'}`;
-    return { text: clip(text, CLIP) };
+    return { text: truncate(text, CLIP) };
   },
 });

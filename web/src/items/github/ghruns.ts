@@ -4,8 +4,8 @@
 import { watched } from '../../canvas/core/items';
 import { q } from '../../lib/api';
 import { ago, button, extLink, make } from '../../lib/dom';
-import { type Check, dot, ghGet, publish, type Run } from './gh';
-import { https, pages, still, topBar, type View, win } from './github';
+import { type Check, checksDot, ghGet, publish, type Run } from './gh';
+import { isHttps, pagedRows, stillShown, topBar, type View, win } from './github';
 
 const POLL = 20_000;
 
@@ -13,15 +13,17 @@ const POLL = 20_000;
  *  GitHub only while the window can be seen (plain short requests: no stream of its own). */
 export function whilePending(v: View, pending: () => boolean, tick: () => Promise<void>) {
   const w = win!;
+  /** Poll while any check is still running, as long as the window shows this view and is in sight. */
   const loop = () =>
     setTimeout(async () => {
-      if (!still(w, v)) return;
+      if (!stillShown(w, v)) return;
       if (watched(w.el)) await tick().catch(() => {}); // a failed poll: try again next time
-      if (still(w, v) && pending()) loop();
+      if (stillShown(w, v) && pending()) loop();
     }, POLL);
   if (pending()) loop();
 }
 
+/** A workflow run's id, from its URL. */
 const runOf = (url: string) => /\/actions\/runs\/(\d+)/.exec(url)?.[1];
 
 /** Re-run a workflow run (only its failed jobs, or all of it), after asking. */
@@ -38,6 +40,7 @@ async function rerun(run: string, failed: boolean, name: string) {
   ));
 }
 
+/** A Re-run (or Re-run failed) button; it says Started once the run is asked for. */
 const rerunButton = (run: string, failed: boolean, name: string) => {
   const b = button(failed ? 'Re-run failed' : 'Re-run', '', async () => {
     if (await rerun(run, failed, name)) {
@@ -59,8 +62,8 @@ export function checkList(checks: Check[]) {
       const r = make('div', 'ghcheck');
       r.dataset.state = c.state;
       r.append(
-        dot(c.state),
-        https(c.url) ? extLink('ghcheck-n', c.name, c.url) : make('span', 'ghcheck-n', c.name),
+        checksDot(c.state),
+        isHttps(c.url) ? extLink('ghcheck-n', c.name, c.url) : make('span', 'ghcheck-n', c.name),
         make('span', 'ghcheck-s', c.state),
       );
       const run = runOf(c.url);
@@ -92,27 +95,29 @@ export function runList() {
     rows = make('div', 'ghlist');
   w.body.replaceChildren(topBar(), rows);
   let shown: Run[] = [];
+  /** Fetch up to `limit` runs, keeping what's shown for the redraw while any still runs. */
   const get = (limit: number) =>
     ghGet<Run[]>(`gh/runs?limit=${limit}`).then(r => {
       shown = r.slice(0, limit);
       return r;
     });
-  pages(rows, get, runRow, 'No workflow runs in this repo yet.').then(() =>
+  pagedRows(rows, get, runRow, 'No workflow runs in this repo yet.').then(() =>
     // running ones settle on their own: redraw the list while any still runs (keeping how far you loaded)
     whilePending(
       v,
       () => shown.some(r => r.state === 'pending'),
-      () => pages(rows, get, runRow, ''),
+      () => pagedRows(rows, get, runRow, ''),
     ),
   );
 }
 
+/** One workflow run's row: its state, title, and when it ran. */
 function runRow(r: Run) {
   const row = make('div', 'ghrun'),
     top = make('span', 'ghrow-t'),
     sub = make('span', 'ghrow-m');
   row.dataset.state = r.state;
-  top.append(dot(r.state), https(r.url) ? extLink('ghti', r.title, r.url) : make('span', 'ghti', r.title));
+  top.append(checksDot(r.state), isHttps(r.url) ? extLink('ghti', r.title, r.url) : make('span', 'ghti', r.title));
   sub.append(
     `${r.workflow} · ${r.branch} · ${r.event} · ${r.state === 'pending' ? 'running' : r.conclusion || r.state} · ${ago(r.created)}${r.attempt > 1 ? ` · attempt ${r.attempt}` : ''}`,
   );

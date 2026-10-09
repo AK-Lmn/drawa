@@ -37,6 +37,7 @@ interface Choice {
   code: string;
   codeCustom: string;
 }
+/** The fonts saved in this browser, or the defaults. */
 const load = (): Choice => {
   try {
     return {
@@ -56,6 +57,7 @@ const choice = load();
 const family = (value: string, custom: string, fallback: string) =>
   value === 'custom' ? (custom.trim() ? `"${custom.trim().replace(/"/g, '')}",${fallback}` : fallback) : value;
 
+/** Put the chosen fonts on the page (--sans, --mono) and remember them in this browser. */
 function apply() {
   const root = document.documentElement.style;
   root.setProperty('--sans', family(choice.ui, choice.uiCustom, UI[0][1]));
@@ -73,6 +75,7 @@ function wire(sel: HTMLSelectElement, input: HTMLInputElement, list: [string, st
   const customKey = key === 'ui' ? 'uiCustom' : 'codeCustom';
   sel.value = list.some(([, v]) => v === choice[key]) ? choice[key] : list[0][1];
   input.value = choice[customKey];
+  /** Show the custom font field only while "Custom" is picked. */
   const sync = () => {
     input.hidden = sel.value !== 'custom';
   };

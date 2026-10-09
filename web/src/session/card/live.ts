@@ -3,14 +3,14 @@
 // after network drops or a reload) until the process exits.
 import { make, uuid, iconButton, ICON, toast } from '../../lib/dom';
 import { post } from '../../lib/api';
-import { quiet } from '../../canvas/graph/graph';
+import { requestEnded } from '../../canvas/graph/graph';
 import { toContent, type Ref } from '../../canvas/core/refs';
 import { cards } from './session';
-import { put, renderCard } from './render';
+import { appendToLog, renderCard } from './render';
 import type { Session } from './types';
-import { chip, putBack } from '../composer/composer';
-import { on, type Msg } from '../stream/stream';
-import { thumb, imageBlock, type Pasted } from '../composer/images';
+import { refChip, putBack } from '../composer/composer';
+import { handleMessage, type Msg } from '../stream/stream';
+import { thumbnail, imageBlock, type Pasted } from '../composer/images';
 import { askPermission } from './notify';
 import { canvasCall } from '../../canvas/core/tools';
 import { takeShell } from '../composer/shell';
@@ -18,7 +18,7 @@ import { agentsStopped } from '../../items/agent';
 import { expireAsks } from '../stream/asks';
 import { reload } from './history';
 import { canUnsend, who } from '../../lib/agents';
-import { onOwner, owns } from '../../lib/tabs';
+import { onOwner, ownsServer } from '../../lib/tabs';
 
 /** Send a message (text, or content blocks like images with a short label for the bubble). Resolves to whether
  *  the server took it. */
@@ -31,12 +31,12 @@ export async function send(
 ): Promise<boolean> {
   askPermission(); // first message: a good moment to ask (it's a user action) whether you want notifications
   S.log.querySelector('.empty')?.remove();
-  const bubble = put(S, make('div', 'me queued', prompt)),
+  const bubble = appendToLog(S, make('div', 'me queued', prompt)),
     id = uuid();
   bubble.dataset.uuid = id; // Claude's echo carries it too (shown() goes by it)
   if (refs.length || images.length) {
     const row = make('div', 'refs sent');
-    row.append(...images.map(img => thumb(img)), ...refs.map(r => chip(r)));
+    row.append(...images.map(img => thumbnail(img)), ...refs.map(r => refChip(r)));
     bubble.append(row);
     refs.forEach(r => S.sentRefs.add(r.el));
   }
@@ -75,7 +75,7 @@ export async function send(
     const i = S.queued.indexOf(bubble);
     if (i >= 0) S.queued.splice(i, 1);
     bubble.classList.replace('queued', 'failed');
-    put(S, make('div', 'err', `Could not send: ${(e as Error).message}`));
+    appendToLog(S, make('div', 'err', `Could not send: ${(e as Error).message}`));
     S.pending = Math.max(0, S.pending - 1);
     renderCard(S);
     return false;
@@ -87,6 +87,7 @@ export async function send(
 // reading it. (Commands the page sends itself have none.)
 const unsent = new WeakMap<HTMLElement, { prompt: string; refs: Ref[]; images: Pasted[] }>();
 
+/** Delete and edit buttons on a queued message, while the agent hasn't read it. */
 // Until Claude reads a queued message (between tool calls, or when its turn ends) the CLI can drop it from its queue:
 // delete it, or edit it (back into the message box, to fix and send again). CSS hides the buttons once it's read.
 function takeBackButtons(S: Session, bubble: HTMLElement) {
@@ -128,10 +129,12 @@ function requeue(S: Session, ids: string[]) {
   }
 }
 
+/** Take back a queued message the agent hasn't read yet; false when it already has. */
 // ponytail: shell runs sent with the message go with it; give them back to takeShell if that's ever missed.
 // ponytail: an error answer (no reply in 5s) leaves the bubble queued, and the card counted busy, if the CLI did drop
 // it; its answers have come back at once so far
 async function unsend(S: Session, bubble: HTMLElement): Promise<boolean> {
+  /** Is the bubble still on the page, still waiting to be read? */
   const live = () => bubble.isConnected && bubble.classList.contains('queued');
   if (!live() || bubble.dataset.state === 'unsending') return false; // one take-back at a time (double click, edit then delete)
   bubble.dataset.state = 'unsending';
@@ -160,7 +163,7 @@ let conn: AbortController | null = null,
 
 // One stream per server across tabs, too (lib/tabs.ts): only the tab that owns this server reads it.
 onOwner(on => {
-  if (on) return listen();
+  if (on) return listenToCards();
   conn?.abort();
   conn = null;
   subscribed = '';
@@ -169,11 +172,13 @@ onOwner(on => {
 /** Make sure this card's output is being read (it's a no-op when the stream already covers it). */
 export function attach(_S?: Session) {
   clearTimeout(soon);
-  soon = setTimeout(listen, 30); // cards restored or opened together share one re-open
+  soon = setTimeout(listenToCards, 30); // cards restored or opened together share one re-open
 }
 
-function listen() {
-  if (!owns()) return;
+/** (Re)open the page's one event stream when the set of cards it reads changed. Only the tab that owns the server
+ *  reads. */
+function listenToCards() {
+  if (!ownsServer()) return;
   // re-open when cards come or go, or when a card not attached yet got a different start (a restore sets it after the
   // card exists: e.g. line 0 for one whose transcript isn't written yet)
   const want = cards
@@ -188,14 +193,15 @@ function listen() {
     return;
   }
   const ctrl = (conn = new AbortController());
-  read(ctrl).finally(() => {
+  readStream(ctrl).finally(() => {
     if (conn !== ctrl) return; // replaced by a newer stream
     conn = null;
-    setTimeout(listen, 1000); // dropped (server restart, network): pick up where each card left off
+    setTimeout(listenToCards, 1000); // dropped (server restart, network): pick up where each card left off
   });
 }
 
-async function read(ctrl: AbortController) {
+/** Read every card's output over one /api/events stream, routing each line to its card; reconnects when it drops. */
+async function readStream(ctrl: AbortController) {
   const c = cards.map(S => `${S.cid}:${S.n}:${S.gen ?? ''}`).join();
   let res: Response;
   try {
@@ -210,6 +216,7 @@ async function read(ctrl: AbortController) {
   // change) that would otherwise hang here for good. Aborting it reconnects (see listen).
   let buf = '',
     idle = 0;
+  /** Restart the idle timer: a stream silent for 40s is closed and opened again. */
   const watch = () => {
     clearTimeout(idle);
     idle = setTimeout(() => ctrl.abort(), 40_000);
@@ -291,7 +298,7 @@ function line(S: Session, m: Msg | undefined, raw: string) {
     return;
   }
   try {
-    on(S, m);
+    handleMessage(S, m);
   } catch (x) {
     console.error(x, raw);
   }
@@ -301,7 +308,7 @@ function line(S: Session, m: Msg | undefined, raw: string) {
  *  never read go back in the box, to send again. */
 function ended(S: Session, why: string) {
   if (S.pending > S.queued.length)
-    put(
+    appendToLog(
       S,
       make(
         'div',
@@ -327,7 +334,7 @@ function ended(S: Session, why: string) {
   expireAsks(S);
   if (S.pending || S.bg) {
     S.pending = S.bg = 0;
-    quiet(S);
+    requestEnded(S);
   }
   renderCard(S);
 }

@@ -7,6 +7,7 @@ import { handDrag } from './mode';
 import { centerOn, fit } from './placement';
 import { apply, applySoon, changed, onChange, stage, view, zoomAt, zoomView } from './view';
 
+/** Does a press here pan the canvas (empty canvas, or a group's empty space when panning applies)? */
 // a group's empty space (.frame) is canvas to pan in Hand mode, with the middle button, or when it's locked in place
 const panThrough = (t: Element, e: PointerEvent) =>
   t.classList.contains('frame') && (e.button === 1 || handDrag() || !!(t as HTMLElement).dataset.locked);
@@ -98,7 +99,8 @@ stage.addEventListener(
   true,
 );
 let pinch: { d: number; x: number; y: number } | undefined;
-const span = (t: TouchList) => ({
+/** Two fingers' distance apart and their midpoint, for pinch zoom. */
+const pinchSpan = (t: TouchList) => ({
   d: Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY),
   x: (t[0].clientX + t[1].clientX) / 2,
   y: (t[0].clientY + t[1].clientY) / 2,
@@ -110,7 +112,7 @@ stage.addEventListener(
     // not cancelable: a log is already scrolling under the first finger, and it keeps the gesture
     if (!e.cancelable || (e.target as Element).closest('.fullview, .floats .win, .pinbar')) return;
     e.preventDefault();
-    const s = span(e.touches);
+    const s = pinchSpan(e.touches);
     if (!pinch) {
       // the first finger's drag, pan or stroke ends where it is (their handlers all treat a cancel as a stop)
       if (press)
@@ -134,11 +136,12 @@ stage.addEventListener(
   },
   { passive: false },
 );
-const lift = (e: TouchEvent) => {
+/** A finger lifted: the pinch is over once fewer than two are down. */
+const endPinch = (e: TouchEvent) => {
   if (e.touches.length < 2) pinch = undefined;
 };
-stage.addEventListener('touchend', lift);
-stage.addEventListener('touchcancel', lift);
+stage.addEventListener('touchend', endPinch);
+stage.addEventListener('touchcancel', endPinch);
 
 /* ---------- minimap: one box per item, colored by data-kind (and data-state, e.g. a busy session) ---------- */
 const mm = $('#mm'),
@@ -152,8 +155,10 @@ let mmScale = 1,
 const boxes = new Map<HTMLElement, { i: HTMLElement; r: Rect; moved: boolean }>();
 const vp = mm.appendChild(make('i'));
 vp.dataset.k = 'vp';
-const same = (a: Rect, b: Rect) => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
-function measure() {
+/** Are two rects the same? */
+const sameRect = (a: Rect, b: Rect) => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+/** Redraw the minimap: one box per item on the canvas, scaled to fit, reading every rect before writing. */
+function drawMinimap() {
   const now = placed(),
     rs = now.map(rect); // every read first, then the writes
   const seen = new Set(now);
@@ -165,7 +170,7 @@ function measure() {
   now.forEach((el, n) => {
     const b = boxes.get(el);
     if (b) {
-      if (!same(b.r, rs[n])) {
+      if (!sameRect(b.r, rs[n])) {
         b.r = rs[n];
         b.moved = true;
       }
@@ -182,7 +187,7 @@ onChange(viewOnly => {
     return;
   } // hidden on small screens
   if (!viewOnly || stale) {
-    measure();
+    drawMinimap();
     stale = false;
   }
   const W = minimap.clientWidth,
@@ -195,6 +200,7 @@ onChange(viewOnly => {
     y1 = Math.max(...all.map(r => r.y + r.h));
   mmScale = Math.min((W - 12) / (x1 - x0), (H - 12) / (y1 - y0));
   mmOrigin = { x: x0 - (W / mmScale - (x1 - x0)) / 2, y: y0 - (H / mmScale - (y1 - y0)) / 2 };
+  /** Put one item's minimap box where the item is. */
   const at = (i: HTMLElement, r: Rect) => {
     i.style.cssText = `left:${(r.x - mmOrigin.x) * mmScale}px;top:${(r.y - mmOrigin.y) * mmScale}px;width:${Math.max(2, r.w * mmScale)}px;height:${Math.max(2, r.h * mmScale)}px`;
   };
@@ -216,7 +222,8 @@ onChange(viewOnly => {
 const nav = $('#nav');
 let quiet = 0,
   lastView = '';
-function wake() {
+/** Show the minimap and zoom buttons fully, then let them fade after a quiet moment. */
+function wakeNav() {
   delete nav.dataset.state;
   clearTimeout(quiet);
   quiet = setTimeout(() => {
@@ -227,12 +234,12 @@ onChange(() => {
   const at = `${view.x},${view.y},${view.k}`; // only the view: items resizing while Claude streams shouldn't wake it
   if (at !== lastView) {
     lastView = at;
-    wake();
+    wakeNav();
   }
 });
 new MutationObserver(recs => {
   if (!recs.some(r => (r.target as HTMLElement).dataset.state === 'asking' && r.oldValue !== 'asking')) return;
-  wake();
+  wakeNav();
   changed(true); // repaint the boxes' states now, not at the next pan
 }).observe(stage, { subtree: true, attributeFilter: ['data-state'], attributeOldValue: true });
 
@@ -243,6 +250,7 @@ minimap.addEventListener('pointerdown', e => {
   const b = minimap.getBoundingClientRect(),
     k = mmScale,
     o = mmOrigin;
+  /** Center the view on the minimap point under the pointer. */
   const go = (x: number, y: number, glide = false) => {
     view.x = innerWidth / 2 - ((x - b.left) / k + o.x) * view.k;
     view.y = innerHeight / 2 - ((y - b.top) / k + o.y) * view.k;

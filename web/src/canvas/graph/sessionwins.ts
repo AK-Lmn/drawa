@@ -40,6 +40,7 @@ interface TermNode {
 
 /** The file inspector, registered by panels/files.ts: canvas code opens files in it without importing upward. */
 let inspector = { open: (_path: string) => {}, current: (): string | null => null };
+/** Hand over the file inspector (panels/files.ts): canvas can't import panels. */
 export const setInspector = (i: typeof inspector) => {
   inspector = i;
 };
@@ -53,7 +54,7 @@ const lists = new Map<Session, FileList>();
 const terms = new Map<Session, TermNode>();
 /** Positions restored from the saved layout: "f:<path>" pinned files, "l:<sid>" Files windows, "t:<sid>" commands windows, "p:<id>" plans. */
 export const savedPos: Record<string, Rect | { x: number; y: number }> = {};
-persist('nodes', layout, v => Object.assign(savedPos, v), 0);
+persist('nodes', nodePositions, v => Object.assign(savedPos, v), 0);
 referable('files', {
   icon: '≡',
   label: () => 'files a session touched',
@@ -89,21 +90,22 @@ referable('file', {
 });
 
 /* ---------- files ---------- */
-export function info(path: string): FileInfo {
+export function fileInfo(path: string): FileInfo {
   let f = files.get(path);
   if (!f) files.set(path, (f = { path, add: 0, del: 0, changes: [], kind: 'read', rows: new Set() }));
   return f;
 }
 const RANK_FILE = { write: 0, edit: 1, fail: 2, read: 3 } as Record<string, number>;
-const stat = (f: FileInfo) =>
+/** "+3 −1": a file's added and removed line counts, when it has any. */
+const diffStat = (f: FileInfo) =>
   f.add || f.del ? [make('span', 'a', `+${f.add}`), ' ', make('span', 'r', `−${f.del}`)] : [];
 
 /** Every place a file shows (rows in Files windows, its pinned node) reflects its state. */
-export function paint(f: FileInfo) {
+export function paintFile(f: FileInfo) {
   for (const el of [...f.rows, ...(f.node ? [f.node] : [])]) {
     el.dataset.state = f.kind;
     el.classList.toggle('sel', inspector.current() === f.path);
-    el.querySelector('.s')!.replaceChildren(...stat(f));
+    el.querySelector('.s')!.replaceChildren(...diffStat(f));
   }
 }
 
@@ -141,6 +143,7 @@ export function fileList(S: Session): FileList {
   return l;
 }
 
+/** A file's row in a session's Files window, under its folder. */
 export function addRow(l: FileList, f: FileInfo) {
   const slash = f.path.lastIndexOf('/'),
     dir = slash > 0 ? f.path.slice(0, slash + 1) : './';
@@ -156,14 +159,14 @@ export function addRow(l: FileList, f: FileInfo) {
     group = make('div', 'fgroup');
     group.dataset.dir = dir;
     group.append(make('div', 'fdir', dir));
-    l.list.append(group); // order() puts it in place
+    l.list.append(group); // sortFileRow() puts it in place
   }
   group.append(row);
   return row;
 }
 
 /** Keep changed files at the top of their folder, and the header count current. */
-export function order(l: FileList, row: HTMLElement) {
+export function sortFileRow(l: FileList, row: HTMLElement) {
   const group = row.parentElement!,
     rank = (r: Element) => RANK_FILE[(r as HTMLElement).dataset.state ?? 'read'];
   const before = [...group.querySelectorAll(':scope > .frow')].find(r => r !== row && rank(r) > rank(row));
@@ -175,6 +178,7 @@ export function order(l: FileList, row: HTMLElement) {
     'reads-only',
     ![...group.querySelectorAll(':scope > .frow')].some(r => (r as HTMLElement).dataset.state !== 'read'),
   );
+  /** A folder group's sort key. */
   // folders with changes first, then folders that were only read; each in path order
   const key = (g: Element) => (g.classList.contains('reads-only') ? '1' : '0') + (g as HTMLElement).dataset.dir;
   const groups = [...l.list.children].sort((a, b) => key(a).localeCompare(key(b)));
@@ -219,10 +223,11 @@ function fileNode(f: FileInfo): HTMLElement {
       'fdel',
     ),
   );
-  paint(f);
+  paintFile(f);
   return el;
 }
 
+/** A session's commands window, made once (below its card, or where it was saved). */
 export function termNode(S: Session): TermNode {
   const have = terms.get(S);
   if (have) return have;
@@ -252,7 +257,7 @@ export function termNode(S: Session): TermNode {
 export function dropWindows(S: Session) {
   // a rebuild (reload() after a gap) makes them again from savedPos: keep where they are now, not where the page
   // loaded them, or a window you moved jumps back
-  if (S.sid) Object.assign(savedPos, layout());
+  if (S.sid) Object.assign(savedPos, nodePositions());
   terms.get(S)?.el.remove();
   terms.delete(S);
   const l = lists.get(S);
@@ -265,18 +270,20 @@ export function dropWindows(S: Session) {
 }
 
 /** Put a file on the canvas by itself (opened from the file tree). */
-export function pin(path: string) {
-  const el = fileNode(info(path));
+export function pinFile(path: string) {
+  const el = fileNode(fileInfo(path));
   ping(el);
   redraw();
   return el;
 }
 
+/** Repaint every file's rows, so the one open in the inspector shows as selected. */
 export function refreshSelection() {
-  for (const f of files.values()) paint(f);
+  for (const f of files.values()) paintFile(f);
 }
 
-function layout() {
+/** Where the pinned file nodes and commands windows are, for the saved layout. */
+function nodePositions() {
   const pos: typeof savedPos = {};
   for (const [path, f] of files)
     if (f.node) {

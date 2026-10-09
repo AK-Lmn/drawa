@@ -21,6 +21,7 @@ let installed = false,
 /** Lookups can answer: ctags is installed and the setting isn't off. */
 export const symbolsOn = () => installed && prefs().symbols !== 'off';
 
+/** No symbols: what every lookup gives without ctags or with symbols off. */
 const none = (): CodeSymbol[] => [];
 /** Definitions whose names match `query` loosely, best first (Ctrl+K). */
 export const findSymbols = (query: string) =>
@@ -42,6 +43,7 @@ sel.replaceChildren(
 sel.onchange = () => setPrefs({ symbols: sel.value === 'off' ? 'off' : 'auto' });
 segmented(sel);
 
+/** Bring the Settings control and the page's data-symbols in line with the setting and whether ctags is there. */
 function sync() {
   document.documentElement.dataset.symbols = symbolsOn() ? 'on' : 'off'; // CSS shows a diff's definition box only when it can answer
   sel.value = prefs().symbols;
@@ -58,6 +60,7 @@ function sync() {
           ]),
   );
 }
+/** Ask the server whether ctags is installed, then update the Settings control. */
 // asked at boot and each time Settings opens, so installing ctags needs no restart
 const check = () =>
   api<{ installed: boolean; install?: string }>('symbols').then(

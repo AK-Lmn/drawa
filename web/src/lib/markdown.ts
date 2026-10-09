@@ -8,6 +8,7 @@ import { copyButton, make, ICON } from './dom';
 // Replies, files and GitHub bodies are untrusted: no forms or embeds (inputs only as task lists' inert boxes), no inline styles, and pictures only from here
 // or GitHub (a remote picture would tell its host when you read it). highlight.js and Mermaid run after this, on classes.
 const MEDIA_OK = /^(data:|blob:|https:\/\/(github\.com|([\w-]+\.)*githubusercontent\.com)\/)/i;
+/** May an image or video load from this URL? Data and blob URLs, and this server's own. */
 const mediaOk = (u: string) => {
   try {
     return MEDIA_OK.test(u) || new URL(u, location.href).origin === location.origin;
@@ -30,6 +31,7 @@ const PURIFY = {
   FORBID_TAGS: ['form', 'button', 'textarea', 'select', 'style', 'iframe', 'object', 'embed'],
   FORBID_ATTR: ['style'],
 };
+/** Markdown to sanitized HTML. Insert it, then call enhance() for highlighting and diagrams. */
 export const md = (text: string) => DOMPurify.sanitize(marked.parse(text, { async: false }), PURIFY);
 
 // Features that turn parts of rendered markdown into something else (diagrams) register here: lib can't import them.
@@ -39,6 +41,7 @@ export const onRendered = (f: (el: HTMLElement) => unknown) => renderers.push(f)
 
 // highlight.js is big: loaded on the first code block, not at startup
 let hl: Promise<HLJSApi> | undefined;
+/** highlight.js with its common languages, loaded on first use. */
 export const highlighter = () => (hl ??= import('highlight.js/lib/common').then(m => m.default));
 
 /** Run after inserting md() output: diagrams first (they replace their code blocks), then highlight the rest.

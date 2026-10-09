@@ -6,10 +6,10 @@ import { ping, toast, uuid } from '../../lib/dom';
 import type { Session } from '../../session/card/types';
 import { link } from '../graph/graph';
 import { addLink, endById, userLinks } from '../graph/links';
-import { canvasStrokes, inkOn, shapesOn, strokeRect, textsOn } from '../ink/inksel';
+import { canvasStrokes, hasInkOver, shapesOn, strokeRect, textsOn } from '../ink/inksel';
 import { SHAPE_NAME } from '../ink/shapegeom';
 import type { Stroke } from '../ink/stroke';
-import { front, items, onCanvas, type Rect, rect, shortId } from './items';
+import { bringToFront, items, onCanvas, type Rect, rect, shortId } from './items';
 import { centerOn, spotBeside } from './placement';
 import { readItem } from './refs';
 import { snapshot } from './snapshot';
@@ -35,10 +35,11 @@ export const creatable = (kind: string, c: Creatable) => {
 export async function canvasCall(S: Session, m: { id: string; tool: string; args?: Args }) {
   let result: object;
   try {
-    result = { content: await run(S, m.tool, m.args ?? {}) };
+    result = { content: await runTool(S, m.tool, m.args ?? {}) };
   } catch (e) {
     result = { content: [{ type: 'text', text: (e as Error).message }], isError: true };
   }
+  /** Send the tool call's result back to the server. */
   // lost, Claude would wait out the server's timeout: try once more, then say which call it was
   const answer = () => post('canvas', { cid: S.cid, id: m.id, result });
   answer()
@@ -46,8 +47,10 @@ export async function canvasCall(S: Session, m: { id: string; tool: string; args
     .catch(e => console.error(`canvas tool ${m.tool}: couldn't answer the agent:`, e));
 }
 
-const short = (el: HTMLElement) => shortId(el.dataset.id ?? '');
-const endId = (e: HTMLElement | Stroke) => (e instanceof HTMLElement ? short(e) : shortId(e.id ?? ''));
+/** An item's id as Claude sees it (UUIDs cut to 8 characters). */
+const shortIdOf = (el: HTMLElement) => shortId(el.dataset.id ?? '');
+/** The id of an arrow's end: an item's, or a drawing's. */
+const endId = (e: HTMLElement | Stroke) => (e instanceof HTMLElement ? shortIdOf(e) : shortId(e.id ?? ''));
 /** The item Claude means: its exact id first (readable ids like "git" are prefixes of others), then a UUID prefix,
  *  only when just one item has it: a guess could change the wrong item. */
 function find(id: unknown): HTMLElement {
@@ -122,23 +125,25 @@ export function showItem(id: string) {
   }
   expand(el);
   if (onCanvas(el)) {
-    front(el);
+    bringToFront(el);
     centerOn(el);
   } else el.scrollIntoView({ block: 'nearest' }); // pinned to the sidebar
   ping(el);
 }
 
 type Block = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string };
-const text = (t: string): Block[] => [{ type: 'text', text: t }];
+/** A tool result holding one text block. */
+const textBlocks = (t: string): Block[] => [{ type: 'text', text: t }];
 
-async function run(S: Session, tool: string, a: Args): Promise<Block[]> {
+/** Run one canvas tool call from a card's agent and return its result blocks; throws with a message the agent sees. */
+async function runTool(S: Session, tool: string, a: Args): Promise<Block[]> {
   if (tool === 'canvas_list') {
-    return text(
+    return textBlocks(
       JSON.stringify({
         items: items().map(el => {
           const r = rect(el);
           return {
-            id: short(el),
+            id: shortIdOf(el),
             kind: el.dataset.kind,
             title: titleOf(el).slice(0, 80),
             x: Math.round(r.x),
@@ -147,7 +152,7 @@ async function run(S: Session, tool: string, a: Args): Promise<Block[]> {
             h: r.h,
             ...(el.classList.contains('min') ? { collapsed: true } : {}),
             ...(el === S.card ? { you: true } : {}),
-            ...(inkOn(el, r) ? { drawnOn: true } : {}),
+            ...(hasInkOver(el, r) ? { drawnOn: true } : {}),
           };
         }),
         drawings: drawings(),
@@ -165,7 +170,7 @@ async function run(S: Session, tool: string, a: Args): Promise<Block[]> {
     const written = textsOn(el, rect(el)),
       shapes = shapesOn(el, rect(el));
     const out: Block[] = [
-      ...text(
+      ...textBlocks(
         (c?.text ?? `${el.dataset.kind} "${titleOf(el)}"`) +
           (written.length ? `\n\nThe user wrote on it: ${written.map(t => JSON.stringify(t)).join(', ')}` : '') +
           (shapes.length ? `\n\nThe user drew on it: ${shapes.join('; ')}.` : ''),
@@ -191,7 +196,7 @@ async function run(S: Session, tool: string, a: Args): Promise<Block[]> {
     link(S, el, 'made'); // an arrow from the session that made it
     ping(el);
     changed(); // saved with the layout
-    return text(JSON.stringify({ id: short(el), kind: a.kind }));
+    return textBlocks(JSON.stringify({ id: shortIdOf(el), kind: a.kind }));
   }
   if (tool === 'canvas_update') {
     const el = find(a.id),
@@ -218,9 +223,9 @@ async function run(S: Session, tool: string, a: Args): Promise<Block[]> {
     link(S, el, 'edit'); // an edit arrow from the session, like a file it changed
     ping(el);
     changed();
-    return text(
+    return textBlocks(
       JSON.stringify({
-        id: short(el),
+        id: shortIdOf(el),
         updated: [a.text != null && 'text', a.title != null && 'title'].filter(Boolean),
       }),
     );
@@ -230,7 +235,7 @@ async function run(S: Session, tool: string, a: Args): Promise<Block[]> {
       to = findEnd(a.to);
     if (from === to) throw new Error('An arrow needs two different items.');
     addLink(from, to, String(a.label ?? '').trim(), 'write');
-    return text(JSON.stringify({ from: endId(from), to: endId(to) }));
+    return textBlocks(JSON.stringify({ from: endId(from), to: endId(to) }));
   }
   throw new Error(`Unknown canvas tool ${tool}.`);
 }

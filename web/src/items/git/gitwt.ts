@@ -19,10 +19,13 @@ export function picker(v: RepoView, host: Host) {
     own,
     ...v.checkouts.slice(1).sort((a, b) => +!a.total - +!b.total || branchOf(a).localeCompare(branchOf(b))),
   ];
+  /** The checkout an option stands for. */
   // rows look up the latest fill's checkouts: the options are replaced on every refresh
   const find = (o: HTMLOptionElement) => v.checkouts.find(c => id(c) === o.value);
+  /** A checkout's absolute path. */
   // paths read from the folder holding the repo, so rows differ where they matter: drawa, drawa-wt-1, drawa/.worktrees/x
   const abs = (d: string) => (!d ? project.root : d.startsWith('/') ? d : `${project.root}/${d}`);
+  /** A worktree's path as the dropdown shows it: relative to the folder its repo is in. */
   const shown = (p: string) => {
     const up = abs(v.repo).replace(/\/[^/]+$/, '');
     return up && p.startsWith(`${up}/`) ? p.slice(up.length + 1) : p;
@@ -81,6 +84,7 @@ export function picker(v: RepoView, host: Host) {
   return v.pick.parentElement!;
 }
 
+/** Remove a worktree (its folder and anything uncommitted in it), after asking. */
 // No Undo here, unlike other removals: git deletes the folder, and changes in it that weren't committed are gone.
 async function removeWorktree(c: GitState, host: Host) {
   const what = `${c.dir} (branch ${branchOf(c)})`;

@@ -25,23 +25,27 @@ const [, later, go] = d.querySelectorAll<HTMLButtonElement>('.row button');
 let info: Info,
   busy = false;
 
-function say(...parts: (Node | string)[]) {
+/** Show a status line in the update dialog (none: hide it). */
+function showStatus(...parts: (Node | string)[]) {
   text.replaceChildren(...parts);
   text.hidden = !parts.length;
 }
 
-function lock(on: boolean) {
+/** Disable the dialog's buttons while an install or restart runs. */
+function setBusy(on: boolean) {
   busy = on;
   for (const b of d.querySelectorAll('button')) b.disabled = on;
 }
 
+/** `one` or `many`, by count. */
 const plural = (n: number, one: string, many: string) => (n > 1 ? many : one);
 
+/** Say the install or restart failed, and offer to try again. */
 // The server's error is the detail (a Go error chain: URLs, dial errors); the sentence before it says what it means.
 function failed(e: unknown) {
-  lock(false);
+  setBusy(false);
   go.textContent = 'Try again';
-  say(
+  showStatus(
     `The update didn’t install, and nothing was changed. Check your internet connection and try again, or run `,
     make('code', '', 'drawa --update'),
     ' in a terminal.',
@@ -49,25 +53,27 @@ function failed(e: unknown) {
   );
 }
 
-const mb = (n: number) => (n / 1e6).toFixed(1);
+/** Bytes as megabytes, one decimal. */
+const megabytes = (n: number) => (n / 1e6).toFixed(1);
 
+/** Download and install the new release, showing progress; on success, offer to restart. */
 async function install() {
-  lock(true);
-  say(`Downloading ${info.latest}…`);
+  setBusy(true);
+  showStatus(`Downloading ${info.latest}…`);
   // the POST answers only once it's installed; a release is ~20MB, so show how far a slow link has got meanwhile
   const poll = setInterval(async () => {
     const p = await api<{ got: number; total: number }>('update/progress').catch(() => null);
-    if (busy && p?.total) say(`Downloading ${info.latest}… ${mb(p.got)} of ${mb(p.total)} MB`);
+    if (busy && p?.total) showStatus(`Downloading ${info.latest}… ${megabytes(p.got)} of ${megabytes(p.total)} MB`);
   }, 500);
   try {
     const r = await post('update', {}).finally(() => clearInterval(poll));
-    lock(false);
+    setBusy(false);
     d.dataset.state = 'restart';
     title.textContent = `${info.latest} is installed`;
     later.textContent = 'Restart later';
     go.textContent = 'Restart now';
     const n: number = r.working;
-    say(
+    showStatus(
       n
         ? `${n} ${plural(n, 'session is', 'sessions are')} still working. Restarting stops ${plural(n, 'it', 'them')}; ` +
             `${plural(n, 'it picks', 'they pick')} up again when you next message ${plural(n, 'it', 'them')}.`
@@ -78,9 +84,10 @@ async function install() {
   }
 }
 
+/** Restart the server on the new version, then load its UI once it answers as that version. */
 async function restart() {
-  lock(true);
-  say(`Restarting on ${info.latest}…`);
+  setBusy(true);
+  showStatus(`Restarting on ${info.latest}…`);
   try {
     await post('update/restart', {});
     for (let i = 0; i < 60; i++) {
@@ -90,15 +97,15 @@ async function restart() {
       if (v?.current === info.latest) return location.reload();
     }
     // installed all the same (Install succeeded before Restart now): only the restart is in doubt
-    lock(false);
+    setBusy(false);
     go.textContent = 'Try again';
-    say(
+    showStatus(
       `${info.latest} is installed, but Drawa hasn’t come back yet. If it stays away, start drawa again in its terminal: it runs the new version.`,
     );
   } catch (e) {
-    lock(false);
+    setBusy(false);
     go.textContent = 'Try again';
-    say(
+    showStatus(
       `${info.latest} is installed, but Drawa couldn’t restart (${e instanceof Error ? e.message : e}). Start drawa again in its terminal to use it.`,
     );
   }
@@ -122,20 +129,22 @@ d.onclick = e => {
   if (e.target === d && !busy) d.close('');
 }; // click outside the box = Not now / Restart later
 
+/** Offer release `i` in the update dialog. */
 function show(i: Info) {
   info = i;
-  lock(false);
+  setBusy(false);
   d.dataset.state = 'offer';
   title.textContent = 'Update available';
   later.textContent = 'Not now';
   go.textContent = 'Update';
   from.textContent = i.current;
   to.textContent = i.latest;
-  say();
+  showStatus();
   d.returnValue = '';
   d.showModal();
 }
 
+/** Ask the server whether a newer release is out, and offer it unless you skipped or snoozed that version. */
 async function check() {
   if (d.open) return;
   const i = await api<Info>('version').catch(() => null);

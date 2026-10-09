@@ -1,11 +1,13 @@
 // The window-group geometry, checked without a browser. Run: cd web && npx --yes tsx src/items/group/groupgeom.check.ts
 import { compact, frameAround, inner, placeIn, scaleInto, settle } from './groupgeom';
 
+/** Throw unless `got` equals `want` (compared as JSON). */
 const eq = (got: unknown, want: unknown, what: string) => {
   const g = JSON.stringify(got),
     w = JSON.stringify(want);
   if (g !== w) throw new Error(`${what}: got ${g}, want ${w}`);
 };
+/** A 100×100 box at (x, y). */
 const box = (x: number, y = 0) => ({ x, y, w: 100, h: 100 });
 
 eq(frameAround([], 24, 34), null, 'an empty group has no frame to fit');

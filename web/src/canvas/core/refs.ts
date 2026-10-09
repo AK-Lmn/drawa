@@ -39,13 +39,18 @@ const kinds = new Map<string, Referable>();
 export const referable = (kind: string, r: Referable) => {
   kinds.set(kind, r);
 };
+/** The kind's glyph: on window tabs, chips and Ctrl+K rows. */
 export const refIcon = (kind: string) => kinds.get(kind)?.icon ?? '•';
+/** What Ctrl+K calls the kind ("Scratchpad"), or the kind itself. */
 export const kindName = (kind: string) => kinds.get(kind)?.name ?? kind;
 /** The kind's copy text, if its windows get a copy button. */
 export const copyOf = (kind: string) => kinds.get(kind)?.copy;
+/** Is the kind's content a picture (refused by agents that take text only)? */
 export const isPicture = (kind: string) => !!kinds.get(kind)?.picture;
+/** What an item is doing now, in a word or two, if its kind says. */
 export const refStatus = (el: HTMLElement) => kinds.get(el.dataset.kind ?? '')?.status?.(el);
 
+/** An item as a reference to attach to a message, or null when its kind can't be referenced. */
 export function refOf(el: HTMLElement): Ref | null {
   const kind = el.dataset.kind,
     r = kind ? kinds.get(kind) : undefined;
@@ -59,6 +64,7 @@ export async function readItem(el: HTMLElement) {
   return r ? kinds.get(r.kind)!.content(el, r.label) : null;
 }
 
+/** Every item on the canvas that can be referenced (the @ menu lists them). */
 export const canvasRefs = () =>
   items()
     .map(refOf)

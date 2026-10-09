@@ -3,7 +3,7 @@ import { closestAt } from '../../lib/dom';
 import { changed } from '../core/view';
 import { placeAt } from './inkplace';
 import { rowAt } from './inkrows';
-import { added, changing, erase } from './inkundo';
+import { changing, erase, recordAdded } from './inkundo';
 import { inkPlaced, paint, type Stroke, strokes } from './stroke';
 
 const TEXT_PX: Record<number, number> = { 2: 14, 4: 18, 9: 28 }; // pen size -> font size on screen
@@ -34,6 +34,7 @@ export function writeAt(e: PointerEvent, color: string, size: number) {
   ta.value = s.t ?? '';
   ta.setAttribute('aria-label', 'Text on the drawing');
   ta.style.cssText = `left:${at.clientX}px;top:${at.clientY}px;font-size:${px}px`;
+  /** Grow the text box to fit what's typed. */
   const fitSize = () => {
     ta.style.height = 'auto';
     ta.style.height = `${ta.scrollHeight}px`;
@@ -62,7 +63,7 @@ export function writeAt(e: PointerEvent, color: string, size: number) {
     s.t = text;
     if (!old) {
       strokes.push(s);
-      added(s);
+      recordAdded(s);
     }
     paint(s);
     done?.();

@@ -9,13 +9,15 @@ tip.setAttribute('role', 'tooltip');
 tip.hidden = true;
 let target: HTMLElement | null = null,
   timer = 0;
+/** Put the tooltip where it can show: inside an open modal dialog, else on the page. */
 // a modal dialog sits in the top layer, over anything in the page: while one is open the tooltip goes inside it
 const place = () => {
   const host = document.querySelector('dialog:modal') ?? document.body;
   if (tip.parentElement !== host) host.append(tip);
 };
 
-function claim(el: HTMLElement) {
+/** Move an element's title into data-tip, so the browser's own tooltip never shows; returns the text. */
+function takeTitle(el: HTMLElement) {
   if (el.title) {
     el.dataset.tip = el.title;
     // an icon-only control would lose its name with its title
@@ -25,8 +27,9 @@ function claim(el: HTMLElement) {
   return el.dataset.tip ?? '';
 }
 
+/** Show an element's tooltip beside it, kept on screen. */
 function show(el: HTMLElement) {
-  const text = claim(el);
+  const text = takeTitle(el);
   if (!text || !el.isConnected) return;
   place();
   tip.textContent = text;
@@ -37,10 +40,12 @@ function show(el: HTMLElement) {
   keepOnScreen(tip, r.left + r.width / 2 - t.width / 2, below ? r.bottom + 8 : r.top - 8 - t.height);
   requestAnimationFrame(stillThere);
 }
+/** Is the element the tooltip belongs to still on the page? */
 // an element removed while its tooltip shows (a re-rendered row, a closed window) takes the tooltip with it
 function stillThere() {
   if (!tip.hidden && target) target.isConnected ? requestAnimationFrame(stillThere) : hide();
 }
+/** Hide the tooltip. */
 function hide() {
   clearTimeout(timer);
   target = null;
@@ -56,6 +61,7 @@ export function tipAt(text: string, x: number, y: number) {
   tip.hidden = false;
   keepOnScreen(tip, x + 12, y + 18);
 }
+/** Hide a tooltip shown with tipAt(). */
 export const hideTip = () => {
   if (!target) hide();
 }; // only a tipAt one: an element's tooltip hides by itself
@@ -67,7 +73,7 @@ document.addEventListener('pointerover', e => {
   hide();
   if (!el) return;
   target = el;
-  claim(el); // right away: the native tooltip would otherwise start its own timer
+  takeTitle(el); // right away: the native tooltip would otherwise start its own timer
   timer = setTimeout(() => show(el), 450);
 });
 document.addEventListener('focusin', e => {

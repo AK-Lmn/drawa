@@ -10,10 +10,12 @@ let misses = 0,
   down = false,
   timer = 0;
 const listeners: (() => void)[] = [];
+/** Run `f` each time the server answers again after being unreachable. */
 export const onReconnect = (f: () => void) => listeners.push(f);
 
 let version = '',
   told = false;
+/** Remember the server's version; when it changes, offer to reload into the new UI. */
 // A page left open across an upgrade runs the old UI against the new server: offer the new one.
 function check(v?: string) {
   version ||= v ?? '';
@@ -25,6 +27,8 @@ function check(v?: string) {
   );
 }
 
+/** Ask the server whether it's up: shows or clears the "can't reach" notice, and runs the reconnect listeners on its
+ *  return. */
 async function ping() {
   clearTimeout(timer);
   let r: Response | undefined;

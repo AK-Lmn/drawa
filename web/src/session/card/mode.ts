@@ -70,9 +70,10 @@ export function setMode(S: Session, mode: string, tell = true) {
 
 /** Claude refused a switch: show the mode it's really in again, and say so (the dropdown alone flips back unnoticed). */
 export function modeRefused(S: Session) {
-  const want = label(S.mode),
+  const want = modeLabel(S.mode),
     now = S.confirmedMode ?? 'default';
   setMode(S, now, false);
-  toast(`Could not switch to ${want}: still in ${label(now)}.`);
+  toast(`Could not switch to ${want}: still in ${modeLabel(now)}.`);
 }
-const label = (m: string) => MODES.find(([v]) => v === m)?.[1] ?? m;
+/** A permission mode's label ("Ask first", "Allow edits"). */
+const modeLabel = (m: string) => MODES.find(([v]) => v === m)?.[1] ?? m;

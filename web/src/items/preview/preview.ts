@@ -16,7 +16,7 @@ import { ICON, iconButton, make, revealIn } from '../../lib/dom';
 import { enhanceMarked } from '../../lib/markdown';
 import { each, persist } from '../../lib/store';
 import { isMarkdown, mdView, sourceView } from '../../panels/files';
-import { draft, editAt, editFocus, editing, toggleEdit } from './fileedit';
+import { editAt, editFocus, editing, editorText, toggleEdit } from './fileedit';
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif|bmp|ico)$/i; // what /api/raw serves
 interface Saved {
@@ -31,13 +31,14 @@ referable('preview', {
   icon: '◫',
   name: 'file',
   label: el => el.dataset.path ?? '',
-  copy: el => draft(el) ?? texts.get(el.dataset.path ?? '') ?? '', // while editing: what's in the editor
+  copy: el => editorText(el) ?? texts.get(el.dataset.path ?? '') ?? '', // while editing: what's in the editor
   content: el => ({ text: `File: ${el.dataset.path} (read it if you need its contents)` }),
 });
 
 /** A text file as shown: Markdown rendered, anything else as code. `lines`: only that many (Ctrl+K's preview), from
  *  the start or from a little above `at`, a line to mark (shown as source then, even for Markdown). */
 const texts = new Map<string, string>(); // each open file's text as last read, for its copy button
+/** A text file's view: highlighted code or rendered Markdown, all of it or the lines around `at`. */
 async function textView(path: string, lines?: number, at?: number) {
   try {
     let { text } = await api<{ text: string | null }>(`file?path=${q(path)}`),
@@ -90,9 +91,11 @@ function lineAt(host: HTMLElement, y: number) {
 const toLine = new WeakMap<HTMLElement, (line: number) => void>(),
   toEdit = new WeakMap<HTMLElement, () => Promise<void>>();
 
+/** A project file in a window (opened from Ctrl+K): code, Markdown or a picture, editable in place. */
 export function preview(o: { path: string; title?: string; rect: Rect; line?: number }) {
   const key = `pv:${o.path}`,
     image = IMAGE.test(o.path);
+  /** Start or stop editing the file. */
   const edit = () => toggleEdit(el, host, o.path, pencil, () => load());
   const pencil = iconButton(ICON.pencil, 'Edit the file', edit);
   const { el, body } = makeWindow({
@@ -127,6 +130,7 @@ export function preview(o: { path: string; title?: string; rect: Rect; line?: nu
     });
   let loads = 0,
     at = o.line; // only the newest read is shown, when the reload button is pressed while one is still coming
+  /** Read the file and show it, unless it's being edited (or the pencil was pressed while it was read). */
   const load = async (again = false) => {
     if (editing(el)) return; // the editor holds the file until you stop editing
     const n = ++loads,

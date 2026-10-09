@@ -23,6 +23,7 @@ const DEFAULTS: Prefs = {
   vim: 'off',
 };
 const KEY = 'drawa:prefs';
+/** A JSON value from localStorage, or null when it's missing or doesn't parse. */
 const read = (key: string) => {
   try {
     return JSON.parse(localStorage.getItem(key) ?? 'null');
@@ -34,10 +35,12 @@ const read = (key: string) => {
 const seen = read(KEY) as Partial<Prefs> | null;
 let cur: Prefs = { ...DEFAULTS, ...seen };
 const listeners: ((p: Prefs) => void)[] = [];
+/** Your settings as last read from (or written to) ~/.drawa/config.json. */
 export const prefs = () => cur;
 /** `f(prefs)` runs whenever the settings change: picked in this tab or another, or read from the file at boot. */
 export const onPrefs = (f: (p: Prefs) => void) => void listeners.push(f);
 
+/** Adopt new settings: keep a copy for the next boot's first paint and tell everyone who listens. */
 function take(p: Partial<Prefs>) {
   cur = { ...DEFAULTS, ...p };
   try {

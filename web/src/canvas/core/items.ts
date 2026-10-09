@@ -43,12 +43,14 @@ export function park(el: HTMLElement) {
     parent?.insertBefore(el, next?.parentNode === parent ? next : null);
   };
 }
+/** Is this item parked (off the page for now, may come back)? */
 export const parked = (el: HTMLElement) => away.has(el);
 /** A parked item isn't coming back after all: whoever kept it lets go (`onGone`). */
 export function drop(el: HTMLElement) {
   away.delete(el);
   goneFns.forEach(f => f(el));
 }
+/** Run `f(el)` when a parked item is dropped for good, so what holds it by id lets go. */
 export const onGone = (f: (el: HTMLElement) => void) => goneFns.push(f);
 /** Every canvas item, including windows pinned to the sidebar (they still belong to the canvas). */
 export const items = (kind?: string) =>
@@ -94,6 +96,7 @@ export function liveRect(el: HTMLElement): Rect {
 /** Is it laid out on the canvas right now (not pinned to the sidebar, not in full view)? */
 export const onCanvas = (el: HTMLElement) => el.parentElement === world;
 
+/** Move an item to (x, y) in canvas units, rounded to whole pixels. */
 export const place = (el: HTMLElement, x: number, y: number) => {
   el.style.left = `${Math.round(x)}px`;
   el.style.top = `${Math.round(y)}px`;
@@ -115,7 +118,8 @@ export const savedRect = (el: HTMLElement): Rect => {
 };
 
 let z = 10; // stacking inside #world only
-export const front = (el: HTMLElement) => {
+/** Raise an item above everything else on the canvas (saved with the layout). */
+export const bringToFront = (el: HTMLElement) => {
   if (el.style.zIndex !== String(z)) {
     el.style.zIndex = String(++z);
     saveSoon();
@@ -141,7 +145,7 @@ persist(
     const found = byIds();
     each(ids, id => {
       const el = found.get(id);
-      if (el) front(el);
+      if (el) bringToFront(el);
     });
   },
   2,
@@ -153,12 +157,13 @@ world.addEventListener(
   e => {
     if (e.button === 2) return;
     const el = (e.target as Element).closest<HTMLElement>('#world > .item');
-    if (el) front(el);
+    if (el) bringToFront(el);
   },
   true,
 );
 
-export const hits = (a: Rect, b: Rect, pad = 16) =>
+/** Do two rects overlap, or come within `pad` of each other? */
+export const overlaps = (a: Rect, b: Rect, pad = 16) =>
   a.x < b.x + b.w + pad && b.x < a.x + a.w + pad && a.y < b.y + b.h + pad && b.y < a.y + a.h + pad;
 
 // Bulk mode (a transcript replaying makes many windows at once): the canvas is measured once and every spot handed

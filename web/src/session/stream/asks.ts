@@ -4,12 +4,12 @@
 import { plansExpired, planWithdrawn, reviewPlan } from '../../items/plan/plan';
 import { who } from '../../lib/agents';
 import { post } from '../../lib/api';
-import { button, confirmBox, make, rel } from '../../lib/dom';
+import { button, confirmBox, make, relPath } from '../../lib/dom';
 import { change, inFile } from '../../panels/diff';
 import { notify } from '../card/notify';
-import { put, renderCard } from '../card/render';
+import { appendToLog, renderCard } from '../card/render';
 import type { Session } from '../card/types';
-import { describe, type Msg } from './stream';
+import { type Msg, toolArg } from './stream';
 
 /** Claude wants to use a tool that needs your OK (or presents a plan, see plan.ts). */
 export function approval(S: Session, m: Msg) {
@@ -28,8 +28,8 @@ export function approval(S: Session, m: Msg) {
   // compact prompt: what exactly will run (the command / path), Claude's own description as a caption
   const input = r.input ?? {},
     tool = r.display_name ?? r.tool_name;
-  const what = rel(String(input.command ?? input.file_path ?? input.url ?? input.pattern ?? describe(input) ?? ''));
-  const box = put(S, make('div', 'ask perm')),
+  const what = relPath(String(input.command ?? input.file_path ?? input.url ?? input.pattern ?? toolArg(input) ?? ''));
+  const box = appendToLog(S, make('div', 'ask perm')),
     top = make('div', 'top'),
     row = make('div', 'row');
   box.dataset.rid = id;
@@ -45,12 +45,13 @@ export function approval(S: Session, m: Msg) {
   // file changes: show exactly what would change before you allow it
   const diff =
     input.file_path && ['Edit', 'MultiEdit', 'Write'].includes(r.tool_name)
-      ? change(S, r.tool_name, rel(String(input.file_path)), input)
+      ? change(S, r.tool_name, relPath(String(input.file_path)), input)
       : undefined;
   if (diff) {
     box.append(diff);
     inFile(diff);
   }
+  /** Answer a permission prompt; the buttons come back if the server didn't take it. */
   const answer = (allow: boolean, always = false) => {
     // answered only once the server took it: on failure the buttons stay, to try again
     row.querySelectorAll('button').forEach(b => (b.disabled = true));
@@ -76,6 +77,7 @@ export function approval(S: Session, m: Msg) {
       },
     );
   };
+  /** Add a button to the prompt's row. */
   const btn = (label: string, cls: string, fn: () => void) => row.appendChild(button(label, cls, fn));
   btn('Deny', '', () => answer(false)).title = 'Deny (Esc)';
   if (r.permission_suggestions?.length)
@@ -106,13 +108,14 @@ function question(
     multiSelect?: boolean;
   }[],
 ) {
-  const box = put(S, make('div', 'ask q')),
+  const box = appendToLog(S, make('div', 'ask q')),
     picked = qs.map(() => new Set<string>()),
     other = qs.map(() => '');
   box.dataset.rid = id;
   const row = make('div', 'row'),
     skip = make('button', 'btn', 'Skip'),
     ok = make('button', 'btn primary', 'Answer');
+  /** Submit is enabled once every question has an answer. */
   const ready = () => {
     ok.disabled = !qs.every((_, i) => picked[i].size || other[i].trim());
   };
@@ -166,6 +169,7 @@ function question(
     f.append(inp);
     box.append(f);
   });
+  /** Send the answers to the question; the form stays to try again if the server didn't take them. */
   // answered only once the server took it: on failure the choices and typed answers stay, to try again
   const respond = (text: string, body: object) => {
     const ctl = [...box.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button, input')];
@@ -254,6 +258,7 @@ export function withdrawAsk(S: Session, id: string) {
   renderCard(S);
 }
 
+/** Close an ask (answered, withdrawn or expired): its controls disabled, its row saying why. */
 function closeAsk(S: Session, box: HTMLElement, why: string) {
   // its buttons are about to be disabled: don't let keyboard focus fall to <body>
   if (box.contains(document.activeElement)) S.ta.focus();

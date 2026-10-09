@@ -13,7 +13,7 @@ import { $, confirmBox, make, pressed, toast } from '../../lib/dom';
 import { command } from '../../lib/keys';
 import { onPrefs, prefs, setPrefs } from '../../lib/prefs';
 import { segmented } from '../../lib/select';
-import { saved as shown } from '../../panels/files';
+import { fileSaved as shown } from '../../panels/files';
 
 interface Edit {
   editor: Editor;
@@ -31,12 +31,13 @@ const edits = new Map<HTMLElement, Edit>(),
 /** The editor holds the window's content box, or is about to: the file view must not be drawn into it. */
 export const editing = (el: HTMLElement) => edits.has(el) || opening.has(el);
 /** What the window's editor holds now, for its copy button; undefined when it isn't being edited. */
-export const draft = (el: HTMLElement) => edits.get(el)?.editor.text();
+export const editorText = (el: HTMLElement) => edits.get(el)?.editor.text();
 /** Put the editor's cursor on `line` (Ctrl+K opening a code symbol in a window being edited). */
 export const editAt = (el: HTMLElement, line: number) => edits.get(el)?.editor.goto(line);
 /** Put the keys in the window's editor (Edit again on a file already being edited). */
 export const editFocus = (el: HTMLElement) => edits.get(el)?.editor.focus();
-const read = (path: string) => api<File>(`file?path=${q(path)}`);
+/** Read a project file from the server. */
+const readFile = (path: string) => api<File>(`file?path=${q(path)}`);
 
 /** Edit `path` in `host` (the window `el`'s content box), or stop editing if it already is. `done` shows the file
  *  again; `button` is the pencil, shown pressed while editing. */
@@ -52,16 +53,17 @@ export async function toggleEdit(
   if (opening.has(el)) return; // a second click while the editor loads
   opening.add(el);
   try {
-    await start(el, host, path, button, done);
+    await startEditing(el, host, path, button, done);
   } finally {
     opening.delete(el);
   }
 }
 
-async function start(el: HTMLElement, host: HTMLElement, path: string, button: HTMLElement, done: () => void) {
+/** Start editing a file window's file: read it fresh, then open the editor in its place. */
+async function startEditing(el: HTMLElement, host: HTMLElement, path: string, button: HTMLElement, done: () => void) {
   let file: File;
   try {
-    file = await read(path);
+    file = await readFile(path);
   } catch (e) {
     return toast(`Couldn't read ${path}: ${(e as Error).message}`);
   }
@@ -123,7 +125,7 @@ async function start(el: HTMLElement, host: HTMLElement, path: string, button: H
 async function save(e: Edit, path: string): Promise<boolean> {
   while (e.saving) await e.saving;
   if (!e.editor.dirty()) return true;
-  const p = (e.saving = write(e, path));
+  const p = (e.saving = saveFile(e, path));
   try {
     return await p;
   } finally {
@@ -131,8 +133,10 @@ async function save(e: Edit, path: string): Promise<boolean> {
   }
 }
 
-async function write(e: Edit, path: string) {
+/** Save the editor's text to the file; asks before overwriting a file that changed on disk meanwhile. */
+async function saveFile(e: Edit, path: string) {
   const { text, done } = e.editor.take();
+  /** The save went through: the editor's text is the new base. */
   const saved = () => {
     e.base = text;
     done();
@@ -145,7 +149,7 @@ async function write(e: Edit, path: string) {
     return saved();
   } catch (err) {
     // the answer may have been lost after the file was written: if the disk holds what was sent, it was saved
-    const disk = await read(path).then(
+    const disk = await readFile(path).then(
       f => f.text,
       () => null,
     );
@@ -188,8 +192,9 @@ sel.replaceChildren(
 );
 sel.onchange = () => setPrefs({ vim: sel.value === 'on' ? 'on' : 'off' });
 segmented(sel);
-const sync = () => {
+/** Show the Vim setting's current value in its picker. */
+const syncVimPick = () => {
   sel.value = prefs().vim;
 };
-onPrefs(sync);
-sync();
+onPrefs(syncVimPick);
+syncVimPick();

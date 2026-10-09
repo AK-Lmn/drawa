@@ -36,7 +36,8 @@ const MIN = 24; // screen px: the box never gets smaller than this each way
 // windows being cropped, and how to cancel each: one removed meanwhile (its ×, a delete, Claude's tools) cancels at once
 const open = new Map<HTMLElement, (ok: boolean) => void>();
 onForget(el => open.get(el)?.(false));
-const inside = (b: Box) => b.x >= -1e-9 && b.y >= -1e-9 && b.x + b.w <= 1 + 1e-9 && b.y + b.h <= 1 + 1e-9;
+/** Is the box inside the picture (fractions 0 to 1, allowing for rounding)? */
+const inPicture = (b: Box) => b.x >= -1e-9 && b.y >= -1e-9 && b.x + b.w <= 1 + 1e-9 && b.y + b.h <= 1 + 1e-9;
 
 /** The biggest box of width/height ratio `fr` (in fractions) centred in `b`. */
 function fitRatio(b: Box, fr: number): Box {
@@ -86,7 +87,7 @@ export function dragBox(
     if (w < min.w - 1e-9 || ht < min.h - 1e-9) return null;
   }
   const b = { x, y, w, h: ht };
-  return inside(b) ? b : null;
+  return inPicture(b) ? b : null;
 }
 
 /** A new box dragged from (sx, sy) to (ex, ey), in fractions, keeping width over height at `fr` when set (the press
@@ -131,10 +132,12 @@ export function cropArea(box: HTMLElement, img: HTMLImageElement): Promise<Area 
   layer.append(frame);
   let b: Box = { x: 0, y: 0, w: 1, h: 1 },
     ratio = 0;
+  /** The picked aspect ratio as width/height in fractions of the picture (0: free). */
   const fr = () => {
     const r = RATIOS[ratio][1];
     return r < 0 ? 1 : r ? (r * nh) / nw : 0;
   }; // wanted w/h in fractions
+  /** Draw the crop frame where the box is. */
   const show = () =>
     Object.assign(frame.style, {
       left: `${b.x * 100}%`,
@@ -145,6 +148,7 @@ export function cropArea(box: HTMLElement, img: HTMLImageElement): Promise<Area 
   show();
   return new Promise(done => {
     let over = false;
+    /** Leave crop mode, applying the crop (`ok`) or not. */
     const finish = (ok: boolean) => {
       if (over) return;
       over = true;
@@ -158,6 +162,7 @@ export function cropArea(box: HTMLElement, img: HTMLImageElement): Promise<Area 
         whole = a.x === 0 && a.y === 0 && a.w === nw && a.h === nh;
       done(ok && !whole && a.w > 0 && a.h > 0 ? a : null); // the whole picture: nothing to crop
     };
+    /** Enter applies the crop, Esc cancels. */
     const key = (e: KeyboardEvent) => {
       if ((e.key !== 'Enter' && e.key !== 'Escape') || typing(e.target)) return;
       if (e.key === 'Enter' && (e.target as Element).closest?.('.crop-tools button')) return; // Enter presses the focused ratio, ✓ or ✕

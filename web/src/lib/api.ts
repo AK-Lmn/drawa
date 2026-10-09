@@ -40,6 +40,7 @@ async function answer(r: Response) {
   return j;
 }
 
+/** Turn the browser's network failure into a message that says the server can't be reached. */
 // fetch rejects with the browser's own words ("Failed to fetch", "NetworkError when…") when the server is down
 function unreachable(e: unknown): never {
   if (e instanceof TypeError)
@@ -49,6 +50,8 @@ function unreachable(e: unknown): never {
 
 export const api = <T>(path: string): Promise<T> => fetch(`/api/${path}`).catch(unreachable).then(answer);
 
+/** POST JSON to the Go server; rejects with the server's error message. Sending a message takes over streaming for
+ *  this tab. */
 export async function post(path: string, body: object) {
   if (path === 'send') takeOver(); // replies stream to the tab that owns this server: sending from here takes over
   return fetch(`/api/${path}`, {

@@ -6,6 +6,7 @@ import { command } from './keys';
 import { onPrefs, prefs, setPrefs } from './prefs';
 import { segmented } from './select';
 
+/** Is the minimal interface on (tabs show only when you reach for a window)? */
 export const minimalUI = () => prefs().ui === 'minimal';
 const listeners: (() => void)[] = [];
 /** Called after the interface switches between full and minimal (arrows move to the windows' new edges). */
@@ -28,6 +29,7 @@ command({
   run: () => setPrefs({ ui: minimalUI() ? 'full' : 'minimal' }),
 });
 
+/** Put the interface mode on <html> and tell the listeners when it changed. */
 function apply() {
   const ui = prefs().ui,
     root = document.documentElement;

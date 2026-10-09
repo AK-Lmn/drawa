@@ -58,6 +58,7 @@ export function copySidTip(name: string, id: string) {
   const cmd = agents.find(a => a.name === name)?.resume ?? (name === 'claude' ? 'claude --resume' : '');
   return cmd ? `Copy session ID (open it with ${cmd} ${id})` : `Copy session ID (${id})`;
 }
+/** The agents whose CLI is installed on this machine: the ones a card can run. */
 export const installed = () => agents.filter(a => a.installed);
 /** Whether a queued message can still be taken back (deleted, or edited) until the agent reads it. */
 export const canUnsend = (name: string) => !!agents.find(a => a.name === name)?.canUnsend;
@@ -76,11 +77,13 @@ export const getPref = (key: string) => {
     return '';
   }
 };
+/** Remember a per-browser choice (an agent, a writer); private mode just doesn't remember. */
 export const setPref = (key: string, v: string) => {
   try {
     localStorage.setItem(key, v);
   } catch {}
 };
+/** The saved choice under `key` while it's still usable (`ok`), else Claude, else the first usable agent. */
 function pref(key: string, ok: (a: Agent) => boolean) {
   const usable = installed().filter(ok),
     v = getPref(key);
@@ -89,15 +92,17 @@ function pref(key: string, ok: (a: Agent) => boolean) {
 }
 /** The agent new sessions start with: the last one you picked (this browser). */
 export const lastAgent = () => pref('drawa:agent', () => true);
+/** Remember the agent picked for a new session, so the next one starts with it. */
 export const setLastAgent = (v: string) => setPref('drawa:agent', v);
 /** Who writes commit messages and pull request descriptions (Write with). */
 export const writer = () => pref('drawa:writer', a => a.canWrite);
+/** Remember who writes commit messages and pull request descriptions. */
 export const setWriter = (v: string) => setPref('drawa:writer', v);
 
 const metas: Record<string, Meta> = {},
   asked: Record<string, Promise<Meta>> = {};
 /** An agent's models and commands, asked once (slow the first time: the server asks a fresh process). */
-export function meta(name: string): Promise<Meta> {
+export function agentMeta(name: string): Promise<Meta> {
   return (asked[name] ??= api<Meta>(`meta?backend=${encodeURIComponent(name)}`).then(
     m => (metas[name] = { ...m, models: m.models ?? [], commands: m.commands ?? [] }),
     () => {

@@ -4,14 +4,16 @@ import { perFrame } from '../../lib/dom';
 import { changed } from '../core/view';
 import { type Stroke, strokes } from './stroke';
 
-const rows = (host: HTMLElement) => [...host.children].filter(c => !c.matches('svg.ink-local')) as HTMLElement[];
+/** A rows host's rows: its children, without its ink layer. */
+const rowsOf = (host: HTMLElement) => [...host.children].filter(c => !c.matches('svg.ink-local')) as HTMLElement[];
+/** A row's text, cut short: enough to tell rows apart when finding a stroke's row again. */
 const rowKey = (row: Element) => (row.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
 /** The stroke's row: the one it's already on while that's still in the log; else by the row's id, or by index checked
  *  against the row's text (rows can shift: an empty state removed, a replay that groups differently); else the row
  *  with that text nearest the old index. Only the rare re-find reads row texts. */
 function rowOf(s: Stroke, host: HTMLElement) {
   if (s.row?.parentElement === host) return s.row;
-  const list = rows(host),
+  const list = rowsOf(host),
     at = list[s.a!];
   let best = s.rid ? list.find(r => r.dataset.id === s.rid) : undefined;
   if (!best && (!s.k || (at && rowKey(at) === s.k))) best = at;
@@ -26,6 +28,7 @@ function rowOf(s: Stroke, host: HTMLElement) {
   }
   return (s.row = best ?? at);
 }
+/** The strokes drawn on this window. */
 export const onHost = (host: HTMLElement) => strokes.filter(s => s.host === host);
 /** Keep a rows host's strokes on their rows: reads each one's row position, then writes (no layout in between). */
 export function follow(host: HTMLElement) {
@@ -40,7 +43,9 @@ export function follow(host: HTMLElement) {
  *  already happened, so scroll events alone miss the last change. ponytail: observes every row of an inked log (one
  *  observer, cheap per row); only rows above a stroke matter, if logs of 10k+ rows ever show up. */
 const watchers = new Map<HTMLElement, { sizes: ResizeObserver; added: MutationObserver }>();
+/** Keep a rows host's strokes on their rows as it resizes and rows are added. */
 export function watchRows(host: HTMLElement) {
+  /** Follow the rows once a frame, after rows are added. */
   const soon = perFrame(() => follow(host));
   // in the observer itself, not a frame later: it runs after layout and before paint, so ink never lags a frame
   const sizes = new ResizeObserver(() => {
@@ -48,7 +53,7 @@ export function watchRows(host: HTMLElement) {
     else unwatch(host);
   });
   sizes.observe(host);
-  rows(host).forEach(r => sizes.observe(r));
+  rowsOf(host).forEach(r => sizes.observe(r));
   const added = new MutationObserver(ms => {
     for (const m of ms)
       m.addedNodes.forEach(n => {
@@ -59,6 +64,7 @@ export function watchRows(host: HTMLElement) {
   added.observe(host, { childList: true });
   watchers.set(host, { sizes, added });
 }
+/** Stop following a host's rows (its window closed or its ink was cleared). */
 export function unwatch(host: HTMLElement) {
   const w = watchers.get(host);
   if (!w) return;
@@ -73,7 +79,7 @@ export function rowAt(
   e: { clientX: number; clientY: number },
 ): { a?: number; o?: number; k?: string; rid?: string } {
   if (!host || !('inkRows' in host.dataset)) return {};
-  const list = rows(host);
+  const list = rowsOf(host);
   const row =
     document
       .elementsFromPoint(e.clientX, e.clientY)
@@ -87,7 +93,7 @@ export function rowAt(
 /** Give an old stroke on a rows host the row it sits on now, so it stays with that row from here on. */
 export function adopt(s: Stroke) {
   const y = s.p[0][1],
-    list = rows(s.host!);
+    list = rowsOf(s.host!);
   const row = list.findLast(r => r.offsetTop <= y) ?? list[0];
   if (!row) return;
   s.a = list.indexOf(row);

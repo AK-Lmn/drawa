@@ -34,9 +34,11 @@ const SCHEMES: Record<Mode, [string, string][]> = {
     ['everforest', 'Everforest'],
   ],
 };
+/** An option element for a select. */
 const option = (value: string, textContent: string) =>
   Object.assign(document.createElement('option'), { value, textContent });
 const system = matchMedia('(prefers-color-scheme: dark)');
+/** The mode in effect: the picked one, or the computer's while System is picked. */
 const mode = (): Mode => {
   const t = prefs().theme;
   return t === 'light' || t === 'dark' ? t : system.matches ? 'dark' : 'light';
@@ -47,6 +49,7 @@ const scheme = (m: Mode) => {
   return SCHEMES[m].some(([id]) => id === s) ? s : SCHEMES[m][0][0];
 };
 
+/** Is the page dark right now? */
 export const isDark = () => mode() === 'dark';
 const listeners: (() => void)[] = [];
 /** Called after the mode or scheme changes (for things drawn with theme colors baked in). */
@@ -57,6 +60,7 @@ const btn = $('#btn-theme'),
 const pickers: Record<Mode, HTMLSelectElement> = { light: $('#scheme-light'), dark: $('#scheme-dark') };
 let shown = ''; // the mode and scheme on the page: only a real change redraws what has colors baked in
 
+/** Put the mode and scheme on <html> and the toolbar button, and tell the listeners. */
 function apply() {
   const m = mode(),
     s = scheme(m),

@@ -12,23 +12,25 @@ export interface Changes {
   edited: number;
 }
 
-const text = (e: Element) => (e.textContent ?? '').replace(/\s+/g, ' ').trim();
+/** An element's text, with whitespace collapsed. */
+const textOf = (e: Element) => (e.textContent ?? '').replace(/\s+/g, ' ').trim();
 
 /** Marks `body` (the new version, rendered) against `was` (the previous version's Markdown). */
 export function markChanges(body: HTMLElement, was: string): Changes {
   const old = make('div');
   old.innerHTML = md(was);
   const n = { added: 0, removed: 0, edited: 0 };
-  kids(old, body, n);
+  markChildren(old, body, n);
   return n;
 }
 
-function kids(from: Element, to: Element, n: Changes) {
+/** Mark the changes between two lists of child blocks: added, removed, and edited ones paired up. */
+function markChildren(from: Element, to: Element, n: Changes) {
   const a = [...from.children],
     b = [...to.children];
   let i = 0,
     j = 0;
-  const parts = diffArrays(a.map(text), b.map(text));
+  const parts = diffArrays(a.map(textOf), b.map(textOf));
   for (let k = 0; k < parts.length; ) {
     if (!parts[k].added && !parts[k].removed) {
       i += parts[k].value.length;
@@ -47,6 +49,7 @@ function kids(from: Element, to: Element, n: Changes) {
  *  it is that one edited; old ones skipped on the way come back struck through, before it. */
 function pair(gone: Element[], fresh: Element[], parent: Element, next: Element | null, n: Changes) {
   let g = 0;
+  /** Put the removed blocks up to `to` back in, struck through, before `at`. */
   const drop = (to: number, at: Element | null) => {
     for (; g < to; g++) {
       gone[g].classList.add('pgone');
@@ -62,13 +65,15 @@ function pair(gone: Element[], fresh: Element[], parent: Element, next: Element 
       continue;
     }
     drop(k, e);
-    edit(gone[g++], e, n);
+    markEdited(gone[g++], e, n);
   }
   drop(gone.length, next);
 }
 
-function edit(o: Element, e: Element, n: Changes) {
-  if (/^[UO]L$/.test(e.tagName)) return kids(o, e, n); // only the items that changed
+/** Mark an edited block: the changed words when it's mostly the same, else the old block struck through above the
+ *  new. */
+function markEdited(o: Element, e: Element, n: Changes) {
+  if (/^[UO]L$/.test(e.tagName)) return markChildren(o, e, n); // only the items that changed
   n.edited++;
   if (!/^(PRE|TABLE)$/.test(e.tagName) && words(e, o.textContent ?? '')) return;
   o.classList.add('pgone');
@@ -79,6 +84,7 @@ function edit(o: Element, e: Element, n: Changes) {
 /** Marks the changed words in `el`, unless most of it changed (then the old and new blocks read better). */
 function words(el: Element, was: string): boolean {
   const parts = diffWordsWithSpace(was, el.textContent ?? ''); // spaces as tokens, so offsets add up
+  /** How many characters changed (`add`), or stayed the same. */
   const size = (add: boolean) =>
     parts
       .filter(p => (add ? p.added || p.removed : !p.added && !p.removed))

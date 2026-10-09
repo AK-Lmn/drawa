@@ -12,7 +12,9 @@ import { onInkPlaced, type Stroke, strokes } from '../../canvas/ink/stroke';
 import { uuid } from '../../lib/dom';
 import { flash, groups, inside, members, styleRect } from './group';
 
+/** The ids of a group's drawings. */
 export const inkIds = (g: HTMLElement): string[] => JSON.parse(g.dataset.strokes || '[]');
+/** Set the ids of a group's drawings. */
 export function setInkIds(g: HTMLElement, list: string[]) {
   if (list.length) g.dataset.strokes = JSON.stringify(list);
   else delete g.dataset.strokes;
@@ -35,6 +37,7 @@ export function joinInk(list: Stroke[], g: HTMLElement, gs: HTMLElement[]) {
   for (const other of gs) if (other !== g) leaveInk(other, add);
   setInkIds(g, [...new Set([...inkIds(g), ...add])]);
 }
+/** Take drawings out of a group. */
 export const leaveInk = (g: HTMLElement, ids: string[]) =>
   setInkIds(
     g,

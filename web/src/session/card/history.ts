@@ -16,6 +16,7 @@ import { pinToBottom, renderCard } from './render';
 import { cards, focus, newSession } from './session';
 import type { Session } from './types';
 
+/** List this folder's saved conversations in the History panel (the open ones marked). */
 export async function loadSessions() {
   let list: SessionInfo[];
   try {
@@ -65,6 +66,7 @@ function earlier(log: HTMLElement, older: HTMLElement) {
 export const sessionPath = (id: string, backend = 'claude') =>
   `session?id=${q(id)}${backend === 'claude' ? '' : `&backend=${q(backend)}`}`;
 
+/** Open a saved conversation in a card (or bring its open card into view), replaying its transcript. */
 export async function resume(
   s: { id: string; title: string; cid?: string; backend?: string },
   at?: Rect,
@@ -145,6 +147,7 @@ async function fill(S: Session, fetched: Promise<unknown>, restored: boolean, ke
   const live = S.log,
     older = make('div') as HTMLDivElement;
   try {
+    /** Is this message the main conversation's (not a sub-agent's)? */
     // long sessions: only the newest messages go into the page; older ones are still replayed (so the Files
     // window, terminal and plans are complete) but built off-page, and shown when you ask for them
     // sub-agents' messages (their ids, what they did) go to their windows, not the log: counted apart

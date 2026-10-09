@@ -16,6 +16,7 @@ import { isDark, onTheme } from '../lib/theme';
 import { openZoom } from '../lib/zoom';
 
 let mermaid: Promise<Mermaid> | undefined; // big library: loaded on first diagram only
+/** Set Mermaid up: the theme, and labels drawn as SVG text. */
 // htmlLabels off: labels as SVG text, not HTML inside the SVG. Pictures of windows (canvas_read, plan feedback)
 // come out blank otherwise: HTML-in-SVG nested inside the snapshot's own HTML-in-SVG doesn't render in Chromium.
 const init = (m: Mermaid) =>
@@ -33,7 +34,8 @@ onTheme(() =>
   mermaid?.then(async m => {
     init(m);
     live.clear();
-    for (const n of items('diagram')) draw(n.querySelector<HTMLElement>('.dnode-b')!, n.dataset.src!).catch(() => {});
+    for (const n of items('diagram'))
+      drawDiagram(n.querySelector<HTMLElement>('.dnode-b')!, n.dataset.src!).catch(() => {});
     for (const d of document.querySelectorAll<HTMLElement>('.mermaid[data-src]')) {
       const old = d.querySelector(':scope > svg');
       if (!old) continue; // still being drawn: it picks up the new theme anyway
@@ -44,13 +46,15 @@ onTheme(() =>
   }),
 );
 
-function load() {
+/** Mermaid, loaded and set up on first use. */
+function loadMermaid() {
   return (mermaid ??= import('mermaid').then(({ default: m }) => {
     init(m);
     return m;
   }));
 }
 
+/** Turn the mermaid code blocks in rendered Markdown into diagrams, with a zoom button and a way to pin each. */
 async function renderDiagrams(el: HTMLElement) {
   const nodes = [...el.querySelectorAll('pre > code.language-mermaid')].map(code => {
     const d = make('div', 'mermaid', code.textContent);
@@ -60,6 +64,7 @@ async function renderDiagrams(el: HTMLElement) {
   });
   if (!nodes.length) return;
 
+  /** Show a diagram's source (and why it isn't drawn) in place of the diagram. */
   // Bad syntax, or the library failed to load: show the source (and why) instead of Mermaid's error graphic.
   const source = (d: HTMLElement, why = 'Mermaid could not load, showing the source.') => {
     const pre = make('pre');
@@ -67,7 +72,7 @@ async function renderDiagrams(el: HTMLElement) {
     d.replaceWith(make('p', 'mmd-err', why), pre);
   };
   try {
-    const m = await load(),
+    const m = await loadMermaid(),
       ok: HTMLElement[] = [];
     for (const d of nodes) {
       try {
@@ -86,7 +91,7 @@ async function renderDiagrams(el: HTMLElement) {
     for (const d of ok) {
       const tools = make('span', 'dtools');
       tools.append(
-        iconButton(ICON.pin, 'Pin to canvas', () => pin(d.dataset.src!, origin(d), spotFor(d))),
+        iconButton(ICON.pin, 'Pin to canvas', () => diagramNode(d.dataset.src!, origin(d), spotFor(d))),
         iconButton(ICON.expand, 'Enlarge', () => openZoom(d.querySelector('svg')!)),
       );
       d.append(tools);
@@ -124,6 +129,7 @@ function parseError(e: unknown) {
   const where = [line && `line ${line}`, got && `unexpected ${got.toLowerCase()}`].filter(Boolean).join(', ');
   return `Diagram not drawn: Mermaid syntax error${where ? ` (${where})` : ''}. Source below.`;
 }
+/** A Mermaid error's text, without the pointer to the source below it. */
 const bareError = (e: unknown) => parseError(e).replace(' Source below.', '');
 
 /* ---------- while a reply streams ---------- */
@@ -132,6 +138,7 @@ const LIVE_MAX = 50; // streamed diagrams kept drawn; each frame re-renders the 
 
 // fence lines counted per reply so far, up to its last line break: each frame only reads the new text
 const fences = new WeakMap<HTMLElement, { at: number; n: number }>();
+/** Is this line a code fence (```)? */
 const isFence = (line: string) => /^\s*```/.test(line);
 
 /** Called on every streamed frame (after the markdown is re-rendered): diagrams whose code block is complete
@@ -153,7 +160,7 @@ export function liveDiagrams(el: HTMLElement, text: string) {
     } else if (svg === undefined) {
       if (live.size >= LIVE_MAX) live.delete(live.keys().next().value!); // the oldest
       live.set(src, null);
-      load()
+      loadMermaid()
         .then(async m => {
           if (!(await m.parse(src, { suppressErrors: true }))) return;
           live.set(src, (await m.render(`live-${Date.now()}-${++seq}`, src)).svg);
@@ -178,14 +185,15 @@ function pullOut(d: HTMLElement) {
     if (e.button !== 0 || (e.target as Element).closest('button')) return;
     const W = 440,
       H = 320; // the pointer holds the new node by its tab
-    dragOut(d, e, (x, y) => pin(d.dataset.src!, origin(d), { x, y, w: W, h: H }), { x: 140, y: 18 });
+    dragOut(d, e, (x, y) => diagramNode(d.dataset.src!, origin(d), { x, y, w: W, h: H }), { x: 140, y: 18 });
   });
   d.addEventListener('click', () => openZoom(d.querySelector('svg')!)); // a drag-out's closing click never gets here
 }
 
 let seq = 0;
-const draw = async (into: HTMLElement, src: string) => {
-  const { svg } = await (await load()).render(`pin-${Date.now()}-${++seq}`, src);
+/** Render Mermaid source into a box, as an SVG that fills it (with the drawing kept on it). */
+const drawDiagram = async (into: HTMLElement, src: string) => {
+  const { svg } = await (await loadMermaid()).render(`pin-${Date.now()}-${++seq}`, src);
   const t = document.createElement('template');
   t.innerHTML = svg;
   const el = t.content.querySelector('svg')!;
@@ -203,7 +211,8 @@ const draw = async (into: HTMLElement, src: string) => {
  *  Edit opens the source under the drawing; it redraws as you type and keeps the last good drawing on errors. */
 const setSource = new WeakMap<HTMLElement, (src: string) => Promise<void>>();
 
-export function pin(src: string, title: string, r: Rect, id: string = uuid(), draft?: string) {
+/** A diagram window on the canvas: the rendered diagram, and its source to edit. */
+export function diagramNode(src: string, title: string, r: Rect, id: string = uuid(), draft?: string) {
   const view = make('div', 'dnode-b'),
     ed = make('div', 'dnode-ed'),
     ta = make('textarea'),
@@ -241,8 +250,8 @@ export function pin(src: string, title: string, r: Rect, id: string = uuid(), dr
   }; // click the drawing: full view, where it zooms and pans
   // a new source from outside (Claude's canvas_update): checked first, so a bad one leaves the drawing as it was
   setSource.set(node, async text => {
-    await (await load()).parse(text);
-    await draw(view, text);
+    await (await loadMermaid()).parse(text);
+    await drawDiagram(view, text);
     node.dataset.src = ta.value = text;
     status.textContent = '';
     status.className = 'dnode-st';
@@ -256,8 +265,8 @@ export function pin(src: string, title: string, r: Rect, id: string = uuid(), dr
       const mine = ++n,
         text = ta.value;
       try {
-        await (await load()).parse(text);
-        await draw(view, text);
+        await (await loadMermaid()).parse(text);
+        await drawDiagram(view, text);
         if (mine !== n) return; // a newer keystroke already won
         node.dataset.src = text;
         delete node.dataset.state;
@@ -276,7 +285,7 @@ export function pin(src: string, title: string, r: Rect, id: string = uuid(), dr
   });
   ta.addEventListener('keydown', e => e.stopPropagation()); // typing here isn't a canvas shortcut
 
-  draw(view, src).catch(e => {
+  drawDiagram(view, src).catch(e => {
     view.prepend(make('p', 'mmd-err', parseError(e)));
     ed.hidden = false;
     edit.classList.add('on');
@@ -309,6 +318,7 @@ function download(node: HTMLElement) {
   );
 }
 
+/** The diagram source being edited and not yet drawn, if any (saved so a reload keeps the draft). */
 const draftOf = (n: HTMLElement) =>
   n.dataset.state === 'editing' ? n.querySelector<HTMLTextAreaElement>('.dnode-ed textarea')!.value : undefined;
 persist(
@@ -322,18 +332,18 @@ persist(
       draft: draftOf(n),
     })),
   (list: (Rect & { src: string; title: string; id?: string; draft?: string })[]) =>
-    each(list, d => pin(d.src, d.title, d, d.id, d.draft)),
+    each(list, d => diagramNode(d.src, d.title, d, d.id, d.draft)),
 );
 creatable('diagram', {
   size: () => ({ w: 440, h: 320 }),
   create: async (a, r) => {
     const src = String(a.text);
     try {
-      await (await load()).parse(src);
+      await (await loadMermaid()).parse(src);
     } catch (e) {
       throw new Error(`${bareError(e)} Fix the Mermaid and try again.`);
     }
-    return pin(src, String(a.title ?? 'Diagram'), r);
+    return diagramNode(src, String(a.title ?? 'Diagram'), r);
   },
   update: async (el, a) => {
     try {

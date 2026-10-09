@@ -6,6 +6,7 @@ import { command } from './keys';
 
 const panel = $('#settings'),
   btn = $('#btn-settings');
+/** Open or close the Settings panel. */
 const setOpen = (open: boolean) => {
   panel.hidden = !open;
   btn.setAttribute('aria-expanded', String(open));

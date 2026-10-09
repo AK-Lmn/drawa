@@ -8,8 +8,10 @@ import { focus } from './session';
 import type { Session } from './types';
 
 let unread = 0;
-const away = () => document.hidden || !document.hasFocus();
-const title = () => {
+/** Are you looking elsewhere (another tab or app)? */
+const isAway = () => document.hidden || !document.hasFocus();
+/** Show the unread count in the tab's title. */
+const updateTitle = () => {
   document.title = `${unread ? `(${unread}) ` : ''}${project.name} · Drawa`;
 };
 
@@ -17,6 +19,7 @@ const title = () => {
  *  prompt (neither allow nor block) leaves permission 'default', so a plain permission check would ask again on
  *  every message; the localStorage flag remembers we already asked. */
 const ASKED_KEY = 'drawa:notify:asked';
+/** Ask for notification permission once ever, from a user action (the browser forgets a dismissed prompt). */
 export function askPermission() {
   if (!('Notification' in window) || Notification.permission !== 'default') return;
   try {
@@ -32,11 +35,13 @@ export function askPermission() {
 // the card's role=log). Cleared first: the same words twice in a row wouldn't be read again.
 const live = document.body.appendChild(make('div', 'sr-only'));
 live.setAttribute('aria-live', 'assertive');
+/** Read a message out to screen readers. */
 const announce = (text: string) => {
   live.textContent = '';
   setTimeout(() => (live.textContent = text), 50);
 };
 
+/** Tell you a card finished or needs you: a count in the tab title and a system notification while you're away. */
 export function notify(S: Session, why: 'done' | 'ask' | 'plan') {
   const head =
     why === 'done'
@@ -45,9 +50,9 @@ export function notify(S: Session, why: 'done' | 'ask' | 'plan') {
         ? 'Plan ready for review'
         : `${who(S.backend)} needs your approval`;
   if (why !== 'done') announce(`${head}: ${S.title}`);
-  if (!away()) return;
+  if (!isAway()) return;
   unread++;
-  title();
+  updateTitle();
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   const n = new Notification(head, { body: S.title, tag: S.cid + why, silent: why === 'done' });
   n.onclick = () => {
@@ -58,11 +63,12 @@ export function notify(S: Session, why: 'done' | 'ask' | 'plan') {
   };
 }
 
-const seen = () => {
-  if (unread && !away()) {
+/** You're back: the unread count clears. */
+const markSeen = () => {
+  if (unread && !isAway()) {
     unread = 0;
-    title();
+    updateTitle();
   }
 };
-addEventListener('focus', seen);
-document.addEventListener('visibilitychange', seen);
+addEventListener('focus', markSeen);
+document.addEventListener('visibilitychange', markSeen);

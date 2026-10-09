@@ -75,8 +75,10 @@ type GitReply = { ok?: boolean; out?: string; message?: string; error?: string; 
 export const gitPost = (body: object): Promise<GitReply> =>
   post('git', body).catch(e => ({ ok: false, out: (e as Error).message, error: (e as Error).message }));
 
+/** A repo's name: its folder's, or the project's for the project's own. */
 export const repoName = (dir: string) => dir.split('/').pop() || project.name;
 
+/** One repository's group in the Git window: its head line, file lists, commit box and buttons. */
 export function repoView(dir: string, repo: string, host: Host): RepoView {
   const el = make('section', 'ggroup'),
     line = make('div', 'ghl'),
@@ -104,7 +106,7 @@ export function repoView(dir: string, repo: string, host: Host): RepoView {
   head.onclick = () => {
     folds[dir] = !isOpen(v);
     changed();
-    fold(v);
+    syncFold(v);
     if (isOpen(v)) v.gh.wake();
   };
   line.onclick = e => {
@@ -127,26 +129,30 @@ export function repoView(dir: string, repo: string, host: Host): RepoView {
   return v;
 }
 
+/** Keep a repo's unsent commit message (saved with the layout); empty drops it. */
 function setDraft(dir: string, text: string) {
   if (text) drafts[dir] = text;
   else delete drafts[dir];
   changed();
 }
 
-export function say(v: RepoView, text: string, bad = false) {
+/** Show a git command's output (or error) under the repo's buttons. */
+export function showOutput(v: RepoView, text: string, bad = false) {
   v.out.textContent = text;
   v.out.classList.toggle('bad', bad);
 }
 
-const pending = (st?: GitState) => !!(st?.total || st?.ahead || st?.behind);
+/** Is there anything to do in the repo (changes, commits to push or pull)? Such a repo's group starts open. */
+const hasWork = (st?: GitState) => !!(st?.total || st?.ahead || st?.behind);
 /** Is the repo's group open? (Its lists and pull request are in view, when the window is.) */
-export const isOpen = (v: RepoView) => folds[v.dir] ?? pending(v.st);
-function fold(v: RepoView) {
+export const isOpen = (v: RepoView) => folds[v.dir] ?? hasWork(v.st);
+/** Make the group's head say whether it's open. */
+function syncFold(v: RepoView) {
   v.head.setAttribute('aria-expanded', String(isOpen(v)));
 }
 
 /** Draw the repo's state into its view: the group's head line, its lists, and its commit / push / pull buttons. */
-export function fill(v: RepoView, st: GitState, host: Host) {
+export function fillRepo(v: RepoView, st: GitState, host: Host) {
   v.st = st;
   const chev = make('span', 'gchev');
   chev.innerHTML = ICON.open;
@@ -176,7 +182,7 @@ export function fill(v: RepoView, st: GitState, host: Host) {
   v.head.title = st.repo
     ? `${v.dir || project.name}: ${st.total ? `${st.total} changed file${st.total === 1 ? '' : 's'}` : 'clean'}`
     : (st.error ?? '');
-  fold(v);
+  syncFold(v);
   v.gh.el.hidden = !st.repo; // pull request status means nothing without a repository
   if (!st.repo) {
     v.files.replaceChildren(make('p', 'none', st.error ?? 'Could not read this repository.'));
@@ -188,17 +194,19 @@ export function fill(v: RepoView, st: GitState, host: Host) {
   const staged = files.filter(f => f.x !== ' ' && f.x !== '?');
   const changedFiles = files.filter(f => f.y !== ' ' && f.x !== '?');
   const untracked = files.filter(f => f.x === '?');
+  /** One list of files (staged, changes, untracked) with its count and its all-at-once button. */
   const section = (title: string, list: GitFile[], isStaged: boolean, action: [string, () => void]) => {
     if (!list.length) return [];
     const h = make('div', 'gsec');
     h.append(make('b', '', title), make('span', 'n', String(list.length)), button(action[0], '', action[1]));
-    return [h, ...list.map(f => row(v, f, isStaged, host))];
+    return [h, ...list.map(f => fileRow(v, f, isStaged, host))];
   };
+  /** The files' paths. */
   const paths = (l: GitFile[]) => l.map(f => f.path);
   v.files.replaceChildren(
-    ...section('Staged', staged, true, ['Unstage all', () => op(v, host, 'unstage', paths(staged))]),
-    ...section('Changes', changedFiles, false, ['Stage all', () => op(v, host, 'stage', paths(changedFiles))]),
-    ...section('Untracked', untracked, false, ['Stage all', () => op(v, host, 'stage', paths(untracked))]),
+    ...section('Staged', staged, true, ['Unstage all', () => runOp(v, host, 'unstage', paths(staged))]),
+    ...section('Changes', changedFiles, false, ['Stage all', () => runOp(v, host, 'stage', paths(changedFiles))]),
+    ...section('Untracked', untracked, false, ['Stage all', () => runOp(v, host, 'stage', paths(untracked))]),
     ...(files.length ? [] : [make('p', 'none', 'Working tree clean.')]),
     ...((st.total ?? 0) > files.length
       ? [make('p', 'none', `…and ${st.total! - files.length} more changed files (the list stops at ${files.length}).`)]
@@ -219,14 +227,15 @@ export function fill(v: RepoView, st: GitState, host: Host) {
   );
   commitBtn.disabled = !staged.length;
   row2.append(writeBox);
-  if (st.behind) row2.append(button(`Pull ↓${st.behind}`, '', () => op(v, host, 'pull')));
+  if (st.behind) row2.append(button(`Pull ↓${st.behind}`, '', () => runOp(v, host, 'pull')));
   if (st.ahead || (!st.upstream && st.log?.length))
-    row2.append(button(st.ahead ? `Push ↑${st.ahead}` : 'Push', '', () => push(v, host)));
+    row2.append(button(st.ahead ? `Push ↑${st.ahead}` : 'Push', '', () => pushRepo(v, host)));
   row2.append(commitBtn);
   v.foot.querySelector('.row')?.remove();
   v.msg.after(row2);
 }
 
+/** "↑2 ↓1": commits to push and to pull. */
 export const syncText = (st: GitState) =>
   [st.ahead ? `↑${st.ahead}` : '', st.behind ? `↓${st.behind}` : ''].filter(Boolean).join(' ');
 
@@ -240,7 +249,8 @@ const STATUS: Record<string, [string, string]> = {
   '?': ['U', 'untracked'],
 };
 
-function row(v: RepoView, f: GitFile, isStaged: boolean, host: Host) {
+/** A changed file's row: its status, line counts and stage / unstage button; click it for its diff. */
+function fileRow(v: RepoView, f: GitFile, isStaged: boolean, host: Host) {
   const code = isStaged ? f.x : f.y === ' ' ? f.x : f.y;
   const [letter, word] = STATUS[code] ?? [code, 'changed'];
   const [a, d] = isStaged ? f.staged : f.unstaged;
@@ -267,7 +277,7 @@ function row(v: RepoView, f: GitFile, isStaged: boolean, host: Host) {
   const act = iconButton(
     isStaged ? '<svg viewBox="0 0 16 16"><path d="M3.5 8h9"/></svg>' : ICON.plus,
     isStaged ? 'Unstage' : 'Stage',
-    () => op(v, host, isStaged ? 'unstage' : 'stage', [f.path]),
+    () => runOp(v, host, isStaged ? 'unstage' : 'stage', [f.path]),
   );
   // a deleted file has nothing on disk to open; an untracked folder isn't a file. Paths are the project's: a nested
   // repo's open as they are
@@ -276,6 +286,7 @@ function row(v: RepoView, f: GitFile, isStaged: boolean, host: Host) {
   const opens = !folder && word !== 'deleted' && !!proj;
   r.append(name, stat, ...(opens ? [openFileButton(proj, () => wrap.querySelector('.diff'))] : []), act);
   wrap.append(r);
+  /** Show or hide the file's diff under its row. */
   const toggle = async () => {
     const open = wrap.querySelector('.diff');
     wrap.classList.toggle('open', !open);
@@ -297,7 +308,7 @@ function row(v: RepoView, f: GitFile, isStaged: boolean, host: Host) {
       wrap.classList.remove('open');
       name.setAttribute('aria-expanded', 'false');
       host.open.delete(key);
-      say(v, `Couldn't load the diff of ${f.path}: ${(e as Error).message}`, true);
+      showOutput(v, `Couldn't load the diff of ${f.path}: ${(e as Error).message}`, true);
     }
   };
   if (folder) return wrap;
@@ -306,6 +317,7 @@ function row(v: RepoView, f: GitFile, isStaged: boolean, host: Host) {
   return wrap;
 }
 
+/** The repo's recent commits; click one to see what it changed. */
 function commitsList(v: RepoView, log: NonNullable<GitState['log']>, host: Host) {
   const d = make('details', 'glog'),
     s = make('summary');
@@ -320,6 +332,7 @@ function commitsList(v: RepoView, log: NonNullable<GitState['log']>, host: Host)
       r.title = `${c.hash} · ${c.author} · ${c.when}. Click for what it changed.`;
       r.setAttribute('aria-expanded', 'false');
       wrap.append(r);
+      /** Show or hide a commit's changes under its row. */
       const toggle = async () => {
         const open = wrap.querySelector('.gshow');
         r.setAttribute('aria-expanded', String(!open));
@@ -337,7 +350,7 @@ function commitsList(v: RepoView, log: NonNullable<GitState['log']>, host: Host)
           box.remove();
           r.setAttribute('aria-expanded', 'false');
           host.open.delete(key);
-          say(v, `Couldn't load commit ${c.hash}: ${(e as Error).message}`, true);
+          showOutput(v, `Couldn't load commit ${c.hash}: ${(e as Error).message}`, true);
         }
       };
       r.onclick = toggle;
@@ -379,14 +392,16 @@ async function busy(v: RepoView, fn: () => Promise<void>) {
   }
 }
 
-const op = (v: RepoView, host: Host, o: string, paths?: string[]) =>
+/** Run a git operation (stage, unstage, pull…) on the repo, show its output, and redraw. */
+const runOp = (v: RepoView, host: Host, o: string, paths?: string[]) =>
   busy(v, async () => {
-    if (o === 'pull') say(v, 'Pulling…');
+    if (o === 'pull') showOutput(v, 'Pulling…');
     const r = await gitPost({ op: o, repo: v.dir, paths });
-    say(v, r.ok ? (o === 'pull' ? r.out || 'Up to date.' : '') : (r.out ?? 'Failed'), !r.ok);
+    showOutput(v, r.ok ? (o === 'pull' ? r.out || 'Up to date.' : '') : (r.out ?? 'Failed'), !r.ok);
     await host.refresh(); // the new buttons are drawn before another click counts
   });
 
+/** Commit what's staged with the typed message. */
 const commit = (v: RepoView, host: Host) =>
   busy(v, async () => {
     const message = v.msg.value.trim();
@@ -394,22 +409,23 @@ const commit = (v: RepoView, host: Host) =>
       files = st?.files ?? [];
     // a capped list can hide staged files; then the server's commit op says if there's nothing to commit
     if ((st?.total ?? 0) <= files.length && !files.some(f => f.x !== ' ' && f.x !== '?'))
-      return say(v, 'Nothing staged to commit: stage the files to include first.', true);
+      return showOutput(v, 'Nothing staged to commit: stage the files to include first.', true);
     if (!message) {
       v.msg.focus();
-      return say(v, `Write a commit message first (or let ${who(writer())} write one).`, true);
+      return showOutput(v, `Write a commit message first (or let ${who(writer())} write one).`, true);
     }
     const r = await gitPost({ op: 'commit', repo: v.dir, message });
     if (r.ok) {
       v.msg.value = '';
       setDraft(v.dir, '');
-      say(v, r.out?.split('\n')[0] ?? 'Committed.');
+      showOutput(v, r.out?.split('\n')[0] ?? 'Committed.');
       v.gh.refresh();
-    } else say(v, r.out ?? 'Commit failed', true);
+    } else showOutput(v, r.out ?? 'Commit failed', true);
     await host.refresh();
   });
 
-const push = (v: RepoView, host: Host) =>
+/** Push the branch, after asking: it publishes your commits. */
+const pushRepo = (v: RepoView, host: Host) =>
   busy(v, async () => {
     const where = v.dir ? ` of ${v.dir}` : '';
     if (
@@ -420,10 +436,10 @@ const push = (v: RepoView, host: Host) =>
       ))
     )
       return;
-    say(v, 'Pushing…');
+    showOutput(v, 'Pushing…');
     const r = await gitPost({ op: 'push', repo: v.dir });
     if (r.ok) v.gh.refresh();
-    say(v, r.ok ? r.out?.split('\n').pop() || 'Pushed.' : (r.out ?? 'Push failed'), !r.ok);
+    showOutput(v, r.ok ? r.out?.split('\n').pop() || 'Pushed.' : (r.out ?? 'Push failed'), !r.ok);
     await host.refresh();
   });
 
@@ -432,6 +448,7 @@ const push = (v: RepoView, host: Host) =>
 export function writeWith(run: (b: HTMLButtonElement, agent: string) => void, tip: (name: string) => string) {
   const box = make('span', 'writewith'),
     b = button('', 'ai', () => run(b, writer()));
+  /** Name the agent that writes commit messages on the Write button. */
   const label = () => {
     b.textContent = `Write with ${who(writer())}`;
     b.title = tip(who(writer()));
@@ -454,6 +471,7 @@ export function writeWith(run: (b: HTMLButtonElement, agent: string) => void, ti
   return { box, b };
 }
 
+/** Have an agent write a commit message from the staged changes, into the message box. */
 async function writeMessage(v: RepoView, b: HTMLButtonElement, agent: string) {
   b.disabled = true;
   const label = b.textContent;
@@ -466,8 +484,8 @@ async function writeMessage(v: RepoView, b: HTMLButtonElement, agent: string) {
     setDraft(v.dir, r.message);
     v.msg.style.height = 'auto';
     v.msg.style.height = `${Math.min(160, v.msg.scrollHeight)}px`;
-    say(v, '');
-  } else say(v, r.error ?? `${who(agent)} could not write a message.`, true);
+    showOutput(v, '');
+  } else showOutput(v, r.error ?? `${who(agent)} could not write a message.`, true);
 }
 
 /** A worktree's folder for messages: its path in the project, or the last two parts of one outside it. */

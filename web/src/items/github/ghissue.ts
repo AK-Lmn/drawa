@@ -4,16 +4,18 @@
 import { changed } from '../../canvas/core/view';
 import { ago, button, make, pressed, toast } from '../../lib/dom';
 import { enhanceMarked } from '../../lib/markdown';
-import { getIssue, ghGet, here, type Issue, type Label, publish, sendLabel, sendToClaude } from './gh';
-import { commentOn, conversation, ghLink, go, header, load, show, topBar, win, writeBox } from './github';
+import { getIssue, ghGet, type Issue, type Label, publish, sendLabel, sendToClaude, shownRepo } from './gh';
+import { commentOn, conversation, ghLink, goTo, header, loadItem, showView, topBar, win, writeBox } from './github';
 
+/** One issue in the GitHub window: its conversation, a comment box, close or reopen, labels and assignees. */
 export async function issueDetail(n: number) {
-  const i = await load(`issue #${n}`, () => getIssue(n));
+  const i = await loadItem(`issue #${n}`, () => getIssue(n));
   if (!i) return;
   const w = win!,
     acts = make('div', 'ghacts'),
     open = i.state === 'OPEN';
   const what = `issue #${n} "${i.title}"`;
+  /** Close or reopen the issue, after a confirm that says what gets published. */
   const setState = (action: string) => async () => {
     if (
       await publish(
@@ -24,7 +26,7 @@ export async function issueDetail(n: number) {
         `${action === 'close' ? 'Closed' : 'Reopened'} #${n}.`,
       )
     )
-      show();
+      showView();
   };
   acts.append(
     make('span', 'ghsend', `${sendLabel()}:`),
@@ -50,8 +52,9 @@ export async function issueDetail(n: number) {
 }
 
 const labelLists = new Map<string, Promise<Label[]>>(); // by repo
+/** The repo's labels, asked once per repo. */
 function repoLabels() {
-  const repo = here();
+  const repo = shownRepo();
   if (!labelLists.has(repo))
     labelLists.set(
       repo,
@@ -92,6 +95,7 @@ function labelPicker(on: string[]) {
   return { box, picked };
 }
 
+/** GitHub logins typed in a field ("@a, b c"), without their @. */
 const logins = (s: string) =>
   s
     .split(/[\s,]+/)
@@ -141,7 +145,7 @@ function editor(i: Issue, pane: HTMLElement) {
         'Issue updated.',
       )
     )
-      show();
+      showView();
   };
   pane.prepend(f);
   who.focus();
@@ -162,7 +166,7 @@ export function newIssue() {
   body.placeholder = 'Description (Markdown)';
   body.setAttribute('aria-label', 'Issue description');
   for (const x of [title, body]) x.addEventListener('keydown', e => e.stopPropagation());
-  const cancel = button('Cancel', '', () => go({}));
+  const cancel = button('Cancel', '', () => goTo({}));
   cancel.type = 'button';
   const create = button('Create issue', 'primary', () => f.requestSubmit());
   create.type = 'submit';
@@ -182,7 +186,7 @@ export function newIssue() {
     );
     if (!r) return;
     const n = Number(/\/issues\/(\d+)/.exec(r.out ?? '')?.[1]);
-    go(n ? { tab: 'issue', n } : { tab: 'issue' });
+    goTo(n ? { tab: 'issue', n } : { tab: 'issue' });
   };
   w.body.replaceChildren(topBar(), f);
   title.focus();

@@ -10,7 +10,7 @@ import { referable } from '../../canvas/core/refs';
 import { creatable } from '../../canvas/core/tools';
 import { changed, viewCenter } from '../../canvas/core/view';
 import { makeWindow, removeButton, winTitle } from '../../canvas/core/window';
-import { button, clip, copyButton, EDITABLE, ICON, keepOnScreen, make, perFrame, ping, uuid } from '../../lib/dom';
+import { button, copyButton, EDITABLE, ICON, keepOnScreen, make, perFrame, ping, truncate, uuid } from '../../lib/dom';
 import { highlighter } from '../../lib/markdown';
 import { each, persist } from '../../lib/store';
 import { tipText } from '../../lib/tooltip';
@@ -34,6 +34,7 @@ interface Source {
   lang?: string;
   host: HTMLElement | null;
 }
+/** What a snippet holds: code, a diff or command output. */
 // saved before types existed: a language meant code, otherwise it was command output
 const typeOf = (o: { type?: SnipType; lang?: string }): SnipType =>
   o.type ?? (o.lang !== undefined ? 'code' : 'output');
@@ -41,7 +42,7 @@ const MAX = 10_000; // characters kept per snippet (the whole layout shares loca
 
 /** The body's text: code goes in a <code>, highlighted in its language. */
 function fill(body: HTMLElement, text: string, type: SnipType, lang?: string) {
-  const t = clip(text, MAX);
+  const t = truncate(text, MAX);
   if (type !== 'code') {
     body.textContent = t;
     return;
@@ -54,6 +55,7 @@ function fill(body: HTMLElement, text: string, type: SnipType, lang?: string) {
     });
 }
 
+/** A snippet window: a piece of text pulled out onto the canvas, shown the way it was (code, a diff, output). */
 export function snippet(o: Snippet) {
   const id = o.id ?? uuid(),
     body = make('pre', 'xnode-b');
@@ -91,12 +93,14 @@ function sizeFor(text: string): { w: number; h: number } {
 
 /* ---------- where snippets come from ---------- */
 const host = (n: Element) => n.closest<HTMLElement>('.item');
+/** A text's first non-empty line, cut short: a snippet's title. */
 const firstLine = (t: string) =>
   t
     .split('\n')
     .find(l => l.trim())
     ?.trim()
     .slice(0, 48) ?? '';
+/** A code block's language, from its class. */
 const langOf = (code: Element | null) => /language-([\w+#-]+)/.exec(code?.className ?? '')?.[1] ?? '';
 
 /** A commands-window row or a shell block: its command (title) and the whole output. */
@@ -134,6 +138,7 @@ function codeSource(block: Element): Source {
 /** A diff's selected lines with their +/- back: the markers are drawn by CSS, so the selection's text lacks them.
  *  Walks only the selected rows; left as selected when the lines and rows don't line up. */
 function marked(diff: Element, range: Range, text: string) {
+  /** The diff's row a node is in. */
   const row = (n: Node) => {
     let e = n instanceof Element ? n : n.parentElement;
     while (e && e.parentElement !== diff) e = e.parentElement;
@@ -201,10 +206,11 @@ document.addEventListener('pointerdown', e => {
 document.addEventListener('click', e => {
   // (a drag's closing click is swallowed by dragOut)
   const btn = (e.target as Element).closest<HTMLElement>('.codeblock .pullbtn');
-  if (btn) pin(codeSource(btn.closest('.codeblock')!));
+  if (btn) pinSnippet(codeSource(btn.closest('.codeblock')!));
 });
 
-function pin(src: Source, mark?: ReturnType<typeof markOf>) {
+/** Pin a selection to the canvas as a snippet, beside where it came from, and mark it there. */
+function pinSnippet(src: Source, mark?: ReturnType<typeof markOf>) {
   const size = sizeFor(src.text);
   // right beside where it came from, in the nearest gap: nothing else moves or gets covered
   const h = src.host && onCanvas(src.host) ? rect(src.host) : null,
@@ -221,7 +227,7 @@ const pinBtn = document.body.appendChild(
   button('', 'pinsel', () => {
     if (!picked) return;
     const sel = getSelection();
-    pin(picked, sel?.rangeCount ? markOf(sel.getRangeAt(0)) : null);
+    pinSnippet(picked, sel?.rangeCount ? markOf(sel.getRangeAt(0)) : null);
     sel?.removeAllRanges();
   }),
 );
@@ -267,20 +273,21 @@ function placePin() {
       Math.min(Math.max(r.bottom, box.top), box.bottom - 40) + 6,
     );
 }
-const follow = perFrame(() => {
+/** Keep the pin button beside the selection as the page or canvas moves. */
+const followPin = perFrame(() => {
   if (picked) placePin();
 });
 // the canvas pans and zooms by transform (no scroll event): follow wheel, drags and any scroll
-addEventListener('scroll', follow, true);
-addEventListener('wheel', follow, { passive: true, capture: true });
+addEventListener('scroll', followPin, true);
+addEventListener('wheel', followPin, { passive: true, capture: true });
 addEventListener(
   'pointermove',
   e => {
-    if (e.buttons) follow();
+    if (e.buttons) followPin();
   },
   { passive: true },
 );
-addEventListener('resize', follow);
+addEventListener('resize', followPin);
 pinBtn.title = 'Click to pin beside it, or drag it onto the canvas';
 pinBtn.addEventListener('pointerdown', e => {
   e.preventDefault(); // keep the selection while clicking

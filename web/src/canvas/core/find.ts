@@ -8,7 +8,7 @@ import { $, make, ping, reducedMotion, revealIn } from '../../lib/dom';
 import { command, commands, MOD } from '../../lib/keys';
 import { enhanceMarked } from '../../lib/markdown';
 import { type CodeSymbol, findSymbols, symbolsOn } from '../../lib/symbols';
-import { front, hidden, items, onCanvas } from './items';
+import { bringToFront, hidden, items, onCanvas } from './items';
 import { centerOn } from './placement';
 import { kindName, refIcon, refStatus } from './refs';
 import { expand, focusInput, titleOf } from './window';
@@ -94,13 +94,15 @@ export const fileOpener = (open: typeof openFile, peek: typeof peekFile) => {
 // ponytail: kept unbounded until close (a few hundred files at most per open); an LRU if that grows.
 let peeked = '';
 const peeks = new Map<string, Promise<HTMLElement>>();
+/** A file's preview element for Ctrl+K, made once per file and line and kept for the session. */
 const peekOf = (path: string, line?: number) => {
   const key = line ? `${path}:${line}` : path;
   let v = peeks.get(key);
   if (!v) peeks.set(key, (v = peekFile!(path, line)));
   return v;
 };
-function peek() {
+/** Show the highlighted file's preview beside the list (wide while searching). */
+function peekSelected() {
   box.classList.toggle('peeking', !!peekFile && !!input.value.trim()); // wide while searching, so neither the highlight nor typing resizes it
   const h = hits[sel],
     path = h?.path ?? '',
@@ -129,6 +131,8 @@ let found: Hit[] = [],
   typing = 0,
   pending = 0,
   pickFirst = false;
+/** Ask the server for files (and code symbols, when ctags is on) matching what's typed; results come in as they
+ *  answer. */
 function findFiles() {
   clearTimeout(typing);
   const q = (fileQ = input.value.trim());
@@ -137,14 +141,16 @@ function findFiles() {
   const withSyms = symbolsOn();
   pending = q && openFile ? (withSyms ? 2 : 1) : 0;
   if (!pending) return;
+  /** Take one answer in, unless the query changed or the finder closed meanwhile; picks the first hit when Enter was
+   *  pressed early. */
   const answer = (set: (got: Hit[]) => void, got: Hit[]) => {
     if (fileQ !== q || box.hidden) return;
     set(got);
     pending--;
-    draw();
+    drawHits();
     if (pickFirst && !pending) {
       pickFirst = false;
-      if (hits[0]) pick(hits[0]);
+      if (hits[0]) pickHit(hits[0]);
       return;
     }
     if (peekFile) got.slice(0, 3).forEach(h => peekOf(h.path!, h.line));
@@ -157,10 +163,12 @@ function findFiles() {
     if (withSyms) findSymbols(q).then(l => answer(h => (syms = h), l.map(symHit)));
   }, 120);
 }
+/** A project file as a Ctrl+K hit: its name, with its folder as the excerpt. */
 const fileHit = (path: string): Hit => {
   const cut = path.lastIndexOf('/');
   return { path, title: path.slice(cut + 1), kind: 'preview', excerpt: path.slice(0, cut + 1), score: 0 };
 };
+/** A code symbol as a Ctrl+K hit: its name, kind and where it's defined. */
 const symHit = (s: CodeSymbol): Hit => ({
   path: s.path,
   line: s.line,
@@ -186,8 +194,10 @@ function findCommands(q: string): Hit[] {
       score: 0,
     }));
 }
-const section = (h?: Hit) => (!h ? '' : h.run ? 'Commands' : h.line ? 'Symbols' : h.path ? 'Files' : 'Windows');
+/** The section heading a hit belongs under: Commands, Symbols, Files or Windows. */
+const sectionOf = (h?: Hit) => (!h ? '' : h.run ? 'Commands' : h.line ? 'Symbols' : h.path ? 'Files' : 'Windows');
 
+/** The windows whose title or text has every word typed, best match first (titles count more). */
 function search(q: string): Hit[] {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   const out: Hit[] = [];
@@ -227,7 +237,8 @@ function search(q: string): Hit[] {
   return words.length ? out.sort((a, b) => b.score - a.score) : out;
 }
 
-function draw() {
+/** Draw the hit list: commands, windows, files, then symbols, with section headings. */
+function drawHits() {
   hits = [...findCommands(input.value), ...search(input.value).slice(0, 50), ...found, ...syms];
   sel = Math.min(sel, Math.max(0, hits.length - 1));
   list.replaceChildren(
@@ -250,7 +261,7 @@ function draw() {
           );
           row.onmousedown = e => {
             e.preventDefault();
-            pick(h);
+            pickHit(h);
           };
           // mousemove, not mouseenter: a redraw puts a new row under a resting pointer, which would take the highlight back from the arrow keys
           row.onmousemove = () => {
@@ -262,11 +273,11 @@ function draw() {
             row.setAttribute('aria-selected', 'true');
             input.setAttribute('aria-activedescendant', row.id);
             sel = i;
-            peek();
+            peekSelected();
           };
           // a header where a section starts: commands, then windows (unnamed when first), then files, then symbols
-          const sec = section(h);
-          if (sec === section(hits[i - 1]) || (sec === 'Windows' && !i)) return [row];
+          const sec = sectionOf(h);
+          if (sec === sectionOf(hits[i - 1]) || (sec === 'Windows' && !i)) return [row];
           const head = make('p', 'finder-sec', sec);
           head.setAttribute('role', 'presentation');
           return [head, row];
@@ -276,12 +287,13 @@ function draw() {
   if (hits.length) input.setAttribute('aria-activedescendant', `finder-${sel}`);
   else input.removeAttribute('aria-activedescendant');
   list.querySelector('.on')?.scrollIntoView({ block: 'nearest' });
-  peek();
+  peekSelected();
 }
 
-const pick = (h: Hit) => {
+/** Act on a hit: run a command, or bring its window into view (opening a file or symbol first). */
+const pickHit = (h: Hit) => {
   if (h.run) {
-    close(false);
+    closeFinder(false);
     h.run();
     return;
   }
@@ -299,12 +311,12 @@ export function openFileAt(path: string, line?: number, edit = false) {
 
 /** Fly to a window: expand it if collapsed, bring it forward, and put the cursor in it when it takes typing. */
 function go(el: HTMLElement) {
-  close(false);
+  closeFinder(false);
   expand(el);
   if (!onCanvas(el))
     el.scrollIntoView({ block: 'nearest', behavior: reducedMotion() ? 'auto' : 'smooth' }); // pinned (or in full view): already on screen
   else {
-    front(el);
+    bringToFront(el);
     centerOn(el);
   }
   setTimeout(() => ping(el), 300); // after the glide
@@ -312,6 +324,7 @@ function go(el: HTMLElement) {
 }
 
 let from: HTMLElement | null = null; // where focus was before the finder opened: it goes back there unless something is picked
+/** Open Ctrl+K: an empty query lists every window and command. */
 export function openFinder() {
   if (box.hidden) from = document.activeElement as HTMLElement | null;
   box.hidden = false;
@@ -319,10 +332,11 @@ export function openFinder() {
   input.placeholder = symbolsOn() ? 'Find a window, file, symbol or command' : 'Find a window, file or command';
   sel = 0;
   build();
-  draw();
+  drawHits();
   input.focus();
 }
-function close(restore = true) {
+/** Close Ctrl+K; `restore` hands focus back to where it was. */
+function closeFinder(restore = true) {
   const back = from;
   from = null; // first: hiding the focused input blurs it, which calls close again
   box.hidden = true;
@@ -342,7 +356,7 @@ input.addEventListener('input', () => {
   sel = 0;
   pickFirst = false;
   findFiles();
-  draw();
+  drawHits();
 });
 input.addEventListener('keydown', e => {
   e.stopPropagation(); // typing here isn't a canvas shortcut
@@ -351,18 +365,18 @@ input.addEventListener('keydown', e => {
   if (down || up) {
     e.preventDefault();
     sel = (sel + (down ? 1 : hits.length - 1)) % Math.max(1, hits.length);
-    draw();
+    drawHits();
   } else if (e.key === 'Enter' && !e.isComposing) {
     e.preventDefault();
-    if (hits[sel]) pick(hits[sel]);
+    if (hits[sel]) pickHit(hits[sel]);
     else if (pending) pickFirst = true;
   } else if (e.key === 'Escape') {
     e.preventDefault();
-    close();
+    closeFinder();
   }
 });
 // rows keep focus in the input (mousedown is prevented), so this is a real blur; focus that went somewhere stays there
-input.onblur = e => close(!e.relatedTarget);
+input.onblur = e => closeFinder(!e.relatedTarget);
 // Ctrl/Cmd+K from anywhere, even while typing in a card
 addEventListener(
   'keydown',
@@ -370,7 +384,7 @@ addEventListener(
     if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'k') return;
     if (document.querySelector('dialog[open]')) return; // a modal (or the whiteboard editor, whose own Ctrl+K it is) has the keyboard
     e.preventDefault();
-    box.hidden ? openFinder() : close();
+    box.hidden ? openFinder() : closeFinder();
   },
   true,
 );

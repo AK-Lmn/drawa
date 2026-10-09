@@ -3,15 +3,17 @@
 // running process silently; the CLI can't change effort on a running process, so the server starts a new one
 // (resuming the conversation) once it's idle (live.Start).
 
-import { meta as agentMeta, getPref, metaNow, noEffort, setPref, title } from '../../lib/agents';
+import { agentMeta, getPref, metaNow, noEffort, setPref, title } from '../../lib/agents';
 import { make } from '../../lib/dom';
 import { saveSoon } from '../../lib/store';
 import { cards, meta } from './session';
 import type { Session } from './types';
 
+/** The models a card's agent offers. */
 // Claude Code's models come with its other account-wide info (meta, main.ts); another agent's from lib/agents.ts
 const modelsOf = (S: Session) => (S.backend === 'claude' ? meta.models : metaNow(S.backend).models);
 
+/** Fill a card's model picker from its agent's models, keeping the card's choice. */
 function fillModel(S: Session, sel: HTMLSelectElement) {
   const models = modelsOf(S);
   if (!models.length) return; // not in yet: keep the placeholder (and the card's choice, if restored)
@@ -28,11 +30,14 @@ function fillModel(S: Session, sel: HTMLSelectElement) {
   if (S.effortSel) fillEffort(S, S.effortSel);
 }
 
+/** The model last picked for this agent (this browser). */
 // The last model (per agent: model names don't carry over) and effort you picked: new cards start with them (this browser)
 export const lastModel = (backend: string) => getPref(`drawa:model:${backend}`);
+/** Where the effort picked for an agent is remembered. */
 // not Auto: it's the /effort command's, not a level Claude can start at (config.Efforts), so a new card couldn't send
 // Claude keeps the old key, so existing users keep their choice
 const effortKey = (backend: string) => (backend === 'claude' ? 'drawa:effort' : `drawa:effort:${backend}`);
+/** The effort last picked for this agent (this browser), when it's one the agent offers. */
 export const lastEffort = (backend: string) => {
   const e = getPref(effortKey(backend));
   return backend !== 'claude' || (e !== 'auto' && EFFORTS.some(([v]) => v === e)) ? e : '';
@@ -120,8 +125,10 @@ export function effortNote(S: Session) {
 }
 
 const LABELS: Record<string, string> = { xhigh: 'Extra high', minimal: 'Minimal' };
-const label = (e: string) => LABELS[e] ?? e.charAt(0).toUpperCase() + e.slice(1);
+/** An effort level as the picker shows it ("High", "Max"). */
+const effortLabel = (e: string) => LABELS[e] ?? e.charAt(0).toUpperCase() + e.slice(1);
 
+/** The effort levels to offer for a card's model. */
 // Claude's levels are fixed; another agent's come per model from its meta. "Default model" ('') uses the agent's
 // Default entry ('' from other agents, 'default' from Claude) when it lists one; with no levels to offer, the picker hides.
 function effortsOf(S: Session): [string, string, string][] {
@@ -132,7 +139,7 @@ function effortsOf(S: Session): [string, string, string][] {
   if (!levels.length) return [];
   return [
     ['', 'Default effort', `${title(S.backend)}'s own default effort for the model`],
-    ...levels.map(e => [e, label(e), ''] as [string, string, string]),
+    ...levels.map(e => [e, effortLabel(e), ''] as [string, string, string]),
   ];
 }
 
@@ -191,7 +198,8 @@ export function infoBadge(S: Session) {
   return el;
 }
 
-function clock(unixSeconds: number) {
+/** A reset time as a clock time, with the date when it isn't today. */
+function clockTime(unixSeconds: number) {
   const d = new Date(unixSeconds * 1000),
     time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   return d.toDateString() === new Date().toDateString()
@@ -209,7 +217,8 @@ function countdown(unixSeconds: number) {
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
 }
 
-function ring(
+/** Draw a usage-window ring: how much of the window is used, and when it resets (in its tooltip). */
+function drawRing(
   el: HTMLElement | undefined,
   pctEl: HTMLElement | undefined,
   util: number | undefined,
@@ -226,7 +235,7 @@ function ring(
   const pct = Math.round(util * 100);
   el.style.setProperty('--p', String(pct));
   pctEl.textContent = `${pct}%`;
-  const title = `${label}: ${pct}% used, resets in ${countdown(resetAt)} (${clock(resetAt)}).`;
+  const title = `${label}: ${pct}% used, resets in ${countdown(resetAt)} (${clockTime(resetAt)}).`;
   el.title = pctEl.title = title;
 }
 
@@ -258,6 +267,7 @@ export function seedInfo(S: Session) {
   renderInfo(S);
 }
 
+/** Draw a card's status line under its message box: tools loaded, context used, and the usage rings. */
 export function renderInfo(S: Session) {
   const el = S.infoEl;
   if (!el) return;
@@ -275,8 +285,8 @@ export function renderInfo(S: Session) {
     (S.ctx.used
       ? `Context: ${S.ctx.used.toLocaleString()} of ${S.ctx.max.toLocaleString()} tokens used (${pct}%).`
       : '');
-  ring(S.ring5h, S.ring5hPct, S.usageUtil, S.usageResetAt, '5-hour usage limit');
-  ring(S.ring7d, S.ring7dPct, S.weeklyUtil, S.weeklyResetAt, 'Weekly usage limit');
+  drawRing(S.ring5h, S.ring5hPct, S.usageUtil, S.usageResetAt, '5-hour usage limit');
+  drawRing(S.ring7d, S.ring7dPct, S.weeklyUtil, S.weeklyResetAt, 'Weekly usage limit');
 }
 
 // the countdowns go stale between turns: nudge them back into shape once a minute, for any card showing one

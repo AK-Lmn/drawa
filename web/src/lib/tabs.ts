@@ -12,13 +12,15 @@ let owner = !navigator.locks,
 const listeners: ((on: boolean) => void)[] = [];
 /** `f(on)` runs when this tab becomes the owner (on) or another tab takes over. */
 export const onOwner = (f: (on: boolean) => void) => listeners.push(f);
-export const owns = () => owner;
+/** Is this the tab that owns the server (streams and saves)? */
+export const ownsServer = () => owner;
 /** Whether this tab may save the layout. */
 export const saving = () => owner && !stale;
 
 const use = button('Use here', '', () => (stale ? location.reload() : claim(true)));
 const away = notice('', use);
-function say() {
+/** Show or hide the "open in another tab" notice to match this tab's state. */
+function showNotice() {
   away.hidden = owner && !stale;
   away.firstChild!.textContent = stale
     ? 'The canvas was changed in another tab. Reload to pick that up: changes here aren’t saved.'
@@ -26,12 +28,14 @@ function say() {
   use.textContent = stale ? 'Reload' : 'Use here';
 }
 
-function set(on: boolean) {
+/** This tab gained or lost the server: update the notice and tell the listeners. */
+function setOwner(on: boolean) {
   owner = on;
-  say();
+  showNotice();
   listeners.forEach(f => f(on));
 }
 
+/** Ask for the server's lock (the events stream); `steal` takes it from the tab that has it. */
 function claim(steal = false) {
   if (owner || (waiting && !steal)) return;
   if (!steal) waiting = true;
@@ -40,12 +44,12 @@ function claim(steal = false) {
       if (!steal) waiting = false;
       if (stale)
         location.reload(); // (see the top) the reloaded page takes over again, with the saved canvas
-      else set(true);
+      else setOwner(true);
       return new Promise<never>(() => {}); // held until the tab closes, or another tab takes it
     })
     .catch(() => {
       // another tab took over: queue to get it back when that tab closes
-      set(false);
+      setOwner(false);
       claim();
     });
 }
@@ -54,7 +58,7 @@ function claim(steal = false) {
 export function markStale() {
   if (stale) return;
   stale = true;
-  say();
+  showNotice();
 }
 
 /** Before a send: replies go to the owner, so sending from here takes over first, or says why it can't. */
@@ -65,7 +69,7 @@ export function takeOver() {
   claim(true);
 }
 
-say();
+showNotice();
 if (!owner) claim(!document.hidden); // a new tab (drawa opens one per start) is the one you're looking at
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && !stale) claim(true);

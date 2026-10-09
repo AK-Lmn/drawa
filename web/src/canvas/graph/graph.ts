@@ -2,7 +2,7 @@
 // Files a session touches are rows in one Files window per session (grouped by folder), not one node each:
 // a session that reads 100 files is still one window and one edge. A file becomes its own canvas node only when
 // you open it from the file tree. The windows themselves are canvas/graph/sessionwins.ts's; this module draws the arrows.
-import { clip, make, ping } from '../../lib/dom';
+import { make, ping, truncate } from '../../lib/dom';
 import { each, persist } from '../../lib/store';
 import type { Change } from '../../panels/diff';
 import type { Session } from '../../session/card/types';
@@ -12,16 +12,16 @@ import {
   addRow,
   dropWindows,
   type FileInfo,
+  fileInfo,
   fileList,
-  info,
-  order,
-  paint,
+  paintFile,
   refreshInspector,
+  sortFileRow,
   termNode,
 } from './sessionwins';
 
 // what other modules have always imported from here
-export { files, pin, refreshSelection, savedPos } from './sessionwins';
+export { files, pinFile as pin, refreshSelection, savedPos } from './sessionwins';
 
 export type Act = 'read' | 'edit' | 'write' | 'run' | 'plan' | 'made' | 'agent' | 'ref';
 const RANK: Act[] = ['plan', 'write', 'edit', 'run', 'agent', 'made', 'read', 'ref']; // which action colors an edge that carries several
@@ -62,6 +62,7 @@ function edge(S: Session, target: HTMLElement): Edge {
   return e;
 }
 
+/** Color an edge by the strongest thing done along it (write over edit over read) and label it with the counts. */
 function paintEdge(e: Edge) {
   const act = RANK.find(a => e.counts[a]) ?? 'read';
   e.path.setAttribute('class', `edge ${act}${e.live ? ' live' : ''}`);
@@ -71,6 +72,7 @@ function paintEdge(e: Edge) {
     .join(' · ');
 }
 
+/** Does this edge move when the view pans or zooms (one end pinned or floating)? */
 // a pan or zoom moves only edges with a pinned or floating end (the rest are in world coordinates)
 const loose = (e: Edge) => !onCanvas(e.S.card) || !onCanvas(e.target);
 onChange(viewOnly => {
@@ -165,8 +167,8 @@ function measure(e: Edge): () => void {
 
 /* ---------- what chat.ts calls ---------- */
 /** Claude read / edited / wrote a file. */
-export function touch(S: Session, toolId: string, act: Act, path: string, chg?: Change) {
-  const f = info(path),
+export function touchedFile(S: Session, toolId: string, act: Act, path: string, chg?: Change) {
+  const f = fileInfo(path),
     l = fileList(S),
     e = edge(S, l.el);
   const row = l.rows.get(path) ?? addRow(l, f);
@@ -178,9 +180,9 @@ export function touch(S: Session, toolId: string, act: Act, path: string, chg?: 
     f.del += chg.del;
   }
   if (act !== 'read' && f.kind !== 'write') f.kind = act; // write outranks edit outranks read
-  paint(f);
+  paintFile(f);
   row.classList.add('live');
-  order(l, row);
+  sortFileRow(l, row);
   paintEdge(e);
   pending.set(toolId, { edge: e, file: f, row, act });
   redraw();
@@ -188,7 +190,7 @@ export function touch(S: Session, toolId: string, act: Act, path: string, chg?: 
 }
 
 /** Claude ran a shell command. */
-export function run(S: Session, toolId: string, cmd: string) {
+export function ranCommand(S: Session, toolId: string, cmd: string) {
   const t = termNode(S),
     e = edge(S, t.el);
   // one expandable row per command: summary = first line, body = full command + output (filled in by settle)
@@ -215,6 +217,7 @@ const status = (d: HTMLDetailsElement, s: string) => {
   d.classList.remove('live', 'ok', 'bad', 'stopped');
   d.classList.add(s);
 };
+/** A tool call finished: its edge stops showing it as running, and a command's row gets its output and result. */
 export function settle(toolId: string, ok: boolean, output?: string) {
   const p = pending.get(toolId);
   if (!p) return;
@@ -223,17 +226,17 @@ export function settle(toolId: string, ok: boolean, output?: string) {
   paintEdge(p.edge);
   if (p.cmd) {
     status(p.cmd, ok ? 'ok' : 'bad');
-    if (output) p.cmd.querySelector('pre')!.append(`\n\n${clip(output, 20_000)}`);
+    if (output) p.cmd.querySelector('pre')!.append(`\n\n${truncate(output, 20_000)}`);
   }
   p.row?.classList.remove('live');
   if (p.file && !ok && p.act !== 'read') {
     p.file.kind = 'fail';
-    paint(p.file);
+    paintFile(p.file);
   }
 }
 
 /** The session's request ended (done, stopped or errored): nothing on its edges is running any more. */
-export function quiet(S: Session) {
+export function requestEnded(S: Session) {
   for (const [id, p] of pending) {
     if (p.edge.S !== S) continue;
     pending.delete(id);
@@ -246,7 +249,7 @@ export function quiet(S: Session) {
 
 /** Card closed: drop its edges, commands and Files windows, and files nothing shows any more. */
 export function dropSession(S: Session) {
-  quiet(S);
+  requestEnded(S);
   for (const e of edges.get(S)?.values() ?? []) {
     e.path.remove();
     e.label.remove();
@@ -268,6 +271,7 @@ export function link(S: Session, el: HTMLElement, act: Act) {
 /* ---------- a session's own windows (Files, commands, plans, what its Claude made) fold with it ---------- */
 const owned = (e: Edge) =>
   !!(e.counts.made || e.counts.plan || e.counts.agent) || ['files', 'run'].includes(e.target.dataset.kind ?? '');
+/** A window's collapse button. */
 const minBtn = (el: HTMLElement) => el.querySelector<HTMLElement>(':scope > .win-h .minbtn');
 document.addEventListener('collapse', ev => {
   const S = [...edges.keys()].find(s => s.card === ev.target),

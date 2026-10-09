@@ -131,7 +131,7 @@ Rules for these registries:
 
 These are measured, not guessed. Reopening a 27MB transcript went from 7.6s to 0.5s, and streaming went from about 30fps to 60fps, by following them. Re-measure with a real large transcript after touching these paths.
 
-- **Never read layout inside a loop** (`scrollHeight`, `offsetWidth`, `getBoundingClientRect`, `getComputedStyle` for sizes). Bulk work such as replaying a transcript sets `S.replaying` and `bulk(true)` from `canvas/core/items.ts` (new windows get spots from one measurement): `put()`, `follow()` and `renderCard()` skip their layout reads, and one final pass settles everything. `quietPings(true)` does the same for attention flashes.
+- **Never read layout inside a loop** (`scrollHeight`, `offsetWidth`, `getBoundingClientRect`, `getComputedStyle` for sizes). Bulk work such as replaying a transcript sets `S.replaying` and `bulk(true)` from `canvas/core/items.ts` (new windows get spots from one measurement): `appendToLog()`, `follow()` and `renderCard()` skip their layout reads, and one final pass settles everything. `quietPings(true)` does the same for attention flashes.
 - **Streaming renders incrementally.** Complete markdown blocks are rendered once; only the unfinished tail re-renders each frame (`streamText` in `session/stream/stream.ts`). Don't go back to re-rendering the whole buffer.
 - **Animations must not force layout.** Use the Web Animations API (`el.animate`), as `ping()` does, not the remove-class/`offsetWidth`/add-class trick.
 - **No decorative glows or big blurred shadows** on canvas windows. They cost paint on every pan and zoom frame, and the user rejected them visually too. Show state with `--edge` and the tab's top line.

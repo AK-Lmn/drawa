@@ -6,7 +6,7 @@ import { persist } from '../../lib/store';
 import { redraw } from '../graph/graph';
 import { edgeGrip, track } from './drag';
 import { exitFull } from './fullview';
-import { byIds, front, holder, items, place, rect } from './items';
+import { bringToFront, byIds, holder, items, place, rect } from './items';
 import { centerOn } from './placement';
 import { changed, onChange, stage, toWorld, view, world } from './view';
 
@@ -22,6 +22,7 @@ edgeGrip(
   () => changed(),
 );
 
+/** Is this window pinned to the sidebar? */
 export const docked = (el: HTMLElement) => el.classList.contains('docked');
 
 /** Show the sidebar only when something is pinned, and tell the rest of the chrome how wide it is. */
@@ -37,6 +38,7 @@ function shown() {
   redraw(); // arrows to pinned windows end where they sit now
 }
 /** Up to the top of the screen, unless the sidebar would slide under the toolbar. */
+/** Move the sidebar down below the toolbar when they would overlap. */
 // ponytail: rechecked on pin changes and resizes only; a toolbar that grows by itself (a longer project name) isn't watched
 function clearBar() {
   if (dock.hidden) return;
@@ -51,7 +53,7 @@ onChange(viewOnly => {
   if (viewOnly) return;
   const compact = !dock.querySelector(':scope > .win:not(.min)');
   if (!dock.hidden && (compact !== wasCompact || !dock.querySelector('.item'))) shown();
-  if (waiting && performance.now() - tried > 1000) adopt();
+  if (waiting && performance.now() - tried > 1000) restoreFloats();
 });
 
 /** Pin a window to the sidebar, or put a pinned one back on the canvas. */
@@ -141,8 +143,10 @@ const sync = syncPin;
 /* ---------- floating: stuck to the screen wherever you put it ---------- */
 // in the stage (above the canvas, under full view and the pen's layer, so you can draw on it too)
 const floats = holder(stage.insertBefore(make('div', 'floats'), $('.fullview') ?? $('#ink-capture')));
+/** Is this window floating over the canvas (pinned to the screen)? */
 export const floating = (el: HTMLElement) => el.classList.contains('floating');
-const setAt = (el: HTMLElement, x: number, y: number) => {
+/** Put a floating window at screen point (x, y), kept on screen with its tab clear of the toolbar. */
+const floatAt = (el: HTMLElement, x: number, y: number) => {
   // a tab stays reachable: below the toolbar only where the window would slide under it, not across the whole width
   const nx = Math.min(Math.max(0, x), innerWidth - 120),
     bar = $('#bar')?.getBoundingClientRect();
@@ -166,9 +170,9 @@ export function toggleFloat(el: HTMLElement) {
       shown();
     }
     el.classList.add('floating');
-    setAt(el, b.left, b.top);
+    floatAt(el, b.left, b.top);
     floats.append(el);
-    raise(el);
+    raiseFloat(el);
   }
   sync(el);
   redraw();
@@ -178,19 +182,21 @@ export function toggleFloat(el: HTMLElement) {
 /** Back on the canvas, on top; the camera goes to it only if its spot is off screen (a window you just unpinned
  *  from next to where it belongs shouldn't send the view flying). */
 function bringBack(el: HTMLElement) {
-  front(el);
+  bringToFront(el);
   const r = rect(el),
     x = (r.x + r.w / 2) * view.k + view.x,
     y = (r.y + r.h / 2) * view.k + view.y;
   if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) centerOn(el);
 }
+/** Put a floating window back on the canvas, where it was. */
 function unfloat(el: HTMLElement) {
   el.classList.remove('floating');
   world.append(el);
   sync(el);
 }
 let zf = 0;
-const raise = (el: HTMLElement) => {
+/** Bring a floating window above the other floating ones. */
+const raiseFloat = (el: HTMLElement) => {
   el.style.setProperty('--fz', String(++zf));
 };
 
@@ -199,7 +205,7 @@ floats.addEventListener('pointerdown', e => {
   const t = e.target as Element,
     el = t.closest<HTMLElement>('.floating');
   if (!el) return;
-  raise(el);
+  raiseFloat(el);
   if (e.button !== 0 || !t.closest('.win-h') || t.closest('button, [contenteditable="plaintext-only"]')) return;
   const sx = parseFloat(el.style.getPropertyValue('--fx')),
     sy = parseFloat(el.style.getPropertyValue('--fy'));
@@ -208,7 +214,7 @@ floats.addEventListener('pointerdown', e => {
     el.querySelector<HTMLElement>('.win-h')!,
     e as PointerEvent,
     (dx, dy) => {
-      setAt(el, sx + dx, sy + dy);
+      floatAt(el, sx + dx, sy + dy);
       redraw();
     },
     () => {
@@ -222,7 +228,7 @@ floats.addEventListener('pointerdown', e => {
 // a smaller window (a phone turned, a smaller screen): keep every floating window's tab reachable
 addEventListener('resize', () => {
   for (const el of floats.querySelectorAll<HTMLElement>(':scope > .floating'))
-    setAt(el, parseFloat(el.style.getPropertyValue('--fx')), parseFloat(el.style.getPropertyValue('--fy')));
+    floatAt(el, parseFloat(el.style.getPropertyValue('--fx')), parseFloat(el.style.getPropertyValue('--fy')));
 });
 
 type Float = { id: string; x: number; y: number };
@@ -232,16 +238,17 @@ let waitFloat: Float[] = [],
   waitDock: string[] = [],
   waiting = false,
   tried = 0;
-function adopt() {
+/** Float the saved floating windows that exist now; the rest wait until they show up. */
+function restoreFloats() {
   tried = performance.now();
   const ids = byIds();
   waitFloat = waitFloat.filter(f => {
     const el = ids.get(f.id);
     if (el && !floating(el)) {
       el.classList.add('floating');
-      setAt(el, f.x, f.y);
+      floatAt(el, f.x, f.y);
       floats.append(el);
-      raise(el);
+      raiseFloat(el);
       sync(el);
     }
     return !el;
@@ -272,7 +279,7 @@ persist(
   ],
   (list: Float[]) => {
     waitFloat = list;
-    adopt();
+    restoreFloats();
   },
   2,
 );
@@ -292,7 +299,7 @@ persist(
   (v: { ids: string[]; w?: string }) => {
     if (v.w) dock.style.width = v.w;
     waitDock = v.ids ?? [];
-    adopt();
+    restoreFloats();
   },
   2,
 ); // every kind has an id that's the same after a reload (commands, Files and plans too), so all of them stay pinned

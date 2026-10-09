@@ -78,12 +78,16 @@ const yanked = StateField.define<DecorationSet>({
 const owners = new WeakMap<EditorView, { o: Opts; dirty(): boolean }>();
 let vimMod: Promise<typeof import('@replit/codemirror-vim')> | undefined;
 type VimCM = { cm6: EditorView; openNotification(n: Node, o: { bottom?: boolean; duration?: number }): void };
+/** Load Vim mode once and add Drawa's ex commands (:w, :q, :wq, :x) that save or close the file's editor. */
 function loadVim() {
   return (vimMod ??= import('@replit/codemirror-vim').then(m => {
     getCM = m.getCM;
+    /** The editor (and its options) a Vim command was typed in. */
     const of = (cm: { cm6: EditorView }) => owners.get(cm.cm6);
+    /** Close the editor (`force`: even with unsaved changes), once Vim has finished the command. */
     // quit after Vim has finished with the command: destroying the editor inside it breaks Vim's own cleanup
     const quit = (o: Opts | undefined, force: boolean) => setTimeout(() => o?.quit(force));
+    /** Vim's own refusal to quit with unsaved changes (E37), shown in the editor's status line. */
     const refuse = (cm: VimCM) =>
       cm.openNotification(
         Object.assign(document.createElement('span'), {
@@ -99,6 +103,7 @@ function loadVim() {
       if (ed?.dirty() && !force) refuse(cm as unknown as VimCM);
       else quit(ed?.o, true); // nothing to lose, or told to drop it: no Discard dialog
     });
+    /** :wq and :x: save, then close; a save that fails keeps the editor open. */
     const saveQuit = async (cm: { cm6: EditorView }) => {
       const ed = of(cm);
       if (await ed?.o.save()) quit(ed?.o, true);
@@ -278,11 +283,14 @@ function declaration(view: EditorView, at: number, local: boolean) {
     if (!COMMENT.test(tree.resolveInner(from + mt.index, 1).name)) return cm.posFromIndex(from + mt.index);
   return null;
 }
+/** Vim's handle on an editor, once Vim mode has loaded (null before). */
 let getCM: typeof import('@replit/codemirror-vim').getCM = () => null;
+/** The CodeMirror view holding focus, if any. */
 const activeView = () => {
   const ed = document.activeElement?.closest<HTMLElement>('.cm-editor');
   return ed ? EditorView.findFromDOM(ed) : null;
 };
+/** The extension in the editor's Vim slot, for the Vim setting. */
 // what fills the Vim slot: Vim itself, or without it the keys that leave a scratchpad (Esc is Vim's own when it's on)
 const vimExt = async (on: boolean, o: Opts): Promise<Extension> =>
   on
@@ -299,6 +307,8 @@ const vimExt = async (on: boolean, o: Opts): Promise<Extension> =>
         ])
       : [];
 
+/** A CodeMirror editor for `o.text` in `parent`: highlighted by the file's language, with Vim motions when the
+ *  setting is on. */
 export async function codeEditor(parent: HTMLElement, o: Opts): Promise<Editor> {
   const lang = LanguageDescription.matchFilename(languages, o.path),
     vimSlot = new Compartment();
@@ -367,6 +377,7 @@ export async function codeEditor(parent: HTMLElement, o: Opts): Promise<Editor> 
   let saved: Text = view.state.doc,
     gone = false,
     vimAsked = o.vim;
+  /** Has the text changed since it was opened or last saved? */
   const dirty = () => !view.state.doc.eq(saved);
   // a CRLF file stays CRLF, pasted lines included: the editor works in \n and every line gets \r\n back on the way
   // out (the server only opens files with one kind of line ending, so this gives back exactly what was read)
