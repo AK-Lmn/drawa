@@ -2,121 +2,152 @@
 // Two steps: Update has the server download, verify and swap in the new binary; then Restart now execs it (the page
 // reloads once the new version answers) or Restart later leaves it for the next time drawa starts. Not now asks
 // again in a day, Skip this version waits for the next release.
-import { api, post } from './api'
-import { $, make } from './dom'
+import { api, post } from './api';
+import { $, make } from './dom';
 
-interface Info { current: string; latest: string; url: string; available: boolean; installed?: string }
+interface Info {
+  current: string;
+  latest: string;
+  url: string;
+  available: boolean;
+  installed?: string;
+}
 
-const SKIP = 'drawa:update:skip', SNOOZE = 'drawa:update-snooze', DAY = 864e5, EVERY = 6 * 36e5
-const d = $<HTMLDialogElement>('#update')
-const title = d.querySelector('h2')!, text = d.querySelector('p')!
-const [from, to] = [d.querySelector('.ver i')!, d.querySelector('.ver b')!]
-const [, later, go] = d.querySelectorAll<HTMLButtonElement>('.row button')
-let info: Info, busy = false
+const SKIP = 'drawa:update:skip',
+  SNOOZE = 'drawa:update-snooze',
+  DAY = 864e5,
+  EVERY = 6 * 36e5;
+const d = $<HTMLDialogElement>('#update');
+const title = d.querySelector('h2')!,
+  text = d.querySelector('p')!;
+const [from, to] = [d.querySelector('.ver i')!, d.querySelector('.ver b')!];
+const [, later, go] = d.querySelectorAll<HTMLButtonElement>('.row button');
+let info: Info,
+  busy = false;
 
 function say(...parts: (Node | string)[]) {
-  text.replaceChildren(...parts)
-  text.hidden = !parts.length
+  text.replaceChildren(...parts);
+  text.hidden = !parts.length;
 }
 
 function lock(on: boolean) {
-  busy = on
-  for (const b of d.querySelectorAll('button')) b.disabled = on
+  busy = on;
+  for (const b of d.querySelectorAll('button')) b.disabled = on;
 }
 
-const plural = (n: number, one: string, many: string) => n > 1 ? many : one
+const plural = (n: number, one: string, many: string) => (n > 1 ? many : one);
 
 // The server's error is the detail (a Go error chain: URLs, dial errors); the sentence before it says what it means.
 function failed(e: unknown) {
-  lock(false)
-  go.textContent = 'Try again'
-  say(`The update didn’t install, and nothing was changed. Check your internet connection and try again, or run `,
-    make('code', '', 'drawa --update'), ' in a terminal.', make('small', 'why', `(${e instanceof Error ? e.message : e})`))
+  lock(false);
+  go.textContent = 'Try again';
+  say(
+    `The update didn’t install, and nothing was changed. Check your internet connection and try again, or run `,
+    make('code', '', 'drawa --update'),
+    ' in a terminal.',
+    make('small', 'why', `(${e instanceof Error ? e.message : e})`),
+  );
 }
 
-const mb = (n: number) => (n / 1e6).toFixed(1)
+const mb = (n: number) => (n / 1e6).toFixed(1);
 
 async function install() {
-  lock(true)
-  say(`Downloading ${info.latest}…`)
+  lock(true);
+  say(`Downloading ${info.latest}…`);
   // the POST answers only once it's installed; a release is ~20MB, so show how far a slow link has got meanwhile
   const poll = setInterval(async () => {
-    const p = await api<{ got: number; total: number }>('update/progress').catch(() => null)
-    if (busy && p?.total) say(`Downloading ${info.latest}… ${mb(p.got)} of ${mb(p.total)} MB`)
-  }, 500)
+    const p = await api<{ got: number; total: number }>('update/progress').catch(() => null);
+    if (busy && p?.total) say(`Downloading ${info.latest}… ${mb(p.got)} of ${mb(p.total)} MB`);
+  }, 500);
   try {
-    const r = await post('update', {}).finally(() => clearInterval(poll))
-    lock(false)
-    d.dataset.state = 'restart'
-    title.textContent = `${info.latest} is installed`
-    later.textContent = 'Restart later'
-    go.textContent = 'Restart now'
-    const n: number = r.working
-    say(n ? `${n} ${plural(n, 'session is', 'sessions are')} still working. Restarting stops ${plural(n, 'it', 'them')}; ` +
-      `${plural(n, 'it picks', 'they pick')} up again when you next message ${plural(n, 'it', 'them')}.`
-      : 'Restart Drawa to start using it, or it starts the next time you open Drawa.')
-  } catch (e) { failed(e) }
+    const r = await post('update', {}).finally(() => clearInterval(poll));
+    lock(false);
+    d.dataset.state = 'restart';
+    title.textContent = `${info.latest} is installed`;
+    later.textContent = 'Restart later';
+    go.textContent = 'Restart now';
+    const n: number = r.working;
+    say(
+      n
+        ? `${n} ${plural(n, 'session is', 'sessions are')} still working. Restarting stops ${plural(n, 'it', 'them')}; ` +
+            `${plural(n, 'it picks', 'they pick')} up again when you next message ${plural(n, 'it', 'them')}.`
+        : 'Restart Drawa to start using it, or it starts the next time you open Drawa.',
+    );
+  } catch (e) {
+    failed(e);
+  }
 }
 
 async function restart() {
-  lock(true)
-  say(`Restarting on ${info.latest}…`)
+  lock(true);
+  say(`Restarting on ${info.latest}…`);
   try {
-    await post('update/restart', {})
-    for (let i = 0; i < 60; i++) { // wait for the server to come back as the new version, then load its UI
-      await new Promise(r => setTimeout(r, 1000))
-      const v = await api<Info>('version').catch(() => null)
-      if (v?.current === info.latest) return location.reload()
+    await post('update/restart', {});
+    for (let i = 0; i < 60; i++) {
+      // wait for the server to come back as the new version, then load its UI
+      await new Promise(r => setTimeout(r, 1000));
+      const v = await api<Info>('version').catch(() => null);
+      if (v?.current === info.latest) return location.reload();
     }
     // installed all the same (Install succeeded before Restart now): only the restart is in doubt
-    lock(false)
-    go.textContent = 'Try again'
-    say(`${info.latest} is installed, but Drawa hasn’t come back yet. If it stays away, start drawa again in its terminal: it runs the new version.`)
+    lock(false);
+    go.textContent = 'Try again';
+    say(
+      `${info.latest} is installed, but Drawa hasn’t come back yet. If it stays away, start drawa again in its terminal: it runs the new version.`,
+    );
   } catch (e) {
-    lock(false)
-    go.textContent = 'Try again'
-    say(`${info.latest} is installed, but Drawa couldn’t restart (${e instanceof Error ? e.message : e}). Start drawa again in its terminal to use it.`)
+    lock(false);
+    go.textContent = 'Try again';
+    say(
+      `${info.latest} is installed, but Drawa couldn’t restart (${e instanceof Error ? e.message : e}). Start drawa again in its terminal to use it.`,
+    );
   }
 }
 
 d.querySelector('form')!.addEventListener('submit', e => {
-  if (e.submitter !== go) return
-  e.preventDefault() // stay open to show progress
-  if (d.dataset.state === 'restart') restart()
-  else install()
-})
-d.addEventListener('cancel', e => { if (busy) e.preventDefault() }) // Esc mid-install would hide a restart in progress
+  if (e.submitter !== go) return;
+  e.preventDefault(); // stay open to show progress
+  if (d.dataset.state === 'restart') restart();
+  else install();
+});
+d.addEventListener('cancel', e => {
+  if (busy) e.preventDefault();
+}); // Esc mid-install would hide a restart in progress
 d.addEventListener('close', () => {
-  if (d.dataset.state === 'restart') return // Restart later: the server remembers it's installed
-  if (d.returnValue === 'skip') localStorage.setItem(SKIP, info.latest)
-  else localStorage.setItem(SNOOZE, JSON.stringify({ v: info.latest, t: Date.now() })) // Not now, Esc, click outside
-})
-d.onclick = e => { if (e.target === d && !busy) d.close('') } // click outside the box = Not now / Restart later
+  if (d.dataset.state === 'restart') return; // Restart later: the server remembers it's installed
+  if (d.returnValue === 'skip') localStorage.setItem(SKIP, info.latest);
+  else localStorage.setItem(SNOOZE, JSON.stringify({ v: info.latest, t: Date.now() })); // Not now, Esc, click outside
+});
+d.onclick = e => {
+  if (e.target === d && !busy) d.close('');
+}; // click outside the box = Not now / Restart later
 
 function show(i: Info) {
-  info = i
-  lock(false)
-  d.dataset.state = 'offer'
-  title.textContent = 'Update available'
-  later.textContent = 'Not now'
-  go.textContent = 'Update'
-  from.textContent = i.current
-  to.textContent = i.latest
-  say()
-  d.returnValue = ''
-  d.showModal()
+  info = i;
+  lock(false);
+  d.dataset.state = 'offer';
+  title.textContent = 'Update available';
+  later.textContent = 'Not now';
+  go.textContent = 'Update';
+  from.textContent = i.current;
+  to.textContent = i.latest;
+  say();
+  d.returnValue = '';
+  d.showModal();
 }
 
 async function check() {
-  if (d.open) return
-  const i = await api<Info>('version').catch(() => null)
-  if (!i?.available || localStorage.getItem(SKIP) === i.latest) return
-  const s = JSON.parse(localStorage.getItem(SNOOZE) || 'null')
-  if (s?.v === i.latest && Date.now() - s.t < DAY) return // a newer release than the snoozed one asks right away
-  show(i)
+  if (d.open) return;
+  const i = await api<Info>('version').catch(() => null);
+  if (!i?.available || localStorage.getItem(SKIP) === i.latest) return;
+  const s = JSON.parse(localStorage.getItem(SNOOZE) || 'null');
+  if (s?.v === i.latest && Date.now() - s.t < DAY) return; // a newer release than the snoozed one asks right away
+  show(i);
 }
 
 // check again when you come back to the tab (a long-open page would otherwise wait out the interval)
-document.addEventListener('visibilitychange', () => { if (!document.hidden) check() })
-setInterval(check, EVERY)
-setTimeout(check, 3000) // let boot settle first
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) check();
+});
+setInterval(check, EVERY);
+setTimeout(check, 3000); // let boot settle first

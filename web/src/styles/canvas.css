@@ -1,7 +1,7 @@
 /* The canvas: stage, world transform, edges, ink, minimap. */
 #stage{position:fixed;inset:0;overflow:clip; /* not hidden: a hidden overflow can still be scrolled by focus() or scrollIntoView on an off-screen window, which shifts the canvas under the pen */ cursor:default;touch-action:none;
   background-color:var(--canvas)}
-/* the dot grid: its own layer a cell (at most 48px) bigger than the screen, moved by a transform (canvas.ts apply) */
+/* the dot grid: its own layer a cell (at most 48px) bigger than the screen, moved by a transform (canvas/core/view.ts apply) */
 #stage>.grid{position:absolute;left:0;top:0;width:calc(100% + 96px);height:calc(100% + 96px);pointer-events:none;will-change:transform;
   background-image:radial-gradient(circle,var(--dot) 1px,transparent 1.3px);background-size:24px 24px}
 #stage.hand{cursor:grab}

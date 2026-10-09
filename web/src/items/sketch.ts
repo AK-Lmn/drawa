@@ -1,171 +1,215 @@
 // Excalidraw sketches. On the canvas a sketch is a node showing a preview; double-click (or Edit) opens the
 // full editor in a dialog. (Excalidraw miscomputes pointer positions inside a CSS-scaled parent, so it can't
 // be edited in place on the zoomable canvas.)
-import { $, make, ICON, iconButton, project, uuid } from '../lib/dom'
-import { persist, each } from '../lib/store'
-import { isDark, onTheme } from '../lib/theme'
-import { forget } from '../canvas/graph'
-import { items, savedRect, freeSpot, viewCenter, centerOn, changed, type Rect } from '../canvas/canvas'
-import { makeWindow, removeButton } from '../canvas/window'
-import { referable } from '../canvas/refs'
-import { inkBox, fitInk } from '../canvas/ink'
-import { base64 } from '../lib/blobs'
 
-type Excalidraw = typeof import('@excalidraw/excalidraw')
-interface Scene { elements: readonly any[]; files: Record<string, any> }
+import { items, type Rect, savedRect } from '../canvas/core/items';
+import { centerOn, freeSpot } from '../canvas/core/placement';
+import { referable } from '../canvas/core/refs';
+import { changed, viewCenter } from '../canvas/core/view';
+import { makeWindow, removeButton } from '../canvas/core/window';
+import { forget } from '../canvas/graph/graph';
+import { fitInk, inkBox } from '../canvas/ink/stroke';
+import { base64 } from '../lib/blobs';
+import { $, ICON, iconButton, make, project, uuid } from '../lib/dom';
+import { each, persist } from '../lib/store';
+import { isDark, onTheme } from '../lib/theme';
+
+type Excalidraw = typeof import('@excalidraw/excalidraw');
+interface Scene {
+  elements: readonly any[];
+  files: Record<string, any>;
+}
 
 /* ---------- storage: one localStorage entry per sketch, this browser only ---------- */
 // ponytail: localStorage (~5 MB per origin); pasted images can fill it. Move to server-side files if that bites.
-const KEY = (id: string) => `drawa:sketch:${project.root}:${id}`
+const KEY = (id: string) => `drawa:sketch:${project.root}:${id}`;
 const loadScene = (id: string): Scene => {
-  try { return JSON.parse(localStorage.getItem(KEY(id)) ?? 'null') ?? { elements: [], files: {} } } catch { return { elements: [], files: {} } }
-}
+  try {
+    return JSON.parse(localStorage.getItem(KEY(id)) ?? 'null') ?? { elements: [], files: {} };
+  } catch {
+    return { elements: [], files: {} };
+  }
+};
 function saveScene(id: string, s: Scene) {
-  try { localStorage.setItem(KEY(id), JSON.stringify(s)); return true } catch { return false }
+  try {
+    localStorage.setItem(KEY(id), JSON.stringify(s));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-let lib: Promise<Excalidraw> | undefined // React + Excalidraw: loaded on first sketch only
-const excalidraw = () => (lib ??= (async () => {
-  (window as any).EXCALIDRAW_ASSET_PATH = location.origin + '/excalidraw/' // fonts are self-hosted (see postinstall)
-  await import('@excalidraw/excalidraw/index.css')
-  return import('@excalidraw/excalidraw')
-})())
-const dark = isDark
+let lib: Promise<Excalidraw> | undefined; // React + Excalidraw: loaded on first sketch only
+const excalidraw = () =>
+  (lib ??= (async () => {
+    (window as any).EXCALIDRAW_ASSET_PATH = `${location.origin}/excalidraw/`; // fonts are self-hosted (see postinstall)
+    await import('@excalidraw/excalidraw/index.css');
+    return import('@excalidraw/excalidraw');
+  })());
+const dark = isDark;
 
 /* ---------- the node on the canvas ---------- */
 /** "Whiteboard 4" after the highest number in use (a reload must not start again at 1). */
-const nextName = () => `Whiteboard ${Math.max(0, ...items('sketch').map(n => Number(/^Whiteboard (\d+)$/.exec(n.querySelector('.t')?.textContent ?? '')?.[1] ?? 0))) + 1}`
+const nextName = () =>
+  `Whiteboard ${Math.max(0, ...items('sketch').map(n => Number(/^Whiteboard (\d+)$/.exec(n.querySelector('.t')?.textContent ?? '')?.[1] ?? 0))) + 1}`;
 export function sketch(opts: { id?: string; title?: string; rect?: Rect; edit?: boolean } = {}) {
-  const id = opts.id ?? uuid()
-  const c = viewCenter()
+  const id = opts.id ?? uuid();
+  const c = viewCenter();
   const { el: node, body } = makeWindow({
-    kind: 'sketch', cls: 'snode', title: opts.title ?? nextName(), minW: 220, minH: 160,
+    kind: 'sketch',
+    cls: 'snode',
+    title: opts.title ?? nextName(),
+    minW: 220,
+    minH: 160,
     rect: opts.rect ?? freeSpot({ x: c.x - 210, y: c.y - 150, w: 420, h: 300 }),
     actions: [
       iconButton(ICON.pencil, 'Edit whiteboard', () => edit(node)),
       removeButton('Delete whiteboard', n => forgetScene(n.dataset.id!)), // the drawing stays stored while Undo is offered
     ],
-  })
-  node.dataset.id = id
-  node.dataset.ink = 's:' + id
-  body.classList.add('snode-b')
-  body.append(inkBox('sf:' + id)) // drawing on the picture stays on the same spot at any size
-  body.ondblclick = () => edit(node)
-  preview(node)
-  if (opts.edit) { centerOn(node); edit(node, !opts.id) }
-  changed()
-  return node
+  });
+  node.dataset.id = id;
+  node.dataset.ink = `s:${id}`;
+  body.classList.add('snode-b');
+  body.append(inkBox(`sf:${id}`)); // drawing on the picture stays on the same spot at any size
+  body.ondblclick = () => edit(node);
+  preview(node);
+  if (opts.edit) {
+    centerOn(node);
+    edit(node, !opts.id);
+  }
+  changed();
+  return node;
 }
 
 async function preview(node: HTMLElement) {
-  const body = node.querySelector<HTMLElement>('.snode-b')!
-  const scene = loadScene(node.dataset.id!)
-  body.querySelector(':scope > .none')?.remove()
-  if (!scene.elements.some(e => !e.isDeleted)) return body.prepend(make('p', 'none', 'Empty whiteboard. Double-click to draw.'))
-  const { exportToSvg } = await excalidraw()
+  const body = node.querySelector<HTMLElement>('.snode-b')!;
+  const scene = loadScene(node.dataset.id!);
+  body.querySelector(':scope > .none')?.remove();
+  if (!scene.elements.some(e => !e.isDeleted))
+    return body.prepend(make('p', 'none', 'Empty whiteboard. Double-click to draw.'));
+  const { exportToSvg } = await excalidraw();
   const svg = await exportToSvg({
     elements: scene.elements as any,
     files: scene.files,
     appState: { exportBackground: false, exportWithDarkMode: dark() },
     exportPadding: 16,
-  })
-  svg.setAttribute('width', '100%')
-  svg.setAttribute('height', '100%')
-  fitInk(body.querySelector<HTMLElement>(':scope > .ink-box')!, svg)
+  });
+  svg.setAttribute('width', '100%');
+  svg.setAttribute('height', '100%');
+  fitInk(body.querySelector<HTMLElement>(':scope > .ink-box')!, svg);
 }
 
 /** PNG (base64) of a sketch, for sending to Claude; null if it's empty. */
 async function sketchPng(id: string): Promise<string | null> {
-  const scene = loadScene(id)
-  if (!scene.elements.some(e => !e.isDeleted)) return null
-  const { exportToBlob } = await excalidraw()
+  const scene = loadScene(id);
+  if (!scene.elements.some(e => !e.isDeleted)) return null;
+  const { exportToBlob } = await excalidraw();
   const blob = await exportToBlob({
     elements: scene.elements as any,
     files: scene.files,
     mimeType: 'image/png',
     appState: { exportBackground: true, viewBackgroundColor: '#ffffff', exportWithDarkMode: false },
     exportPadding: 24,
-  })
-  return base64(blob)
+  });
+  return base64(blob);
 }
 
-onTheme(() => items('sketch').forEach(preview)) // previews are drawn in the theme's colors
-persist('sketches',
-  () => items('sketch').map(n => ({ id: n.dataset.id!, title: n.querySelector('.t')!.textContent ?? '', ...savedRect(n) })),
-  (list: (Rect & { id: string; title: string })[]) => each(list, s => sketch({ id: s.id, title: s.title, rect: s })))
+onTheme(() => items('sketch').forEach(preview)); // previews are drawn in the theme's colors
+persist(
+  'sketches',
+  () =>
+    items('sketch').map(n => ({ id: n.dataset.id!, title: n.querySelector('.t')!.textContent ?? '', ...savedRect(n) })),
+  (list: (Rect & { id: string; title: string })[]) => each(list, s => sketch({ id: s.id, title: s.title, rect: s })),
+);
 referable('sketch', {
   icon: '✎',
   name: 'whiteboard',
   content: async (el, label) => {
-    const image = await sketchPng(el.dataset.id!)
-    return image ? { text: `Whiteboard "${label}"`, image } : { text: `Whiteboard "${label}": (empty)` }
+    const image = await sketchPng(el.dataset.id!);
+    return image ? { text: `Whiteboard "${label}"`, image } : { text: `Whiteboard "${label}": (empty)` };
   },
-})
+});
 
 /* ---------- the editor dialog ---------- */
-const dialog = $<HTMLDialogElement>('#sketcher')
-const host = dialog.querySelector<HTMLElement>('.host')!
-const nameInput = dialog.querySelector<HTMLInputElement>('input')!
-const status = dialog.querySelector<HTMLElement>('.status')!
+const dialog = $<HTMLDialogElement>('#sketcher');
+const host = dialog.querySelector<HTMLElement>('.host')!;
+const nameInput = dialog.querySelector<HTMLInputElement>('input')!;
+const status = dialog.querySelector<HTMLElement>('.status')!;
 // isNew: created by this editing session (Cancel, or Done with nothing drawn, removes it again)
-let open: { node: HTMLElement; scene: Scene; original: string; isNew: boolean; unmount: () => void } | undefined
-let timer = 0, loading = false
+let open: { node: HTMLElement; scene: Scene; original: string; isNew: boolean; unmount: () => void } | undefined;
+let timer = 0,
+  loading = false;
 
 async function edit(node: HTMLElement, isNew = false) {
-  if (open || loading) return // a second Edit while Excalidraw loads would mount a second editor into the dialog
-  loading = true
-  const id = node.dataset.id!
-  const [{ Excalidraw }, React, { createRoot }] = await Promise.all([excalidraw(), import('react'), import('react-dom/client')]).finally(() => { loading = false })
-  const scene = loadScene(id)
-  nameInput.value = node.querySelector('.t')!.textContent ?? ''
-  status.textContent = ''
-  const root = createRoot(host)
-  open = { node, scene, original: JSON.stringify(scene), isNew, unmount: () => root.unmount() }
-  root.render(React.createElement(Excalidraw, {
-    initialData: { elements: scene.elements as any, files: scene.files, scrollToContent: true },
-    theme: dark() ? 'dark' : 'light',
-    handleKeyboardGlobally: true, // modal dialog: tool keys work without clicking the drawing first
-    onChange: (elements: readonly any[], _app: unknown, files: Record<string, any>) => {
-      if (!open) return
-      open.scene = { elements, files }
-      clearTimeout(timer)
-      timer = setTimeout(() => { status.textContent = saveScene(id, open!.scene) ? 'Saved' : 'Not saved: browser storage is full' }, 300)
-    },
-  }))
-  dialog.showModal()
-  nameInput.blur() // showModal focuses the name field; tool keys (R, O, A...) should go to the drawing
+  if (open || loading) return; // a second Edit while Excalidraw loads would mount a second editor into the dialog
+  loading = true;
+  const id = node.dataset.id!;
+  const [{ Excalidraw }, React, { createRoot }] = await Promise.all([
+    excalidraw(),
+    import('react'),
+    import('react-dom/client'),
+  ]).finally(() => {
+    loading = false;
+  });
+  const scene = loadScene(id);
+  nameInput.value = node.querySelector('.t')!.textContent ?? '';
+  status.textContent = '';
+  const root = createRoot(host);
+  open = { node, scene, original: JSON.stringify(scene), isNew, unmount: () => root.unmount() };
+  root.render(
+    React.createElement(Excalidraw, {
+      initialData: { elements: scene.elements as any, files: scene.files, scrollToContent: true },
+      theme: dark() ? 'dark' : 'light',
+      handleKeyboardGlobally: true, // modal dialog: tool keys work without clicking the drawing first
+      onChange: (elements: readonly any[], _app: unknown, files: Record<string, any>) => {
+        if (!open) return;
+        open.scene = { elements, files };
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          status.textContent = saveScene(id, open!.scene) ? 'Saved' : 'Not saved: browser storage is full';
+        }, 300);
+      },
+    }),
+  );
+  dialog.showModal();
+  nameInput.blur(); // showModal focuses the name field; tool keys (R, O, A...) should go to the drawing
 }
 
-const forgetScene = (id: string) => { try { localStorage.removeItem(KEY(id)) } catch {} }
+const forgetScene = (id: string) => {
+  try {
+    localStorage.removeItem(KEY(id));
+  } catch {}
+};
 /** A new whiteboard left empty or cancelled: gone at once, nothing to undo. */
 function discard(node: HTMLElement) {
-  forgetScene(node.dataset.id!)
-  forget(node)
-  node.remove()
-  changed()
+  forgetScene(node.dataset.id!);
+  forget(node);
+  node.remove();
+  changed();
 }
 
 function close(keep: boolean) {
-  if (!open) return
-  clearTimeout(timer)
-  const { node, scene, original, isNew, unmount } = open
-  const empty = !scene.elements.some(e => !e.isDeleted)
+  if (!open) return;
+  clearTimeout(timer);
+  const { node, scene, original, isNew, unmount } = open;
+  const empty = !scene.elements.some(e => !e.isDeleted);
   // storage full: stay open with the drawing rather than close and lose the new strokes
   if (keep && !(isNew && empty) && !saveScene(node.dataset.id!, scene)) {
-    status.textContent = 'Not saved: browser storage is full. Remove a pasted picture from the drawing and press Done again, or Cancel.'
-    return
+    status.textContent =
+      'Not saved: browser storage is full. Remove a pasted picture from the drawing and press Done again, or Cancel.';
+    return;
   }
-  open = undefined
-  unmount()
-  dialog.close()
-  if (isNew && (!keep || empty)) return discard(node) // nothing to keep: no leftover empty sketch
-  if (!keep) saveScene(node.dataset.id!, JSON.parse(original)) // Cancel: back to how it was before this edit
-  if (!keep) return preview(node)
-  node.querySelector('.t')!.textContent = nameInput.value.trim() || 'Whiteboard'
-  preview(node)
-  changed()
+  open = undefined;
+  unmount();
+  dialog.close();
+  if (isNew && (!keep || empty)) return discard(node); // nothing to keep: no leftover empty sketch
+  if (!keep) saveScene(node.dataset.id!, JSON.parse(original)); // Cancel: back to how it was before this edit
+  if (!keep) return preview(node);
+  node.querySelector('.t')!.textContent = nameInput.value.trim() || 'Whiteboard';
+  preview(node);
+  changed();
 }
 
-dialog.querySelector<HTMLButtonElement>('.done')!.onclick = () => close(true)
-dialog.querySelector<HTMLButtonElement>('.cancel')!.onclick = () => close(false)
-dialog.addEventListener('cancel', e => e.preventDefault()) // Esc belongs to Excalidraw (deselect, exit tool); close with Done
+dialog.querySelector<HTMLButtonElement>('.done')!.onclick = () => close(true);
+dialog.querySelector<HTMLButtonElement>('.cancel')!.onclick = () => close(false);
+dialog.addEventListener('cancel', e => e.preventDefault()); // Esc belongs to Excalidraw (deselect, exit tool); close with Done
