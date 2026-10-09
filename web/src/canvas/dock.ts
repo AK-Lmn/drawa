@@ -118,17 +118,31 @@ const setAt = (el: HTMLElement, x: number, y: number) => {
 
 /** Stick a window to the screen where it is now, or put a floating one back on the canvas. */
 export function toggleFloat(el: HTMLElement) {
+  if (!floating(el)) {
+    if (el.classList.contains('full')) exitFull() // first: it floats where it sits on the canvas, not at full view's corner
+    const b = el.getBoundingClientRect()
+    floatAt(el, b.left, b.top)
+    return
+  }
+  const had = focusedIn(el) // typing in it: keep typing wherever it lands
+  if (el.classList.contains('full')) exitFull()
+  unfloat(el)
+  bringBack(el)
+  sync(el)
+  redraw()
+  changed()
+  had?.focus({ preventScroll: true })
+}
+
+/** Stick a window to the screen with its top-left at (x, y) in screen pixels; one already stuck there just moves. */
+export function floatAt(el: HTMLElement, x: number, y: number) {
   const had = focusedIn(el) // typing in it: keep typing wherever it floats
   if (el.classList.contains('full')) exitFull()
-  if (floating(el)) { unfloat(el); bringBack(el) }
-  else {
-    const b = el.getBoundingClientRect()
-    if (docked(el)) { el.classList.remove('docked'); shown() }
-    el.classList.add('floating')
-    setAt(el, b.left, b.top)
-    floats.append(el)
-    raise(el)
-  }
+  if (docked(el)) { el.classList.remove('docked'); shown() }
+  el.classList.add('floating')
+  setAt(el, x, y)
+  if (el.parentElement !== floats) floats.append(el)
+  raise(el)
   sync(el)
   redraw()
   changed()

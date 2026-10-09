@@ -6,7 +6,7 @@
 import { api, q } from '../lib/api'
 import { make, button, iconButton, ICON, keepOnScreen, perFrame, revealIn } from '../lib/dom'
 import { definitions, symbolsOn, type CodeSymbol } from '../lib/symbols'
-import { openFileAt } from '../canvas/find'
+import { openFileAt, stickFileAt } from '../canvas/find'
 import { sourceView } from './files'
 
 const box = document.body.appendChild(make('div', 'defs float'))
@@ -32,12 +32,12 @@ function nameAt(x: number, y: number, within: Element) {
   return x >= rc.left && x <= rc.right && y >= rc.top && y <= rc.bottom ? { name: t.slice(a, b), range } : null
 }
 
-const ROWS = '.diff > div:not(.sep)'
+const ROWS = '.diff > :is(.add, .del, .eq)' // code rows: not hunk headers, folds or a pull request's comments
 const hl = typeof Highlight === 'function' ? new Highlight() : null
 if (hl) CSS.highlights.set('def-name', hl)
 let under: HTMLElement | null = null
 const hover = perFrame((t: Element | null, x: number, y: number) => {
-  const row = symbolsOn() ? t?.closest<HTMLElement>(ROWS) : null, at = row ? nameAt(x, y, row) : null
+  const row = t?.closest<HTMLElement>(ROWS), at = row ? nameAt(x, y, row) : null
   hl?.clear()
   under?.classList.remove('def-on')
   under = at ? row! : null
@@ -46,16 +46,22 @@ const hover = perFrame((t: Element | null, x: number, y: number) => {
   row!.classList.add('def-on')
 })
 
-/** Make a diff's names lead to their definitions: hovering underlines one, clicking asks where it's defined. */
-export function definable(el: HTMLElement) {
-  el.addEventListener('pointermove', e => hover(e.target as Element, e.clientX, e.clientY))
+type Look = (name: string, x: number, y: number) => void
+/** Make the names in diffs inside `el` lead somewhere: hovering underlines one, clicking runs `look` on it (where
+ *  it's defined, or with showRefs where it's used). Such a click is `defaultPrevented`, so a diff's own click (a pull
+ *  request's line comment) can skip it. */
+export function definable(el: HTMLElement, look: Look = showDefs) {
+  const on = () => look !== showDefs || symbolsOn() // where it's used is a text search: no ctags needed
+  el.addEventListener('pointermove', e => hover(on() ? e.target as Element : null, e.clientX, e.clientY))
   el.addEventListener('pointerleave', () => hover(null, 0, 0))
   el.addEventListener('click', e => {
     const row = (e.target as Element).closest(ROWS)
-    if (!row || !symbolsOn() || !getSelection()?.isCollapsed) return // selecting text isn't asking
+    if (!row || !on() || !getSelection()?.isCollapsed) return // selecting text isn't asking
     const at = nameAt(e.clientX, e.clientY, row)
-    if (at) showDefs(at.name, e.clientX, e.clientY + 14)
-  })
+    if (!at) return
+    e.preventDefault()
+    look(at.name, e.clientX, e.clientY + 14)
+  }, true) // capturing: before the diff's own click handlers
 }
 
 /** The header box: type a name, Enter shows where it's defined. */
@@ -92,6 +98,53 @@ export async function showDefs(name: string, x: number, y: number, field?: HTMLE
   else several(name, defs)
 }
 
+type Ref = { path: string; line: number; text: string }
+/** Where `name` is used in the project (a whole-word search, comments and strings too), listed near (x, y). Picking
+ *  one opens its file at the line in a small window stuck to the screen beside the list, which stays open to step
+ *  through the rest. */
+export async function showRefs(name: string, x: number, y: number) {
+  const n = ++asked
+  from = null; x0 = x; y0 = y
+  show(head(name, 'Searching…'))
+  const { refs, more } = await api<{ refs: Ref[]; more: boolean }>('refs?name=' + q(name)).catch(() => ({ refs: [] as Ref[], more: false }))
+  if (n !== asked) return
+  if (!refs.length) { show(head(name, 'no uses found in the project')); return }
+  const at = new RegExp(`(?<![\\w$])${name.replace(/\$/g, '\\$')}(?![\\w$])`)
+  const list = listOf(refs, r => {
+    const text = make('small', 'ref-t'), m = at.exec(r.text)
+    if (m) text.append(r.text.slice(0, m.index), make('mark', '', name), r.text.slice(m.index + name.length))
+    else text.textContent = r.text
+    return [make('b', '', `${r.path}:${r.line}`), text]
+  }, r => stickFileAt(r.path, r.line, ...besideBox()))
+  show(head(name, more ? `the first ${refs.length} uses` : `${refs.length} use${refs.length > 1 ? 's' : ''}`), list)
+  list.querySelector('button')?.focus()
+}
+
+/** A list of places to pick from (definitions, uses), rows styled as Ctrl+K's: `main` is a row's text, `kind` its
+ *  tag on the right. */
+function listOf<T>(all: T[], main: (t: T) => HTMLElement[], pick: (t: T) => void, kind?: (t: T) => string) {
+  const list = make('div', 'defs-list')
+  list.setAttribute('role', 'listbox')
+  for (const t of all) {
+    const row = make('button', 'finder-row'), m = make('span', 'fr-main')
+    row.setAttribute('role', 'option')
+    row.dataset.kind = 'preview'
+    m.append(...main(t))
+    row.append(m, ...(kind ? [make('span', 'fr-k', kind(t))] : []))
+    row.onclick = () => pick(t)
+    list.append(row)
+  }
+  return list
+}
+
+/** Where a 380×260 window fits beside the open box: right, else left, else (a phone) below or above it. */
+function besideBox(): [number, number] {
+  const b = box.getBoundingClientRect()
+  if (b.right + 388 <= innerWidth) return [b.right + 8, b.top]
+  if (b.left >= 388) return [b.left - 388, b.top]
+  return [8, b.bottom + 268 <= innerHeight ? b.bottom + 8 : Math.max(8, b.top - 268)]
+}
+
 function head(name: string, note: string, back?: () => void) {
   const h = make('div', 'defs-h')
   if (back) h.append(button('‹ All', 'defs-back', back))
@@ -102,18 +155,7 @@ function head(name: string, note: string, back?: () => void) {
 const where = (s: CodeSymbol) => `${s.path}:${s.line}`
 
 function several(name: string, defs: CodeSymbol[]) {
-  const list = make('div', 'defs-list')
-  list.setAttribute('role', 'listbox')
-  for (const s of defs) {
-    const row = make('button', 'finder-row')
-    row.setAttribute('role', 'option')
-    row.dataset.kind = 'preview'
-    const main = make('span', 'fr-main')
-    main.append(make('b', '', where(s)), ...(s.scope ? [make('small', '', s.scope)] : []))
-    row.append(main, make('span', 'fr-k', s.kind))
-    row.onclick = () => one(name, s, () => several(name, defs))
-    list.append(row)
-  }
+  const list = listOf(defs, s => [make('b', '', where(s)), ...(s.scope ? [make('small', '', s.scope)] : [])], s => one(name, s, () => several(name, defs)), s => s.kind)
   show(head(name, `${defs.length} definitions`), list)
   list.querySelector('button')?.focus()
 }

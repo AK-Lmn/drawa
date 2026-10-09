@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"drawa/internal/config"
 )
 
 var stateCache = struct {
@@ -15,6 +17,13 @@ var stateCache = struct {
 	at    time.Time
 	state map[string]any
 }{}
+
+// Fresh drops every cached list (status, nested repos, worktrees), for the Git window's refresh button: the next
+// GitState reads them all again.
+func Fresh() {
+	Forget()
+	forgetWorktrees()
+}
 
 // GitState is Root's git status, with each nested repo's in "nested", shared by every page for a few seconds: each
 // open Git window polls it.
@@ -156,17 +165,19 @@ func parseNumstat(out string) map[string][2]int {
 
 var prefixCache = struct {
 	sync.Mutex
-	val string
-	ok  bool
+	val, root string
+	ok        bool
 }{}
 
-// prefix is Root's place in its repo ("" at the top, "sub/dir/" below it). Cached once known: Root never moves.
+// prefix is Root's place in its repo ("" at the top, "sub/dir/" below it). Cached once known, for that Root: it never
+// moves while Drawa runs, but tests point it at other folders.
 func prefix() string {
 	prefixCache.Lock()
 	defer prefixCache.Unlock()
-	if !prefixCache.ok {
+	if !prefixCache.ok || prefixCache.root != config.Root {
+		prefixCache.val, prefixCache.ok = "", false
 		if ok, out := Git("rev-parse", "--show-prefix"); ok {
-			prefixCache.val, prefixCache.ok = out, true
+			prefixCache.val, prefixCache.ok, prefixCache.root = out, true, config.Root
 		}
 	}
 	return prefixCache.val

@@ -554,6 +554,156 @@ func TestGitShowRejects(t *testing.T) {
 	}
 }
 
+func TestRefs(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	repo, _ := filepath.EvalSymlinks(t.TempDir())
+	os.WriteFile(filepath.Join(repo, "a.go"), []byte("func fooBar() {}\nvar x = fooBarBaz\n"), 0o644)
+	os.WriteFile(filepath.Join(repo, "b.go"), []byte("// calls\n  fooBar()\n"), 0o644)
+	os.MkdirAll(filepath.Join(repo, "d:x"), 0o755)
+	os.WriteFile(filepath.Join(repo, "d:x", "c.go"), []byte(strings.Repeat("fooBar\n", 30)), 0o644)
+	cmd := exec.Command("git", "init", "-q")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v %s", err, out)
+	}
+	saved := config.Root
+	config.Root = repo
+	t.Cleanup(func() { config.Root = saved })
+
+	got, more := Refs("fooBar") // untracked files count: what you just wrote is searched too
+	want := []Ref{{"a.go", 1, "func fooBar() {}"}, {"b.go", 2, "fooBar()"}}
+	for i := 1; i <= 20; i++ { // a colon in the path, and 20 a file at most
+		want = append(want, Ref{"d:x/c.go", i, "fooBar"})
+	}
+	if !reflect.DeepEqual(got, want) || !more { // c.go's last 10 are left out
+		t.Fatalf("Refs = %v (more %v), want %v (more)", got, more, want)
+	}
+	if _, more := Refs("fooBarBaz"); more {
+		t.Error("a complete list says there are more")
+	}
+	for _, bad := range []string{"", "-e", "1x", "a b", "--open-files-in-pager=sh"} {
+		if r, _ := Refs(bad); len(r) != 0 {
+			t.Errorf("Refs(%q) = %v, want none", bad, r)
+		}
+	}
+}
+
+func TestBlobAndDiscard(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	repo, _ := filepath.EvalSymlinks(t.TempDir())
+	run := func(args ...string) string {
+		cmd := exec.Command("git", append([]string{"-c", "user.email=a@b", "-c", "user.name=a"}, args...)...)
+		cmd.Dir = repo
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	f := filepath.Join(repo, "sub", "a.txt")
+	os.MkdirAll(filepath.Dir(f), 0o755)
+	os.WriteFile(f, []byte("one\n"), 0o644)
+	run("init", "-q")
+	run("add", ".")
+	run("commit", "-qm", "init")
+	head := run("rev-parse", "HEAD")
+	os.WriteFile(f, []byte("two\n"), 0o644)
+	run("add", ".")
+	os.WriteFile(f, []byte("three\n"), 0o644)
+
+	saved := config.Root
+	config.Root = repo
+	prefixCache.ok = false
+	t.Cleanup(func() { config.Root = saved; prefixCache.ok = false })
+
+	text := func(rev, path string, top bool) any {
+		b, err := Blob("", rev, path, top)
+		if err != nil {
+			t.Fatalf("Blob(%q, %q): %v", rev, path, err)
+		}
+		return b["text"]
+	}
+	if got := text(head, "sub/a.txt", true); got != "one\n" {
+		t.Errorf("at HEAD = %q", got)
+	}
+	if got := text("", "sub/a.txt", false); got != "two\n" {
+		t.Errorf("in the index = %q", got)
+	}
+	if got := text(head, "sub/gone.txt", true); got != nil {
+		t.Errorf("missing file = %q, want nil", got)
+	}
+	for _, bad := range [][2]string{{"HEAD~1", "sub/a.txt"}, {"--output=x", "sub/a.txt"}, {head, "../x"}} {
+		if _, err := Blob("", bad[0], bad[1], true); err == nil {
+			t.Errorf("Blob(%q, %q) took it", bad[0], bad[1])
+		}
+	}
+	if !HasCommit("", head) || HasCommit("", strings.Repeat("0", 40)) || HasCommit("", "HEAD") {
+		t.Errorf("HasCommit is wrong about %s, a missing commit or a name", head)
+	}
+
+	config.Root, prefixCache.ok = filepath.Join(repo, "sub"), false // Root below the repo's top: nothing above it is read
+	if got := text(head, "sub/a.txt", true); got != "one\n" {
+		t.Errorf("inside Root = %q", got)
+	}
+	for _, rev := range []string{head, ""} {
+		if _, err := Blob("", rev, "secret.txt", true); err == nil {
+			t.Errorf("Blob(%q, secret.txt) read outside Root", rev)
+		}
+	}
+	config.Root, prefixCache.ok = repo, false
+
+	read := func() string { b, _ := os.ReadFile(f); return string(b) }
+	if r, _ := GitOp(map[string]any{"op": "discard", "paths": []any{"sub/a.txt"}}); r["ok"] != true || read() != "two\n" {
+		t.Fatalf("discarding the unstaged edit: %v, file %q", r, read())
+	}
+	os.WriteFile(f, []byte("four\n"), 0o644)
+	if r, _ := GitOp(map[string]any{"op": "discard", "staged": true, "paths": []any{"sub/a.txt"}}); r["ok"] != true || read() != "one\n" {
+		t.Fatalf("discarding staged and unstaged: %v, file %q", r, read())
+	}
+	if run("status", "--porcelain") != "" {
+		t.Errorf("still changed after discarding: %s", run("status", "--porcelain"))
+	}
+	// a staged new file isn't discarded: restoring it from HEAD would delete it from disk
+	nf := filepath.Join(repo, "sub", "new.txt")
+	os.WriteFile(nf, []byte("keep\n"), 0o644)
+	run("add", ".")
+	if r, _ := GitOp(map[string]any{"op": "discard", "staged": true, "paths": []any{"sub/new.txt"}}); r["ok"] != false {
+		t.Errorf("discarded a file HEAD doesn't have: %v", r)
+	}
+	if b, err := os.ReadFile(nf); err != nil || string(b) != "keep\n" {
+		t.Errorf("new file after a refused discard: %q, %v", b, err)
+	}
+	// nor a folder (it passes "is it in HEAD", and would restore, so delete, every new file under it), nor the root
+	for _, dir := range []string{"sub", "."} {
+		for _, staged := range []bool{true, false} {
+			if r, _ := GitOp(map[string]any{"op": "discard", "staged": staged, "paths": []any{dir}}); r["ok"] != false {
+				t.Errorf("discarded folder %q (staged %v): %v", dir, staged, r)
+			}
+		}
+	}
+	if b, err := os.ReadFile(nf); err != nil || string(b) != "keep\n" {
+		t.Errorf("new file after refused folder discards: %q, %v", b, err)
+	}
+	// a staged deletion with a new file at the same path: discarding would overwrite the new one
+	run("rm", "-q", "--cached", "sub/new.txt")
+	run("rm", "-q", "sub/a.txt")
+	os.WriteFile(f, []byte("brand new\n"), 0o644)
+	if r, _ := GitOp(map[string]any{"op": "discard", "staged": true, "paths": []any{"sub/a.txt"}}); r["ok"] != false {
+		t.Errorf("discarded a staged deletion over a new file: %v", r)
+	}
+	if read() != "brand new\n" {
+		t.Errorf("new file at a deleted path: %q", read())
+	}
+	os.Remove(f) // with nothing there, the deletion is discarded: the file is back
+	if r, _ := GitOp(map[string]any{"op": "discard", "staged": true, "paths": []any{"sub/a.txt"}}); r["ok"] != true || read() != "one\n" {
+		t.Errorf("discarding a staged deletion: %v, file %q", r, read())
+	}
+}
+
 // Nested and Check share the worktree cache: a slow git costs one listing per repo per refresh, not one per call, and
 // no lock is held while it runs.
 func TestNestedGitOncePerRefresh(t *testing.T) {
