@@ -1,0 +1,58 @@
+name: Checks
+
+# What CLAUDE.md's "Before you finish any change" asks for, run on every pull request: Biome (formatting and
+# lint), the typecheck and Vite build, the color-contrast check, and the Go build and tests.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
+      - name: Biome (format + lint)
+        run: npx biome ci --reporter=github
+
+      - name: Typecheck and build
+        run: npm run build
+
+      - name: Color contrast
+        run: npm run contrast
+
+      - name: Pure-logic checks
+        run: for f in $(find src -name '*.check.ts'); do npx --yes tsx "$f"; done
+
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false # no dependencies, so there's no go.sum to key a module cache on
+
+      - run: go vet ./...
+      - run: go build ./...
+      - run: go test ./...
